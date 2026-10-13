@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Studyo | Study Tracker PWA</title>
+    <meta name="description" content="Clean, zero-cost, hyper-optimized study analytics app with Pomodoro focus room, syllabus mapping, and 365-day activity heatmap." />
+    <meta name="theme-color" content="#0c0c0b" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script type="module" crossorigin src="./assets/index-guwnT22n.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-jBDa0Nb-.css">
+  </head>
+  <body class="bg-[#0c0c0b] text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white">
+    <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
+        if (window.caches) caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+      }
+    </script>
+  </body>
+</html>
