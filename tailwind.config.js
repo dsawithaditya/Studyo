@@ -20,7 +20,7 @@ export default {
           700: '#2f2d29',
           800: '#1e1d1a',
           900: '#141413',
-          950: '#0c0c0b',
+          950: '#000000',
         },
         // Accent: halftone "warm" orange
         indigo: {

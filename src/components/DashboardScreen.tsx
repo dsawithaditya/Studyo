@@ -142,7 +142,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
       {/* ======================================================== */}
       {/* 1. GREETING BANNER & QUICK LAUNCH HERO                   */}
       {/* ======================================================== */}
-      <div className="relative overflow-hidden rounded-3xl p-6 sm:p-8 bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-[#0c0c0b] border border-indigo-500/30 shadow-2xl shadow-indigo-950/50">
+      <div className="relative overflow-hidden rounded-3xl p-6 sm:p-8 bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-[#000000] border border-indigo-500/30 shadow-2xl shadow-indigo-950/50">
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 right-20 w-48 h-48 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
 

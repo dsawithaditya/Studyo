@@ -76,7 +76,7 @@ export interface HalftoneWordmarkFooterProps {
 }
 
 const PRESETS: { [K in HalftonePreset]: HalftonePalette } = {
-  night: { background: "#0c0c0b", ink: "#e9e4da", warm: "#e9762b" },
+  night: { background: "#000000", ink: "#e9e4da", warm: "#e9762b" },
   paper: { background: "#efebe3", ink: "#17150f", warm: "#c2361c" },
   ember: { background: "#160a06", ink: "#f2c48c", warm: "#ff5a1f" },
   cobalt: { background: "#0d1b4d", ink: "#dfe7ff", warm: "#ffcd3c" },
@@ -146,7 +146,7 @@ export function hwfFitSize(measured: number, width: number) {
 const HWF_CSS = `
 .hwf-root {
   position: relative; width: 100%; overflow: hidden; isolation: isolate;
-  background: var(--hwf-bg); color: var(--hwf-ink); -webkit-font-smoothing: antialiased;
+  background: var(--hwf-bg, transparent); color: var(--hwf-ink); -webkit-font-smoothing: antialiased;
 }
 .hwf-root canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; max-width: none; }
 .hwf-top {
@@ -323,8 +323,11 @@ export default function HalftoneWordmarkFooter({
     const draw = (now: number) => {
       const o = opts.current
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      ctx.fillStyle = o.colors.background
-      ctx.fillRect(0, 0, w, h)
+      ctx.clearRect(0, 0, w, h)
+      if (o.colors.background && o.colors.background !== "transparent") {
+        ctx.fillStyle = o.colors.background
+        ctx.fillRect(0, 0, w, h)
+      }
 
       const r = o.interactive && !reduced ? Math.max(0, o.radius) : 0
       const ringAge = ring.t < 0 ? 1e9 : now - ring.t

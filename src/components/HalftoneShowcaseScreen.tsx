@@ -44,7 +44,7 @@ export const HalftoneShowcaseScreen: React.FC<HalftoneShowcaseScreenProps> = ({ 
   const presetsInfo: Record<HalftonePreset, { label: string; bg: string; ink: string; warm: string; desc: string }> = {
     night: {
       label: 'Night',
-      bg: '#0c0c0b',
+      bg: '#000000',
       ink: '#e9e4da',
       warm: '#e9762b',
       desc: 'Deep obsidian backdrop with warm paper ink and vibrant solar orange displacement.'
@@ -120,7 +120,7 @@ export default function Footer() {
   return (
     <div className="w-full text-slate-100 font-sans selection:bg-orange-500 selection:text-white">
       {/* Top Banner Navigation */}
-      <div className="w-full bg-[#0c0c0b] border-b border-white/10 sticky top-0 z-30 backdrop-blur-md bg-opacity-90">
+      <div className="w-full sticky top-0 z-30 glass-header">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 via-amber-600 to-red-600 flex items-center justify-center font-mono font-black text-sm text-black shadow-lg shadow-orange-500/20">

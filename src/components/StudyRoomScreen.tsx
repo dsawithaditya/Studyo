@@ -475,7 +475,7 @@ export const StudyRoomScreen: React.FC = () => {
       {/* ======================================================== */}
       {showRatingModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-md rounded-3xl p-6 sm:p-8 bg-[#0c0c0b] border border-indigo-500/30 shadow-2xl space-y-6">
+          <div className="w-full max-w-md rounded-3xl p-6 sm:p-8 glass-modal shadow-2xl space-y-6">
             <div className="text-center space-y-2">
               <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto shadow-inner">
                 <Sparkles className="w-6 h-6" />

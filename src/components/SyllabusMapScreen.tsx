@@ -392,7 +392,7 @@ export const SyllabusMapScreen: React.FC = () => {
       {/* ======================================================== */}
       {activeNotesChap && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-lg rounded-3xl p-6 bg-[#0c0c0b] border border-indigo-500/30 shadow-2xl space-y-4">
+          <div className="w-full max-w-lg rounded-3xl p-6 glass-modal shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-indigo-400" />
@@ -460,7 +460,7 @@ export const SyllabusMapScreen: React.FC = () => {
       {/* ======================================================== */}
       {showAddSubjectModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
-          <form onSubmit={handleCreateSubject} className="w-full max-w-md rounded-3xl p-6 bg-[#0c0c0b] border border-indigo-500/30 shadow-2xl space-y-4">
+          <form onSubmit={handleCreateSubject} className="w-full max-w-md rounded-3xl p-6 glass-modal shadow-2xl space-y-4">
             <h3 className="text-base font-bold text-white">
               {t.syllabusMap.addSubject}
             </h3>
@@ -532,7 +532,7 @@ export const SyllabusMapScreen: React.FC = () => {
       {/* ======================================================== */}
       {addChapterModalSubjId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
-          <form onSubmit={handleCreateChapter} className="w-full max-w-md rounded-3xl p-6 bg-[#0c0c0b] border border-indigo-500/30 shadow-2xl space-y-4">
+          <form onSubmit={handleCreateChapter} className="w-full max-w-md rounded-3xl p-6 glass-modal shadow-2xl space-y-4">
             <h3 className="text-base font-bold text-white">
               {t.syllabusMap.addChapter}
             </h3>
@@ -575,7 +575,7 @@ export const SyllabusMapScreen: React.FC = () => {
       {/* ======================================================== */}
       {addTopicModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
-          <form onSubmit={handleCreateTopic} className="w-full max-w-md rounded-3xl p-6 bg-[#0c0c0b] border border-indigo-500/30 shadow-2xl space-y-4">
+          <form onSubmit={handleCreateTopic} className="w-full max-w-md rounded-3xl p-6 glass-modal shadow-2xl space-y-4">
             <h3 className="text-base font-bold text-white">
               {t.syllabusMap.addTopic}
             </h3>

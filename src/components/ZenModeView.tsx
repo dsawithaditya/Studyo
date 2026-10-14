@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStudyStore } from '../store/useStudyStore';
 import { Play, Pause, RotateCcw, Check, Minimize2 } from 'lucide-react';
+import { ShinyButton } from './ui/shiny-button';
 
 export const ZenModeView: React.FC = () => {
   const { 
@@ -56,9 +57,21 @@ export const ZenModeView: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#0c0c0b] text-[#f2eee3] flex flex-col items-center justify-center p-4 sm:p-8 select-none font-mono">
+    <div className="fixed inset-0 z-50 bg-[#000000] text-[#f2eee3] flex flex-col items-center justify-center p-4 sm:p-8 select-none font-mono relative overflow-hidden">
+      {/* Ambient Glass Glow Orbs */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div 
+          className="absolute top-[20%] left-1/2 -translate-x-1/2 w-[700px] h-[500px] rounded-full opacity-20 blur-[140px]"
+          style={{ background: 'radial-gradient(circle, #ff5f00 0%, #e9762b 40%, transparent 70%)' }}
+        />
+        <div 
+          className="absolute bottom-[10%] right-[10%] w-[500px] h-[400px] rounded-full opacity-10 blur-[130px]"
+          style={{ background: 'radial-gradient(circle, #ff9253 0%, transparent 65%)' }}
+        />
+      </div>
+
       {/* Centered Clock Face & Controls (Exact Screenshot 1 match) */}
-      <div className="flex flex-col items-center justify-center w-full max-w-5xl my-auto">
+      <div className="flex flex-col items-center justify-center w-full max-w-5xl my-auto relative z-10">
         {/* Giant Monospace Digits */}
         <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-8 text-[4.5rem] sm:text-[7rem] md:text-[9.5rem] lg:text-[11.5rem] font-bold tracking-tight leading-none select-none">
           {/* Hours */}
@@ -106,27 +119,28 @@ export const ZenModeView: React.FC = () => {
         {/* Action Controls Row (Exact Screenshot 1 match) */}
         <div className="flex items-center justify-center gap-2.5 sm:gap-3.5 mt-10 sm:mt-14 flex-wrap">
           {/* Start / Pause */}
-          <button
+          <ShinyButton
             onClick={timer.isRunning ? pauseTimer : startTimer}
-            className="flex items-center gap-2 px-6 sm:px-8 py-3 rounded-lg bg-[#e9762b] hover:bg-orange-500 text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider transition shadow-lg shadow-orange-500/20 active:scale-95 cursor-pointer"
+            cornerRadius={12}
+            className="!px-7 sm:!px-9 !py-3 !text-xs sm:!text-sm !font-mono !font-extrabold !uppercase !tracking-wider !rounded-xl active:scale-95 transition shadow-lg shadow-orange-500/20"
           >
             {timer.isRunning ? (
               <>
-                <Pause className="w-4 h-4 fill-black text-black" />
+                <Pause className="w-4 h-4 fill-white text-white" />
                 <span>Pause</span>
               </>
             ) : (
               <>
-                <Play className="w-4 h-4 fill-black text-black" />
+                <Play className="w-4 h-4 fill-white text-white" />
                 <span>Start</span>
               </>
             )}
-          </button>
+          </ShinyButton>
 
           {/* Reset */}
           <button
             onClick={resetTimer}
-            className="flex items-center gap-2 px-5 sm:px-6 py-3 rounded-lg bg-[#181817] hover:bg-[#222220] border border-white/10 hover:border-white/20 text-[#f2eee3] font-bold text-xs sm:text-sm uppercase tracking-wider transition active:scale-95 cursor-pointer"
+            className="flex items-center gap-2 px-5 sm:px-6 py-3 rounded-xl glass-panel hover:bg-[#222220]/90 text-[#f2eee3] font-bold text-xs sm:text-sm uppercase tracking-wider transition active:scale-95 cursor-pointer"
           >
             <RotateCcw className="w-4 h-4 text-slate-400" />
             <span>Reset</span>
@@ -135,7 +149,7 @@ export const ZenModeView: React.FC = () => {
           {/* Finish */}
           <button
             onClick={handleFinish}
-            className="flex items-center gap-2 px-5 sm:px-6 py-3 rounded-lg bg-[#111f18] hover:bg-[#14281e] border border-[#10b981]/40 text-[#10b981] font-bold text-xs sm:text-sm uppercase tracking-wider transition active:scale-95 cursor-pointer"
+            className="flex items-center gap-2 px-5 sm:px-6 py-3 rounded-xl bg-[#111f18]/80 backdrop-blur-md hover:bg-[#14281e] border border-[#10b981]/40 text-[#10b981] font-bold text-xs sm:text-sm uppercase tracking-wider transition active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(16,185,129,0.15)]"
           >
             <Check className="w-4 h-4 text-[#10b981]" />
             <span>Finish</span>
@@ -144,7 +158,7 @@ export const ZenModeView: React.FC = () => {
           {/* Exit Focus Mode (Square Icon Button) */}
           <button
             onClick={() => setZenMode(false)}
-            className="p-3 rounded-lg bg-[#181817] hover:bg-[#222220] border border-white/10 hover:border-white/20 text-slate-300 hover:text-white transition active:scale-95 cursor-pointer"
+            className="p-3 rounded-xl glass-panel hover:bg-[#222220]/90 text-slate-300 hover:text-white transition active:scale-95 cursor-pointer"
             title="Exit Focus Mode (Esc or Z)"
           >
             <Minimize2 className="w-4 h-4" />
@@ -154,8 +168,8 @@ export const ZenModeView: React.FC = () => {
 
       {/* Optional Rating Modal when clicking Finish in Focus Mode */}
       {showRatingModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#141413] border border-white/10 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+          <div className="glass-modal rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl">
             <h3 className="text-lg font-bold text-white uppercase tracking-wider mb-2">
               Rate Focus Session
             </h3>
@@ -172,8 +186,8 @@ export const ZenModeView: React.FC = () => {
                   onClick={() => setRating(star)}
                   className={`w-11 h-11 rounded-lg border flex items-center justify-center text-sm font-bold transition ${
                     rating >= star
-                      ? 'bg-[#e9762b] text-black border-[#e9762b]'
-                      : 'bg-white/5 text-slate-400 border-white/10 hover:border-white/20'
+                      ? 'bg-[#e9762b] text-black border-[#e9762b] shadow-[0_0_15px_rgba(233,118,43,0.3)]'
+                      : 'glass-pill text-slate-400 hover:border-white/20'
                   }`}
                 >
                   {star}
@@ -191,7 +205,7 @@ export const ZenModeView: React.FC = () => {
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="What did you work on or learn?"
                 rows={3}
-                className="w-full bg-[#1c1c1a] border border-white/10 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-[#e9762b] transition"
+                className="w-full glass-input rounded-xl p-3 text-xs text-white focus:outline-none transition"
               />
             </div>
 
@@ -200,17 +214,16 @@ export const ZenModeView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowRatingModal(false)}
-                className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold uppercase transition"
+                className="px-4 py-2 rounded-lg glass-pill text-slate-300 text-xs font-bold uppercase transition"
               >
                 Skip
               </button>
-              <button
-                type="button"
+              <ShinyButton
                 onClick={handleSaveRating}
-                className="px-5 py-2 rounded-lg bg-[#e9762b] text-black text-xs font-bold uppercase transition"
-              >
-                Save
-              </button>
+                label="Save"
+                cornerRadius={10}
+                className="!px-6 !py-2 !text-xs !font-bold !uppercase transition active:scale-95"
+              />
             </div>
           </div>
         </div>

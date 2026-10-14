@@ -422,7 +422,7 @@ export const AnalyticsHubScreen: React.FC = () => {
       {/* ======================================================== */}
       {dayDetails && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-md rounded-3xl p-6 bg-[#0c0c0b] border border-indigo-500/30 shadow-2xl space-y-4">
+          <div className="w-full max-w-md rounded-3xl p-6 glass-modal shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-white/10">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-indigo-400" />
@@ -490,7 +490,7 @@ export const AnalyticsHubScreen: React.FC = () => {
       {/* ======================================================== */}
       {showExportModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-lg rounded-3xl p-6 sm:p-8 bg-[#0c0c0b] border border-cyan-500/30 shadow-2xl space-y-6">
+          <div className="w-full max-w-lg rounded-3xl p-6 sm:p-8 glass-modal shadow-2xl space-y-6">
             {/* Report Header */}
             <div className="flex items-center justify-between border-b border-white/10 pb-4">
               <div>

@@ -66,7 +66,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
       {/* ======================================================== */}
       {/* DESKTOP SIDEBAR (visible on md: and larger screens)      */}
       {/* ======================================================== */}
-      <aside className="hidden md:flex flex-col w-64 lg:w-72 bg-[#0c0c0b]/90 border-r border-white/10 shrink-0 h-[calc(100vh-61px)] sticky top-[61px] p-4 justify-between">
+      <aside className="hidden md:flex flex-col w-64 lg:w-72 bg-black/40 backdrop-blur-2xl border-r border-white/10 shrink-0 h-[calc(100vh-61px)] sticky top-[61px] p-4 justify-between">
         <div className="space-y-6">
           {/* Section label */}
           <div>
@@ -150,7 +150,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
       {/* ======================================================== */}
       {/* MOBILE BOTTOM NAVIGATION BAR (< 768px)                  */}
       {/* ======================================================== */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0c0c0b]/95 backdrop-blur-xl border-t border-white/10 px-2 py-1.5 pb-safe">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-black/60 backdrop-blur-2xl border-t border-white/10 px-2 py-1.5 pb-safe shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
         <div className="flex items-center justify-around">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -166,7 +166,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
                 <div className="relative">
                   <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110 text-indigo-400' : ''}`} />
                   {item.badge && (
-                    <span className="absolute -top-1 -right-2 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[#0c0c0b] animate-pulse" />
+                    <span className="absolute -top-1 -right-2 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-[#000000] animate-pulse" />
                   )}
                 </div>
                 <span className="text-[10px] mt-1 tracking-tight truncate max-w-[62px]">

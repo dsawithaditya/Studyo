@@ -3,6 +3,8 @@ import { useStudyStore } from '../store/useStudyStore';
 import HalftoneWordmarkFooter from './ui/halftone-wordmark-footer';
 import { DailyStudyLog } from './DailyStudyLog';
 import { StudyLogAnalysis } from './StudyLogAnalysis';
+import { ProfileDropdown } from './ProfileDropdown';
+import { ShinyButton } from './ui/shiny-button';
 import { 
   Play, 
   Pause, 
@@ -37,14 +39,48 @@ import { SoundType } from '../services/soundSynth';
 import { TaskPriority } from '../types';
 
 const QUICK_PRESETS = [
-  { label: '5M', seconds: 5 * 60 },
-  { label: '15M', seconds: 15 * 60 },
-  { label: '25M (DEFAULT)', seconds: 25 * 60 },
-  { label: '45M', seconds: 45 * 60 },
-  { label: '1 HOUR', seconds: 60 * 60 },
-  { label: '2 HOURS', seconds: 2 * 60 * 60 },
-  { label: '4 HOURS', seconds: 4 * 60 * 60 },
+  { label: '5m', seconds: 5 * 60 },
+  { label: '15m', seconds: 15 * 60 },
+  { label: '25m', seconds: 25 * 60 },
+  { label: '45m', seconds: 45 * 60 },
+  { label: '1h', seconds: 60 * 60 },
+  { label: '2h', seconds: 2 * 60 * 60 },
+  { label: '4h', seconds: 4 * 60 * 60 },
 ];
+
+const SlidersIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <line x1="4" y1="8" x2="20" y2="8" />
+    <circle cx="8" cy="8" r="2" fill="currentColor" />
+    <line x1="4" y1="16" x2="20" y2="16" />
+    <circle cx="16" cy="16" r="2" fill="currentColor" />
+  </svg>
+);
+
+const CornersIcon: React.FC<{ className?: string }> = ({ className = 'w-4 h-4' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M4 8V4h4" />
+    <path d="M20 8V4h-4" />
+    <path d="M4 16v4h4" />
+    <path d="M20 16v4h-4" />
+  </svg>
+);
 
 const SOUNDS: { id: SoundType; label: string }[] = [
   { id: 'off', label: 'Mute' },
@@ -70,6 +106,7 @@ export const HomeScreen: React.FC = () => {
     stopwatchRunning,
     stopwatchLaps,
     setTimerDuration,
+    adjustTimerSeconds,
     startTimer,
     pauseTimer,
     resetTimer,
@@ -110,11 +147,21 @@ export const HomeScreen: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Custom time inputs (1 second to 24 hours)
-  const [showCustomModal, setShowCustomModal] = useState(false);
+  // Settings & Custom adjustment panel toggle (Image 1 closed, Image 2 open)
+  const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [inputHours, setInputHours] = useState(0);
   const [inputMinutes, setInputMinutes] = useState(25);
   const [inputSeconds, setInputSeconds] = useState(0);
+
+  const toggleSettingsPanel = () => {
+    if (!showSettingsPanel) {
+      const cur = timer.timeLeft ?? timer.initialDuration ?? 25 * 60;
+      setInputHours(Math.floor(cur / 3600));
+      setInputMinutes(Math.floor((cur % 3600) / 60));
+      setInputSeconds(cur % 60);
+    }
+    setShowSettingsPanel((prev) => !prev);
+  };
 
   // Rating modal
   const [showRating, setShowRating] = useState(false);
@@ -205,25 +252,14 @@ export const HomeScreen: React.FC = () => {
 
   // Quick adjust duration (+ / - seconds)
   const handleAdjustSeconds = (deltaSeconds: number) => {
-    const currentInitial = timer.initialDuration || 25 * 60;
-    const newTotal = Math.max(1, Math.min(24 * 3600, currentInitial + deltaSeconds));
-    setTimerDuration(newTotal);
+    adjustTimerSeconds(deltaSeconds);
   };
 
-  // Apply custom time from modal (1 second to 24 hours)
+  // Apply custom time (1 second to 24 hours)
   const handleApplyCustomTime = () => {
-    const total = (inputHours * 3600) + (inputMinutes * 60) + inputSeconds;
-    const validTotal = Math.max(1, Math.min(24 * 3600, total));
+    const total = (Number(inputHours) * 3600) + (Number(inputMinutes) * 60) + Number(inputSeconds);
+    const validTotal = Math.max(1, Math.min(24 * 3600, total || 60));
     setTimerDuration(validTotal);
-    setShowCustomModal(false);
-  };
-
-  const handleOpenCustomModal = () => {
-    const current = timer.initialDuration || timer.timeLeft || 25 * 60;
-    setInputHours(Math.floor(current / 3600));
-    setInputMinutes(Math.floor((current % 3600) / 60));
-    setInputSeconds(current % 60);
-    setShowCustomModal(true);
   };
 
   // Finish session
@@ -288,68 +324,66 @@ export const HomeScreen: React.FC = () => {
       <div className="flex items-center gap-4">
         <button 
           onClick={handleGoToTimer}
-          className="text-left group cursor-pointer focus:outline-none flex items-center gap-2"
+          className="text-left group cursor-pointer focus:outline-none flex items-center gap-2.5 px-3.5 py-2 rounded-xl glass-pill hover:border-white/30 transition"
           title="Direct to Timer"
         >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#e9762b] animate-ping" />
-          <div>
-            <span className="font-extrabold text-sm sm:text-base tracking-widest text-white uppercase group-hover:text-[#e9762b] transition">
-              Studyo
-            </span>
-            <span className="text-[10px] text-slate-500 uppercase tracking-widest block font-mono">
-              Daily Log & Focus Suite
-            </span>
-          </div>
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff5f00] opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#e9762b]"></span>
+          </span>
+          <span className="font-extrabold text-sm sm:text-base tracking-widest text-white uppercase group-hover:text-[#e9762b] transition">
+            Studyo
+          </span>
         </button>
       </div>
 
       {/* Center: Main Bar Navigation Tabs */}
-      <div className="order-3 md:order-2 w-full md:w-auto flex items-center gap-1 sm:gap-1.5 p-1 rounded-xl bg-[#141413] border border-white/10 text-[11px] sm:text-xs uppercase tracking-wider font-bold shadow-xl overflow-x-auto">
+      <div className="order-3 md:order-2 w-full md:w-auto flex items-center gap-1.5 sm:gap-2 p-1.5 rounded-2xl glass-panel text-xs sm:text-sm uppercase tracking-wider font-bold overflow-x-auto shadow-[inset_0_1px_0_0_rgba(255,255,255,0.16),0_8px_25px_rgba(0,0,0,0.6)]">
         <button
           onClick={handleGoToTimer}
-          className={`flex-1 md:flex-none justify-center flex items-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg transition font-mono whitespace-nowrap ${
+          className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl transition font-mono whitespace-nowrap ${
             activeView === 'timer'
-              ? 'bg-[#e9762b] text-black font-extrabold shadow-lg shadow-orange-500/25'
+              ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.35)]'
               : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
           }`}
         >
-          <Clock className="w-3.5 h-3.5" />
+          <Clock className="w-4 h-4" />
           <span>TIMER</span>
         </button>
 
         <button
           onClick={() => handleSwitchTab('studylog')}
-          className={`flex-1 md:flex-none justify-center flex items-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg transition font-mono whitespace-nowrap ${
+          className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl transition font-mono whitespace-nowrap ${
             activeView === 'studylog'
-              ? 'bg-[#e9762b] text-black font-extrabold shadow-lg shadow-orange-500/25'
+              ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.35)]'
               : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
           }`}
         >
-          <BookOpen className="w-3.5 h-3.5" />
+          <BookOpen className="w-4 h-4" />
           <span>STUDY LOG</span>
         </button>
 
         <button
           onClick={() => handleSwitchTab('analysis')}
-          className={`flex-1 md:flex-none justify-center flex items-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg transition font-mono whitespace-nowrap ${
+          className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl transition font-mono whitespace-nowrap ${
             activeView === 'analysis'
-              ? 'bg-[#e9762b] text-black font-extrabold shadow-lg shadow-orange-500/25'
+              ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.35)]'
               : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
           }`}
         >
-          <TrendingUp className="w-3.5 h-3.5" />
+          <TrendingUp className="w-4 h-4" />
           <span>ANALYSIS</span>
         </button>
 
         <button
           onClick={() => handleSwitchTab('tasks')}
-          className={`flex-1 md:flex-none justify-center flex items-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg transition font-mono whitespace-nowrap ${
+          className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl transition font-mono whitespace-nowrap ${
             activeView === 'tasks'
-              ? 'bg-[#e9762b] text-black font-extrabold shadow-lg shadow-orange-500/25'
+              ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.35)]'
               : 'text-slate-300 hover:text-white hover:bg-white/5 border border-transparent'
           }`}
         >
-          <CheckSquare className="w-3.5 h-3.5" />
+          <CheckSquare className="w-4 h-4" />
           <span>TASKS ({pendingTasks.length})</span>
         </button>
       </div>
@@ -357,7 +391,7 @@ export const HomeScreen: React.FC = () => {
       {/* Right: Quick Controls */}
       <div className="order-2 md:order-3 flex items-center gap-2 text-xs font-mono">
         {/* Ambient Sound Selector */}
-        <div className="hidden sm:flex items-center gap-1 bg-[#141413] border border-white/10 rounded-lg px-2.5 py-1.5">
+        <div className="hidden sm:flex items-center gap-1.5 glass-pill rounded-xl px-3 py-1.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)]">
           <Volume2 className="w-3.5 h-3.5 text-slate-400" />
           <select
             value={ambientSound}
@@ -375,11 +409,14 @@ export const HomeScreen: React.FC = () => {
         {/* Focus Mode Button */}
         <button
           onClick={() => setZenMode(true)}
-          className="p-2 rounded-lg bg-[#141413] border border-white/10 hover:border-white/20 text-slate-300 hover:text-white transition"
+          className="p-2 rounded-xl glass-pill hover:border-white/30 text-slate-300 hover:text-white transition shadow-[inset_0_1px_0_0_rgba(255,255,255,0.12)] cursor-pointer"
           title="Fullscreen Focus Mode (Press 'Z')"
         >
           <Maximize2 className="w-3.5 h-3.5" />
         </button>
+
+        {/* Top Right Profile & Settings Button */}
+        <ProfileDropdown />
       </div>
     </div>
   );
@@ -394,16 +431,73 @@ export const HomeScreen: React.FC = () => {
   });
 
   return (
-    <div className="min-h-[100dvh] w-full bg-[#0c0c0b] text-[#e9e4da] flex flex-col font-mono selection:bg-orange-500 selection:text-black">
+    <div className="min-h-[100dvh] w-full bg-[#000000] text-[#e9e4da] flex flex-col font-mono selection:bg-orange-500 selection:text-black relative">
+      {/* Ambient Glass Glow Orbs (Shine through frosted glass surfaces) */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        {/* Top Header Ambient Refraction Glow - shines directly through the frosted header bar */}
+        <div 
+          className="absolute -top-[140px] left-1/2 -translate-x-1/2 w-[950px] h-[340px] rounded-full opacity-35 blur-[110px]"
+          style={{ background: 'radial-gradient(ellipse at center, rgba(255, 95, 0, 0.45) 0%, rgba(233, 118, 43, 0.22) 45%, transparent 70%)' }}
+        />
+        {activeView !== 'timer' && (
+          <div 
+            className="absolute top-[6%] left-1/2 -translate-x-1/2 w-[720px] h-[480px] rounded-full opacity-20 blur-[130px]"
+            style={{ background: 'radial-gradient(circle, #ff5f00 0%, #e9762b 40%, transparent 70%)' }}
+          />
+        )}
+        <div 
+          className="absolute top-[40%] right-[-10%] w-[520px] h-[420px] rounded-full opacity-10 blur-[140px]"
+          style={{ background: 'radial-gradient(circle, #ff9253 0%, transparent 65%)' }}
+        />
+        <div 
+          className="absolute bottom-[10%] left-[-10%] w-[580px] h-[440px] rounded-full opacity-15 blur-[150px]"
+          style={{ background: 'radial-gradient(circle, #e9762b 0%, #ff5f00 35%, transparent 70%)' }}
+        />
+      </div>
+
       {/* 1. TOP HEADER NAVIGATION */}
-      <header ref={headerRef} className="sticky top-0 z-30 w-full bg-[#0c0c0b]/95 backdrop-blur-md border-b border-white/10">
+      <header ref={headerRef} className="sticky top-0 z-[60] w-full glass-header">
         {mainBar}
       </header>
+
+      {/* CONTINUOUS UNIFIED AMBIENT BACKDROP (MERGES STUDY HERO + FOCUS TIMER INTO ONE CONTINUOUS IMAGE) */}
+      {activeView === 'timer' && (
+        <div className="absolute top-0 inset-x-0 w-full pointer-events-none overflow-hidden z-0" style={{ height: '2600px' }}>
+          {/* Base continuous ember-to-obsidian radial wash */}
+          <div 
+            className="absolute top-0 inset-x-0 w-full h-[2200px]"
+            style={{
+              background: 'radial-gradient(ellipse 140% 1100px at 50% 500px, rgba(233, 118, 43, 0.24) 0%, rgba(255, 95, 0, 0.14) 30%, rgba(180, 65, 10, 0.08) 52%, rgba(20, 9, 3, 0.65) 75%, transparent 92%)'
+            }}
+          />
+          {/* 1. Primary Radiant Amber Core directly behind "study" text */}
+          <div 
+            className="absolute top-[220px] sm:top-[280px] left-1/2 -translate-x-1/2 w-[850px] sm:w-[1250px] h-[450px] sm:h-[550px] rounded-full opacity-55 blur-[120px]"
+            style={{
+              background: 'radial-gradient(ellipse at center, rgba(255, 105, 25, 0.6) 0%, rgba(233, 118, 43, 0.38) 45%, rgba(180, 65, 10, 0.15) 65%, transparent 75%)'
+            }}
+          />
+          {/* 2. Fluid Connecting Glow across the transition zone (NO SEAM, NO DARK GAP) */}
+          <div 
+            className="absolute top-[680px] sm:top-[780px] left-1/2 -translate-x-1/2 w-[800px] sm:w-[1150px] h-[550px] sm:h-[650px] rounded-full opacity-50 blur-[125px]"
+            style={{
+              background: 'radial-gradient(ellipse at center, rgba(255, 95, 0, 0.52) 0%, rgba(233, 118, 43, 0.3) 48%, rgba(180, 65, 10, 0.12) 68%, transparent 78%)'
+            }}
+          />
+          {/* 3. Focus Timer Hearth Glow behind the timer cards & clock digits */}
+          <div 
+            className="absolute top-[1200px] sm:top-[1350px] left-1/2 -translate-x-1/2 w-[750px] sm:w-[1050px] h-[480px] sm:h-[580px] rounded-full opacity-40 blur-[135px]"
+            style={{
+              background: 'radial-gradient(ellipse at center, rgba(233, 118, 43, 0.4) 0%, rgba(255, 95, 0, 0.22) 45%, transparent 72%)'
+            }}
+          />
+        </div>
+      )}
 
       {/* 2. GIANT HALFTONE "STUDY" HERO (ONLY ON TIMER VIEW) */}
       {activeView === 'timer' && (
         <section 
-          className="relative w-full min-h-[420px] flex flex-col justify-center items-center border-b border-white/10 overflow-hidden bg-[#0c0c0b]" 
+          className="relative w-full min-h-[420px] flex flex-col justify-center items-center bg-transparent z-10" 
           style={{ height: heroHeight }}
         >
           <HalftoneWordmarkFooter
@@ -415,231 +509,358 @@ export const HomeScreen: React.FC = () => {
             crop={0}
             dotGap={7}
             radius={110}
+            palette={{
+              background: 'transparent',
+              ink: '#f3ece2',
+              warm: '#ff6200',
+            }}
+            grain={0.15}
             height={heroHeight}
+            className="relative z-10"
           />
 
-          {/* Smooth Scroll Cue to Timer */}
+          {/* Smooth Scroll Cue to Timer (Seamlessly floating with no border or cutoff) */}
           <button
             onClick={handleGoToTimer}
-            className="absolute bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-1.5 opacity-60 hover:opacity-100 transition cursor-pointer group"
+            className="absolute bottom-6 sm:bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center gap-1.5 px-4 py-2 rounded-full glass-panel border border-[#e9762b]/30 hover:border-[#e9762b]/70 shadow-[0_0_20px_rgba(233,118,43,0.18)] hover:shadow-[0_0_25px_rgba(233,118,43,0.35)] transition-all duration-300 cursor-pointer group backdrop-blur-md active:scale-95"
             title="Scroll down to Timer"
             aria-label="Scroll down to timer"
           >
-            <span className="text-[10px] sm:text-xs uppercase font-mono tracking-widest text-slate-400 group-hover:text-[#e9762b] transition">
+            <span className="text-[10px] sm:text-xs uppercase font-mono tracking-widest text-slate-300 group-hover:text-[#ff9253] transition font-bold">
               Scroll to Timer
             </span>
-            <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-[#e9762b] animate-bounce" />
+            <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#e9762b] group-hover:text-[#ff9253] group-hover:translate-y-0.5 transition duration-300 animate-bounce" />
           </button>
         </section>
       )}
 
-      {/* 3. MAIN CONTENT CONTAINER */}
-      <main className="w-full flex-1 flex flex-col items-center px-3 sm:px-6 py-10 sm:py-16 max-w-5xl mx-auto">
+      {/* 3. MAIN CONTENT CONTAINER (Uniform width & rhythm across ALL tabs) */}
+      <main className="w-full flex-1 flex flex-col items-center py-6 sm:py-8 mx-auto max-w-7xl px-4 sm:px-6 relative z-10">
         
         {/* ====================================================== */}
-        {/* A. TIMER & STOPWATCH MODULE (Screenshot 2 Match)        */}
+        {/* A. TIMER & STOPWATCH MODULE                             */}
         {/* ====================================================== */}
         {activeView === 'timer' && (
-          <div id="timer-section" className="w-full flex flex-col items-center space-y-8 sm:space-y-12 animate-fadeIn scroll-mt-24">
+          <div id="timer-section" className="w-full flex flex-col space-y-8 animate-fadeIn scroll-mt-24">
             
-            {/* Top Bar inside Timer: Mode Switcher (Left) & Real-time Live Clock (Right) */}
-            <div className="w-full flex items-center justify-between pb-2 border-b border-white/10">
-              {/* Left: Mode Switch [ TIMER ] [ STOPWATCH ] */}
-              <div className="flex items-center gap-1 bg-[#141413] border border-white/10 p-1 rounded-lg">
-                <button
-                  onClick={() => setTimerSubMode('timer')}
-                  className={`px-4 py-1.5 rounded text-xs uppercase font-bold tracking-wider transition ${
-                    timerSubMode === 'timer'
-                      ? 'bg-[#e9762b] text-black shadow-sm'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Timer
-                </button>
-                <button
-                  onClick={() => setTimerSubMode('stopwatch')}
-                  className={`px-4 py-1.5 rounded text-xs uppercase font-bold tracking-wider transition ${
-                    timerSubMode === 'stopwatch'
-                      ? 'bg-[#e9762b] text-black shadow-sm'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Stopwatch
-                </button>
+            {/* Unified Top Header for Timer */}
+            <div className="w-full flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
+              <div>
+                <span className="text-[11px] font-mono tracking-widest uppercase text-[#e9762b] font-bold block mb-1">
+                  STUDY TRACKER
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight uppercase font-mono">
+                  Focus Timer
+                </h1>
               </div>
 
-              {/* Right: Live Clock (Current Real-world time) */}
-              <div className="flex items-center gap-1.5 text-xs text-slate-400 font-mono">
-                <Clock className="w-3.5 h-3.5 text-slate-500" />
-                <span className="font-semibold text-slate-300">{liveClock}</span>
+              {/* Mode Switcher [ TIMER ] [ STOPWATCH ] + Live Clock */}
+              <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                <div className="flex items-center gap-1 glass-panel p-1 rounded-xl font-mono text-xs font-bold">
+                  <button
+                    onClick={() => setTimerSubMode('timer')}
+                    className={`px-3.5 py-1.5 rounded-lg uppercase tracking-wider transition ${
+                      timerSubMode === 'timer'
+                        ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_15px_rgba(233,118,43,0.3)]'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    TIMER
+                  </button>
+                  <button
+                    onClick={() => setTimerSubMode('stopwatch')}
+                    className={`px-3.5 py-1.5 rounded-lg uppercase tracking-wider transition ${
+                      timerSubMode === 'stopwatch'
+                        ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_15px_rgba(233,118,43,0.3)]'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    STOPWATCH
+                  </button>
+                </div>
+
+                <div className="text-slate-300 font-mono text-xs sm:text-sm font-bold tracking-widest tabular-nums glass-pill px-3.5 py-2 rounded-xl">
+                  {liveClock}
+                </div>
               </div>
             </div>
 
             {/* If TIMER SUBMODE: Presets + Countdown Display */}
             {timerSubMode === 'timer' && (
               <>
-                {/* Presets Row */}
-                <div className="flex flex-wrap items-center justify-center gap-2">
+                {/* Presets Row (Matches Image 1 exactly: 7 pills) */}
+                <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3.5">
                   {QUICK_PRESETS.map((p) => {
                     const isCurrent = timer.initialDuration === p.seconds;
                     return (
                       <button
                         key={p.label}
-                        onClick={() => setTimerDuration(p.seconds)}
-                        className={`px-3 py-1.5 rounded text-xs uppercase tracking-wider font-bold transition ${
+                        onClick={() => {
+                          setTimerDuration(p.seconds);
+                          setInputHours(Math.floor(p.seconds / 3600));
+                          setInputMinutes(Math.floor((p.seconds % 3600) / 60));
+                          setInputSeconds(p.seconds % 60);
+                        }}
+                        className={`px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-mono font-bold transition-all active:scale-95 ${
                           isCurrent
-                            ? 'bg-[#e9762b] text-black shadow-lg shadow-orange-500/20'
-                            : 'bg-[#141413] text-slate-400 hover:text-white border border-white/10'
+                            ? 'border border-[#e9762b] text-[#e9762b] bg-[#e9762b]/10 shadow-[0_0_15px_rgba(233,118,43,0.2),inset_0_1px_0_rgba(255,255,255,0.15)]'
+                            : 'glass-pill text-slate-400 hover:text-slate-200'
                         }`}
                       >
                         {p.label}
                       </button>
                     );
                   })}
-                  <button
-                    onClick={handleOpenCustomModal}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs bg-[#141413] text-slate-300 hover:text-white border border-[#e9762b]/40 hover:border-[#e9762b] transition uppercase tracking-wider font-bold"
-                  >
-                    <Sliders className="w-3.5 h-3.5 text-[#e9762b]" />
-                    <span>Customize (1s – 24h)</span>
-                  </button>
                 </div>
 
-                {/* Clock Face: Giant Digits 00 : 25 : 00 with orange seconds glow */}
-                <div className="flex flex-col items-center justify-center space-y-4 py-4 w-full">
-                  <div className="flex items-baseline justify-center gap-2 sm:gap-4 md:gap-6 text-[3.8rem] min-[400px]:text-[4.6rem] sm:text-[7rem] md:text-[8.5rem] font-bold tracking-tight leading-none select-none">
+                {/* Clock Face: Giant Digits with glass panel background */}
+                <div className="flex flex-col items-center justify-center py-6 sm:py-10 w-full select-none glass-panel rounded-3xl relative overflow-hidden my-2">
+                  {/* Subtle glass gloss rim line */}
+                  <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none" />
+
+                  <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-7 text-6xl sm:text-8xl md:text-[9.5rem] font-bold tracking-tight leading-none">
                     {/* Hours */}
                     <div className="flex flex-col items-center">
-                      <span className="text-[#f2eee3] font-mono tabular-nums">{hhStr}</span>
-                      <span className="text-[10px] sm:text-xs uppercase tracking-widest text-slate-500 font-semibold mt-2">Hours</span>
+                      <span className="text-[#f5f5f4] slashed-zero-num leading-none">
+                        {hhStr}
+                      </span>
+                      <span className="text-xs sm:text-sm tracking-[0.25em] text-slate-500 font-mono uppercase font-semibold mt-3 sm:mt-5">
+                        HOURS
+                      </span>
                     </div>
 
-                    <div className="text-slate-600 pb-3 sm:pb-6 text-[2.5rem] sm:text-[4.5rem] font-light">:</div>
+                    {/* Colon Dots */}
+                    <div className="flex flex-col justify-center items-center gap-3 sm:gap-5 px-1 sm:px-3 pb-6 sm:pb-8">
+                      <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-[#525252]" />
+                      <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-[#525252]" />
+                    </div>
 
                     {/* Minutes */}
                     <div className="flex flex-col items-center">
-                      <span className="text-[#f2eee3] font-mono tabular-nums">{mmStr}</span>
-                      <span className="text-[10px] sm:text-xs uppercase tracking-widest text-slate-500 font-semibold mt-2">Minutes</span>
+                      <span className="text-[#f5f5f4] slashed-zero-num leading-none">
+                        {mmStr}
+                      </span>
+                      <span className="text-xs sm:text-sm tracking-[0.25em] text-slate-500 font-mono uppercase font-semibold mt-3 sm:mt-5">
+                        MINUTES
+                      </span>
                     </div>
 
-                    <div className="text-slate-600 pb-3 sm:pb-6 text-[2.5rem] sm:text-[4.5rem] font-light">:</div>
+                    {/* Colon Dots */}
+                    <div className="flex flex-col justify-center items-center gap-3 sm:gap-5 px-1 sm:px-3 pb-6 sm:pb-8">
+                      <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-[#525252]" />
+                      <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-[#525252]" />
+                    </div>
 
                     {/* Seconds */}
-                    <div className="flex flex-col items-center relative">
-                      <div className="absolute inset-0 bg-[#e9762b]/15 blur-2xl rounded-full pointer-events-none" />
-                      <span className="text-[#e9762b] drop-shadow-[0_0_35px_rgba(233,118,43,0.35)] font-mono tabular-nums relative z-10">{ssStr}</span>
-                      <span className="text-[10px] sm:text-xs uppercase tracking-widest text-[#e9762b]/80 font-semibold mt-2 relative z-10">Seconds</span>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[#e9762b] slashed-zero-num leading-none">
+                        {ssStr}
+                      </span>
+                      <span className="text-xs sm:text-sm tracking-[0.25em] text-[#e9762b]/90 font-mono uppercase font-semibold mt-3 sm:mt-5">
+                        SECONDS
+                      </span>
                     </div>
-                  </div>
-
-                  {/* Quick Adjust Row */}
-                  <div className="flex flex-wrap items-center justify-center gap-1.5 pt-3 text-[11px] text-slate-400">
-                    <span className="opacity-50 uppercase tracking-widest text-[10px] mr-1 font-bold">Quick Adjust:</span>
-                    {[
-                      { label: '+1H', sec: 3600 },
-                      { label: '+10M', sec: 600 },
-                      { label: '+1M', sec: 60 },
-                      { label: '+30S', sec: 30 },
-                      { label: '+10S', sec: 10 },
-                      { label: '-1M', sec: -60 },
-                      { label: '-10S', sec: -10 },
-                    ].map((btn) => (
-                      <button
-                        key={btn.label}
-                        onClick={() => handleAdjustSeconds(btn.sec)}
-                        className="px-2.5 py-1 rounded bg-[#141413] border border-white/10 hover:border-white/30 text-slate-300 hover:text-white transition font-mono active:scale-95"
-                      >
-                        {btn.label}
-                      </button>
-                    ))}
                   </div>
                 </div>
 
                 {/* Primary Action Controls Row */}
-                <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3 text-xs tracking-widest uppercase">
-                  {timer.isRunning ? (
-                    <button
-                      onClick={pauseTimer}
-                      className="flex items-center gap-2 px-6 sm:px-8 py-3 bg-[#e9762b] text-black font-extrabold rounded-lg hover:bg-orange-500 transition active:scale-95 shadow-lg shadow-orange-500/20"
-                    >
-                      <Pause className="w-4 h-4 fill-black" />
-                      <span>Pause</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={startTimer}
-                      className="flex items-center gap-2 px-6 sm:px-8 py-3 bg-[#e9762b] text-black font-extrabold rounded-lg hover:bg-orange-500 transition active:scale-95 shadow-lg shadow-orange-500/20"
-                    >
-                      <Play className="w-4 h-4 fill-black" />
-                      <span>Start</span>
-                    </button>
-                  )}
+                <div className="flex items-center justify-center gap-3 sm:gap-4 flex-wrap">
+                  <ShinyButton
+                    onClick={timer.isRunning ? pauseTimer : startTimer}
+                    label={timer.isRunning ? 'PAUSE' : 'START'}
+                    cornerRadius={12}
+                    className="!px-9 sm:!px-12 !py-3.5 sm:!py-4 !text-xs sm:!text-sm !font-mono !font-extrabold !tracking-widest !uppercase !rounded-xl active:scale-95 transition"
+                  />
 
                   <button
                     onClick={resetTimer}
-                    className="flex items-center gap-2 px-5 py-3 rounded-lg bg-[#181817] hover:bg-[#222220] border border-white/10 hover:border-white/20 text-[#f2eee3] font-bold transition active:scale-95"
+                    className="px-8 sm:px-10 py-3.5 sm:py-4 glass-panel hover:bg-[#1e1e1d]/90 border border-white/12 text-slate-300 hover:text-white font-bold text-xs sm:text-sm tracking-widest uppercase rounded-xl transition active:scale-95"
                   >
-                    <RotateCcw className="w-4 h-4 text-slate-400" />
-                    <span>Reset</span>
+                    RESET
                   </button>
 
                   <button
                     onClick={handleFinish}
-                    className="flex items-center gap-2 px-5 py-3 rounded-lg bg-[#111f18] hover:bg-[#14281e] border border-[#10b981]/40 text-[#10b981] font-bold transition active:scale-95"
+                    className="px-8 sm:px-10 py-3.5 sm:py-4 glass-panel hover:bg-[#1e1e1d]/90 border border-white/12 text-slate-300 hover:text-white font-bold text-xs sm:text-sm tracking-widest uppercase rounded-xl transition active:scale-95"
                   >
-                    <Check className="w-4 h-4" />
-                    <span>Finish</span>
+                    FINISH
                   </button>
 
+                  {/* Settings / Sliders Button (Image 1 vs Image 2 toggle) */}
+                  <button
+                    onClick={toggleSettingsPanel}
+                    className={`p-3.5 sm:p-4 rounded-xl border transition active:scale-95 ${
+                      showSettingsPanel
+                        ? 'bg-[#181817] border-[#e9762b]/60 text-[#e9762b] shadow-[0_0_15px_rgba(233,118,43,0.25)]'
+                        : 'glass-panel hover:bg-[#1e1e1d]/90 border-white/12 text-slate-400 hover:text-white'
+                    }`}
+                    title="Timer Settings & Custom Adjustment"
+                    aria-label="Timer settings"
+                  >
+                    <SlidersIcon className="w-5 h-5" />
+                  </button>
+
+                  {/* Fullscreen Button */}
                   <button
                     onClick={() => setZenMode(true)}
-                    className="p-3 rounded-lg bg-[#181817] hover:bg-[#222220] border border-white/10 hover:border-white/20 text-slate-300 hover:text-white transition active:scale-95"
-                    title="Fullscreen Focus Mode (Press 'Z')"
+                    className="p-3.5 sm:p-4 rounded-xl glass-panel hover:bg-[#1e1e1d]/90 border border-white/12 text-slate-400 hover:text-white transition active:scale-95"
+                    title="Fullscreen Mode"
+                    aria-label="Fullscreen mode"
                   >
-                    <Maximize2 className="w-4 h-4" />
+                    <CornersIcon className="w-5 h-5" />
                   </button>
                 </div>
 
-                {/* Settings Toggles Row (Screenshot 2) */}
-                <div className="flex flex-wrap items-center justify-center gap-6 sm:gap-10 pt-1 text-xs text-slate-400 font-bold uppercase tracking-wider">
-                  {/* Auto-start next round */}
-                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                    <span className="text-[11px] sm:text-xs">Auto-start next round</span>
+                {/* Collapsible Settings Panel (Matches Image 2 exactly when clicked) */}
+                {showSettingsPanel && (
+                  <div className="w-full flex flex-col items-center animate-fadeIn space-y-6 pt-4">
+                    {/* Thin divider line */}
+                    <div className="w-full max-w-4xl border-t border-white/[0.08]" />
+
+                    {/* CUSTOM Row */}
+                    <div className="flex items-center justify-center gap-4 sm:gap-6 flex-wrap text-sm font-mono">
+                      <span className="text-slate-500 uppercase tracking-widest font-bold select-none text-xs sm:text-sm">
+                        CUSTOM
+                      </span>
+
+                      {/* Hours */}
+                      <div className="flex items-baseline">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={inputHours}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/\D/g, '');
+                            setInputHours(v === '' ? 0 : Math.min(24, parseInt(v, 10)));
+                          }}
+                          className="w-14 sm:w-16 bg-transparent text-center font-mono font-bold text-white text-base sm:text-lg border-b border-[#3f3f3e] hover:border-white/40 focus:border-[#e9762b] pb-1 outline-none transition-colors"
+                        />
+                        <span className="text-slate-400 font-mono text-xs sm:text-sm ml-1.5 mr-2 sm:mr-3 select-none">
+                          h
+                        </span>
+                      </div>
+
+                      {/* Minutes */}
+                      <div className="flex items-baseline">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={inputMinutes}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/\D/g, '');
+                            setInputMinutes(v === '' ? 0 : Math.min(59, parseInt(v, 10)));
+                          }}
+                          className="w-14 sm:w-16 bg-transparent text-center font-mono font-bold text-white text-base sm:text-lg border-b border-[#3f3f3e] hover:border-white/40 focus:border-[#e9762b] pb-1 outline-none transition-colors"
+                        />
+                        <span className="text-slate-400 font-mono text-xs sm:text-sm ml-1.5 mr-2 sm:mr-3 select-none">
+                          m
+                        </span>
+                      </div>
+
+                      {/* Seconds */}
+                      <div className="flex items-baseline">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          value={inputSeconds}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/\D/g, '');
+                            setInputSeconds(v === '' ? 0 : Math.min(59, parseInt(v, 10)));
+                          }}
+                          className="w-14 sm:w-16 bg-transparent text-center font-mono font-bold text-white text-base sm:text-lg border-b border-[#3f3f3e] hover:border-white/40 focus:border-[#e9762b] pb-1 outline-none transition-colors"
+                        />
+                        <span className="text-slate-400 font-mono text-xs sm:text-sm ml-1.5 mr-2 sm:mr-3 select-none">
+                          s
+                        </span>
+                      </div>
+
+                      {/* Set button */}
+                      <button
+                        onClick={handleApplyCustomTime}
+                        className="px-4 py-1.5 bg-transparent hover:bg-[#1a1a19] border border-white/20 hover:border-white/40 text-slate-300 hover:text-white rounded-lg text-xs sm:text-sm font-mono normal-case tracking-normal transition active:scale-95"
+                      >
+                        Set
+                      </button>
+                    </div>
+
+                    {/* ADJUST Row */}
+                    <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap text-xs sm:text-sm font-mono pt-1">
+                      <span className="text-slate-500 uppercase tracking-widest font-bold mr-1 text-xs select-none">
+                        ADJUST
+                      </span>
+                      {[
+                        { label: '+1h', sec: 3600 },
+                        { label: '+10m', sec: 600 },
+                        { label: '+1m', sec: 60 },
+                        { label: '+30s', sec: 30 },
+                        { label: '+10s', sec: 10 },
+                        { label: '-1m', sec: -60 },
+                        { label: '-10s', sec: -10 },
+                      ].map((btn) => (
+                        <button
+                          key={btn.label}
+                          onClick={() => handleAdjustSeconds(btn.sec)}
+                          className="px-3.5 sm:px-4 py-2 rounded-xl bg-[#141413] hover:bg-[#1f1f1e] border border-white/10 hover:border-white/25 text-slate-400 hover:text-white text-xs sm:text-sm font-mono font-bold normal-case tracking-normal transition active:scale-95"
+                        >
+                          {btn.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Bottom Toggles Row (Matches Image 1 and Image 2) */}
+                <div className="flex items-center justify-center gap-10 sm:gap-14 pt-3 sm:pt-5 flex-wrap select-none">
+                  {/* Auto-start next toggle */}
+                  <label className="flex items-center gap-3.5 cursor-pointer">
                     <button
                       type="button"
                       role="switch"
                       aria-checked={autoStartNextRound}
                       onClick={() => setAutoStartNextRound(!autoStartNextRound)}
-                      className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none ${
-                        autoStartNextRound ? 'bg-[#e9762b]' : 'bg-white/15'
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                        autoStartNextRound ? 'bg-[#e9762b]' : 'bg-[#252524]'
                       }`}
                     >
                       <span
-                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
-                          autoStartNextRound ? 'translate-x-5' : 'translate-x-1'
+                        className={`inline-block h-4 w-4 transform rounded-full transition-transform ${
+                          autoStartNextRound ? 'translate-x-6 bg-black' : 'translate-x-1 bg-slate-400'
                         }`}
                       />
                     </button>
+                    <span className="text-xs sm:text-sm font-mono uppercase tracking-widest font-bold text-slate-400">
+                      AUTO-START NEXT
+                    </span>
                   </label>
 
-                  {/* Sound alert on finish */}
-                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
-                    <span className="text-[11px] sm:text-xs">Sound alert on finish</span>
+                  {/* Sound on finish toggle */}
+                  <label className="flex items-center gap-3.5 cursor-pointer">
                     <button
                       type="button"
                       role="switch"
                       aria-checked={soundAlertOnFinish}
                       onClick={() => setSoundAlertOnFinish(!soundAlertOnFinish)}
-                      className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors focus:outline-none ${
-                        soundAlertOnFinish ? 'bg-[#e9762b]' : 'bg-white/15'
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
+                        soundAlertOnFinish ? 'bg-[#e9762b]' : 'bg-[#252524]'
                       }`}
                     >
                       <span
-                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-black transition-transform ${
-                          soundAlertOnFinish ? 'translate-x-5' : 'translate-x-1'
+                        className={`inline-block h-4 w-4 transform rounded-full transition-transform ${
+                          soundAlertOnFinish ? 'translate-x-6 bg-black' : 'translate-x-1 bg-slate-400'
                         }`}
                       />
                     </button>
+                    <span className={`text-xs sm:text-sm font-mono uppercase tracking-widest font-bold ${
+                      soundAlertOnFinish ? 'text-[#f5f5f4]' : 'text-slate-500'
+                    }`}>
+                      SOUND ON FINISH
+                    </span>
                   </label>
                 </div>
               </>
@@ -649,97 +870,106 @@ export const HomeScreen: React.FC = () => {
             {timerSubMode === 'stopwatch' && (
               <div className="w-full flex flex-col items-center space-y-6">
                 {/* Stopwatch Digits */}
-                <div className="flex flex-col items-center justify-center space-y-4 py-4 w-full">
-                  <div className="flex items-baseline justify-center gap-2 sm:gap-4 md:gap-6 text-[3.8rem] min-[400px]:text-[4.6rem] sm:text-[7rem] md:text-[8.5rem] font-bold tracking-tight leading-none select-none">
+                <div className="flex flex-col items-center justify-center py-6 sm:py-10 w-full select-none glass-panel rounded-3xl relative overflow-hidden my-2">
+                  {/* Subtle glass gloss rim line */}
+                  <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent pointer-events-none" />
+
+                  <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-7 text-6xl sm:text-8xl md:text-[9.5rem] font-bold tracking-tight leading-none">
                     {/* Hours */}
                     <div className="flex flex-col items-center">
-                      <span className="text-[#f2eee3] font-mono tabular-nums">{swHhStr}</span>
-                      <span className="text-[10px] sm:text-xs uppercase tracking-widest text-slate-500 font-semibold mt-2">Hours</span>
+                      <span className="text-[#f5f5f4] slashed-zero-num leading-none">
+                        {swHhStr}
+                      </span>
+                      <span className="text-xs sm:text-sm tracking-[0.25em] text-slate-500 font-mono uppercase font-semibold mt-3 sm:mt-5">
+                        HOURS
+                      </span>
                     </div>
 
-                    <div className="text-slate-600 pb-3 sm:pb-6 text-[2.5rem] sm:text-[4.5rem] font-light">:</div>
+                    {/* Colon Dots */}
+                    <div className="flex flex-col justify-center items-center gap-3 sm:gap-5 px-1 sm:px-3 pb-6 sm:pb-8">
+                      <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-[#525252]" />
+                      <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-[#525252]" />
+                    </div>
 
                     {/* Minutes */}
                     <div className="flex flex-col items-center">
-                      <span className="text-[#f2eee3] font-mono tabular-nums">{swMmStr}</span>
-                      <span className="text-[10px] sm:text-xs uppercase tracking-widest text-slate-500 font-semibold mt-2">Minutes</span>
+                      <span className="text-[#f5f5f4] slashed-zero-num leading-none">
+                        {swMmStr}
+                      </span>
+                      <span className="text-xs sm:text-sm tracking-[0.25em] text-slate-500 font-mono uppercase font-semibold mt-3 sm:mt-5">
+                        MINUTES
+                      </span>
                     </div>
 
-                    <div className="text-slate-600 pb-3 sm:pb-6 text-[2.5rem] sm:text-[4.5rem] font-light">:</div>
+                    {/* Colon Dots */}
+                    <div className="flex flex-col justify-center items-center gap-3 sm:gap-5 px-1 sm:px-3 pb-6 sm:pb-8">
+                      <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-[#525252]" />
+                      <span className="w-3 h-3 sm:w-4 sm:h-4 rounded-full bg-[#525252]" />
+                    </div>
 
                     {/* Seconds */}
-                    <div className="flex flex-col items-center relative">
-                      <div className="absolute inset-0 bg-[#e9762b]/15 blur-2xl rounded-full pointer-events-none" />
-                      <span className="text-[#e9762b] drop-shadow-[0_0_35px_rgba(233,118,43,0.35)] font-mono tabular-nums relative z-10">{swSsStr}</span>
-                      <span className="text-[10px] sm:text-xs uppercase tracking-widest text-[#e9762b]/80 font-semibold mt-2 relative z-10">Seconds</span>
+                    <div className="flex flex-col items-center">
+                      <span className="text-[#e9762b] slashed-zero-num leading-none">
+                        {swSsStr}
+                      </span>
+                      <span className="text-xs sm:text-sm tracking-[0.25em] text-[#e9762b]/90 font-mono uppercase font-semibold mt-3 sm:mt-5">
+                        SECONDS
+                      </span>
                     </div>
                   </div>
                 </div>
 
                 {/* Stopwatch Controls */}
-                <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3 text-xs tracking-widest uppercase">
-                  {stopwatchRunning ? (
-                    <button
-                      onClick={pauseStopwatch}
-                      className="flex items-center gap-2 px-6 sm:px-8 py-3 bg-[#e9762b] text-black font-extrabold rounded-lg hover:bg-orange-500 transition active:scale-95 shadow-lg shadow-orange-500/20"
-                    >
-                      <Pause className="w-4 h-4 fill-black" />
-                      <span>Pause</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={startStopwatch}
-                      className="flex items-center gap-2 px-6 sm:px-8 py-3 bg-[#e9762b] text-black font-extrabold rounded-lg hover:bg-orange-500 transition active:scale-95 shadow-lg shadow-orange-500/20"
-                    >
-                      <Play className="w-4 h-4 fill-black" />
-                      <span>Start</span>
-                    </button>
-                  )}
+                <div className="flex items-center justify-center gap-3 sm:gap-4 flex-wrap">
+                  <ShinyButton
+                    onClick={stopwatchRunning ? pauseStopwatch : startStopwatch}
+                    label={stopwatchRunning ? 'PAUSE' : 'START'}
+                    cornerRadius={12}
+                    className="!px-9 sm:!px-12 !py-3.5 sm:!py-4 !text-xs sm:!text-sm !font-mono !font-extrabold !tracking-widest !uppercase !rounded-xl active:scale-95 transition"
+                  />
 
                   <button
                     onClick={lapStopwatch}
                     disabled={!stopwatchRunning}
-                    className={`flex items-center gap-2 px-5 py-3 rounded-lg border text-xs uppercase font-bold transition active:scale-95 ${
+                    className={`px-8 sm:px-10 py-3.5 sm:py-4 rounded-xl border text-xs sm:text-sm uppercase font-bold tracking-widest transition active:scale-95 ${
                       stopwatchRunning
-                        ? 'bg-[#181817] hover:bg-[#222220] border-white/20 text-[#f2eee3]'
-                        : 'opacity-40 border-white/5 cursor-not-allowed text-slate-500'
+                        ? 'glass-panel hover:bg-[#1e1e1d]/90 border-white/12 text-slate-300 hover:text-white'
+                        : 'opacity-40 border-white/5 cursor-not-allowed text-slate-600 bg-[#141413]/50'
                     }`}
                   >
-                    <TimerIcon className="w-4 h-4" />
-                    <span>Lap</span>
+                    LAP
                   </button>
 
                   <button
                     onClick={resetStopwatch}
-                    className="flex items-center gap-2 px-5 py-3 rounded-lg bg-[#181817] hover:bg-[#222220] border border-white/10 hover:border-white/20 text-[#f2eee3] font-bold transition active:scale-95"
+                    className="px-8 sm:px-10 py-3.5 sm:py-4 glass-panel hover:bg-[#1e1e1d]/90 border border-white/12 text-slate-400 hover:text-white font-bold text-xs sm:text-sm tracking-widest uppercase rounded-xl transition active:scale-95"
                   >
-                    <RotateCcw className="w-4 h-4 text-slate-400" />
-                    <span>Reset</span>
+                    RESET
                   </button>
 
                   <button
                     onClick={() => setZenMode(true)}
-                    className="p-3 rounded-lg bg-[#181817] hover:bg-[#222220] border border-white/10 hover:border-white/20 text-slate-300 hover:text-white transition active:scale-95"
-                    title="Fullscreen Focus Mode (Press 'Z')"
+                    className="p-3.5 sm:p-4 rounded-xl glass-panel hover:bg-[#1e1e1d]/90 border border-white/12 text-slate-400 hover:text-white transition active:scale-95"
+                    title="Fullscreen Mode"
                   >
-                    <Maximize2 className="w-4 h-4" />
+                    <CornersIcon className="w-5 h-5" />
                   </button>
                 </div>
 
                 {/* Lap List Table */}
                 {stopwatchLaps.length > 0 && (
-                  <div className="w-full max-w-xl bg-[#141413] border border-white/10 rounded-xl p-4 mt-4">
-                    <div className="flex items-center justify-between text-xs uppercase tracking-wider font-bold text-slate-400 pb-2 border-b border-white/10">
+                  <div className="w-full glass-panel rounded-2xl p-5 sm:p-6 mt-6 shadow-xl">
+                    <div className="flex items-center justify-between text-xs uppercase tracking-wider font-bold text-slate-400 pb-3 border-b border-white/10 font-mono">
                       <span>Lap</span>
                       <span>Lap Split</span>
                       <span>Total Time</span>
                     </div>
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto pt-2">
+                    <div className="space-y-2 max-h-60 overflow-y-auto pt-3">
                       {stopwatchLaps.map((lap) => (
-                        <div key={lap.id} className="flex items-center justify-between text-xs text-slate-300 py-1 border-b border-white/5">
+                        <div key={lap.id} className="flex items-center justify-between text-xs sm:text-sm text-slate-300 py-2 border-b border-white/5 font-mono">
                           <span className="font-bold text-[#e9762b]">Lap {lap.lapNumber}</span>
-                          <span className="font-mono text-slate-300">+{formatLapTime(lap.lapDurationSeconds)}</span>
-                          <span className="font-mono text-white font-bold">{formatLapTime(lap.timestampSeconds)}</span>
+                          <span className="text-slate-400">+{formatLapTime(lap.lapDurationSeconds)}</span>
+                          <span className="text-white font-bold">{formatLapTime(lap.timestampSeconds)}</span>
                         </div>
                       ))}
                     </div>
@@ -748,28 +978,28 @@ export const HomeScreen: React.FC = () => {
               </div>
             )}
 
-            {/* Quick Scratchpad Card (Exact Screenshot 2 Match) */}
-            <div className="w-full max-w-2xl p-4 sm:p-5 rounded-xl bg-[#141413] border border-white/10 space-y-3">
-              <div className="flex items-center justify-between text-xs">
+            {/* Quick Scratchpad Card */}
+            <div className="w-full p-5 sm:p-6 rounded-2xl glass-panel shadow-xl space-y-4">
+              <div className="flex items-center justify-between text-xs sm:text-sm font-mono">
                 <div className="flex items-center gap-2">
                   <StickyNote className="w-4 h-4 text-slate-400" />
                   <span className="uppercase tracking-widest font-bold text-slate-200">Quick Scratchpad:</span>
                 </div>
-                <span className="text-[11px] text-slate-500 font-mono">{distractionNotes.length} notes</span>
+                <span className="text-xs text-slate-400 font-mono font-bold">{distractionNotes.length} notes</span>
               </div>
 
               {/* Input row */}
-              <form onSubmit={handleAddDistraction} className="flex gap-2">
+              <form onSubmit={handleAddDistraction} className="flex gap-2.5">
                 <input
                   type="text"
                   placeholder="Note down stray thoughts without losing focus..."
                   value={scratchpadText}
                   onChange={(e) => setScratchpadText(e.target.value)}
-                  className="flex-1 bg-[#0c0c0b] border border-white/15 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[#e9762b] transition font-mono"
+                  className="flex-1 glass-input rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white placeholder-slate-600 focus:outline-none transition font-mono"
                 />
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-[#222220] hover:bg-[#2c2c28] text-white rounded-lg text-xs font-bold uppercase transition"
+                  className="px-5 py-2.5 glass-panel hover:bg-[#2c2c28] text-white rounded-xl text-xs sm:text-sm font-bold uppercase tracking-wider transition font-mono"
                 >
                   Add
                 </button>
@@ -777,17 +1007,17 @@ export const HomeScreen: React.FC = () => {
 
               {/* List of notes */}
               {distractionNotes.length > 0 && (
-                <div className="space-y-2 max-h-40 overflow-y-auto pr-1 pt-1">
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-1 pt-1 font-mono">
                   {distractionNotes.map((n) => (
                     <div
                       key={n.id}
-                      className="flex items-center justify-between p-2.5 rounded-lg bg-[#0c0c0b] border border-white/5 text-xs group"
+                      className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5 text-xs sm:text-sm group"
                     >
-                      <span className="text-slate-300 truncate max-w-[280px] sm:max-w-md font-mono">{n.text}</span>
+                      <span className="text-slate-300 truncate max-w-[320px] sm:max-w-xl font-mono">{n.text}</span>
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => convertDistractionToTask(n.id)}
-                          className="flex items-center gap-1 text-[11px] text-[#10b981] hover:underline font-bold uppercase"
+                          className="flex items-center gap-1 text-xs text-[#10b981] hover:underline font-bold uppercase"
                           title="Convert to Task"
                         >
                           <Check className="w-3.5 h-3.5" />
@@ -795,7 +1025,7 @@ export const HomeScreen: React.FC = () => {
                         </button>
                         <button
                           onClick={() => deleteDistraction(n.id)}
-                          className="text-slate-500 hover:text-rose-400 transition"
+                          className="text-slate-500 hover:text-rose-400 transition p-1"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -806,17 +1036,17 @@ export const HomeScreen: React.FC = () => {
               )}
             </div>
 
-            {/* Ambient Sound Bar (Screenshot 2 Match) */}
-            <div className="flex flex-wrap items-center justify-center gap-2 text-xs pt-2">
-              <Volume2 className="w-4 h-4 text-slate-500 mr-1" />
+            {/* Ambient Sound Bar */}
+            <div className="flex flex-wrap items-center justify-center gap-2 text-xs pt-2 font-mono">
+              <Volume2 className="w-4 h-4 text-slate-400 mr-1" />
               {SOUNDS.map((s) => (
                 <button
                   key={s.id}
                   onClick={() => setAmbientSound(s.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs uppercase font-bold tracking-wider transition ${
+                  className={`px-3.5 py-1.5 rounded-xl text-xs uppercase font-bold tracking-wider transition ${
                     ambientSound === s.id
-                      ? 'bg-[#e9762b] text-black shadow-sm'
-                      : 'bg-[#141413] text-slate-400 hover:text-white border border-white/10'
+                      ? 'bg-[#e9762b] text-black shadow-[0_0_15px_rgba(233,118,43,0.35)] font-extrabold'
+                      : 'glass-pill text-slate-400 hover:text-white'
                   }`}
                 >
                   {s.label}
@@ -827,7 +1057,7 @@ export const HomeScreen: React.FC = () => {
         )}
 
         {/* ====================================================== */}
-        {/* B. DAILY STUDY LOG MODULE (Screenshot 3 & 4 Match)      */}
+        {/* B. DAILY STUDY LOG MODULE                              */}
         {/* ====================================================== */}
         {activeView === 'studylog' && (
           <div className="w-full animate-fadeIn">
@@ -848,49 +1078,48 @@ export const HomeScreen: React.FC = () => {
         {/* D. TASK PLANNER MODULE                                 */}
         {/* ====================================================== */}
         {activeView === 'tasks' && (
-          <div className="w-full max-w-3xl flex flex-col space-y-6 animate-fadeIn">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+          <div className="w-full flex flex-col space-y-8 animate-fadeIn font-mono">
+            {/* Unified Top Header for Task Planner */}
+            <div className="w-full flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
               <div>
-                <h1 className="text-xl font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
-                  <CheckSquare className="w-5 h-5 text-[#e9762b]" />
-                  Task Planner · Actionables
+                <span className="text-[11px] font-mono tracking-widest uppercase text-[#e9762b] font-bold block mb-1">
+                  STUDY TRACKER
+                </span>
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight uppercase font-mono">
+                  Task Planner
                 </h1>
-                <p className="text-xs text-slate-400 mt-1">
-                  Priorities, to-dos, and exam countdowns
-                </p>
               </div>
-              <div className="text-xs text-slate-400 font-mono">
+              <div className="text-xs sm:text-sm text-slate-300 font-mono glass-pill px-3.5 py-2 rounded-xl">
                 <span className="text-[#e9762b] font-bold">{pendingTasks.length}</span> pending tasks
               </div>
             </div>
 
             {/* Inline Add Task Form */}
-            <form onSubmit={handleCreateTask} className="p-4 rounded-xl bg-[#141413] border border-white/10 space-y-3">
+            <form onSubmit={handleCreateTask} className="p-5 sm:p-6 rounded-2xl glass-panel shadow-xl space-y-3">
               <div className="flex items-center justify-between text-xs font-bold uppercase tracking-widest text-slate-400">
                 <span>Add Task</span>
-                <span className="text-[10px] text-slate-500">Press Enter to save</span>
               </div>
-              <div className="flex flex-col sm:flex-row gap-2">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <input
                   type="text"
                   placeholder="Task title (e.g. Solve 10 calculus PYQs)..."
                   value={newTaskTitle}
                   onChange={(e) => setNewTaskTitle(e.target.value)}
-                  className="flex-1 bg-black border border-white/15 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
+                  className="flex-1 glass-input rounded-xl px-4 py-2.5 text-xs sm:text-sm text-white placeholder-slate-600 focus:outline-none"
                 />
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <select
                     value={newTaskPriority}
                     onChange={(e) => setNewTaskPriority(e.target.value as TaskPriority)}
-                    className="bg-black border border-white/15 text-xs text-white rounded-lg px-2.5 py-2 focus:outline-none focus:border-[#e9762b]"
+                    className="glass-input text-xs font-bold text-white rounded-xl px-3 py-2.5 focus:outline-none cursor-pointer"
                   >
-                    <option value="high">High Priority</option>
-                    <option value="med">Medium</option>
-                    <option value="low">Low</option>
+                    <option value="high" className="bg-[#141413] text-white">High Priority</option>
+                    <option value="med" className="bg-[#141413] text-white">Medium</option>
+                    <option value="low" className="bg-[#141413] text-white">Low</option>
                   </select>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-[#e9762b] text-black font-extrabold rounded-lg text-xs hover:brightness-110 transition uppercase tracking-wider"
+                    className="px-6 py-2.5 bg-[#e9762b] text-black font-extrabold rounded-xl text-xs sm:text-sm hover:brightness-110 transition uppercase tracking-wider shadow-[0_0_15px_rgba(233,118,43,0.3)]"
                   >
                     Add
                   </button>
@@ -899,46 +1128,46 @@ export const HomeScreen: React.FC = () => {
             </form>
 
             {/* Filter Tabs */}
-            <div className="flex items-center justify-between border-b border-white/10 pb-2 text-xs">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3 text-xs sm:text-sm">
               <div className="flex gap-2">
                 {(['today', 'upcoming', 'completed'] as const).map((filter) => (
                   <button
                     key={filter}
                     onClick={() => setTaskFilter(filter)}
-                    className={`px-3 py-1 rounded text-xs uppercase tracking-wider transition ${
+                    className={`px-3.5 py-1.5 rounded-lg text-xs uppercase tracking-wider font-bold transition font-mono ${
                       taskFilter === filter
-                        ? 'bg-white/10 text-white font-bold'
-                        : 'text-slate-500 hover:text-white'
+                        ? 'bg-white/15 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-white hover:bg-white/5'
                     }`}
                   >
                     {filter}
                   </button>
                 ))}
               </div>
-              <span className="text-[11px] text-slate-500">{filteredTasks.length} tasks</span>
+              <span className="text-xs text-slate-400 font-mono font-bold">{filteredTasks.length} tasks</span>
             </div>
 
             {/* Tasks List */}
-            <div className="space-y-2">
+            <div className="space-y-3 sm:space-y-4">
               {filteredTasks.length === 0 ? (
-                <div className="p-8 text-center text-xs text-slate-500 border border-white/5 rounded-xl">
+                <div className="p-12 text-center text-sm sm:text-base text-slate-500 border border-white/5 rounded-2xl glass-panel">
                   No {taskFilter} tasks found.
                 </div>
               ) : (
                 filteredTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="p-3 rounded-xl bg-[#141413] border border-white/10 flex items-center justify-between gap-3 text-xs hover:border-white/20 transition group"
+                    className="p-4 sm:p-5 rounded-2xl glass-panel glass-panel-interactive flex items-center justify-between gap-4 text-sm sm:text-base group"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex items-center gap-3.5 min-w-0">
                       <button
                         onClick={() => toggleTask(task.id)}
-                        className="text-slate-400 hover:text-[#e9762b] flex-shrink-0"
+                        className="text-slate-400 hover:text-[#e9762b] flex-shrink-0 transition"
                       >
                         {task.completed ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
                         ) : (
-                          <Circle className="w-4 h-4" />
+                          <Circle className="w-5 h-5 sm:w-6 sm:h-6" />
                         )}
                       </button>
                       <span
@@ -950,9 +1179,9 @@ export const HomeScreen: React.FC = () => {
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2.5 flex-shrink-0">
+                    <div className="flex items-center gap-3 flex-shrink-0">
                       <span
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                        className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${
                           task.priority === 'high'
                             ? 'bg-orange-500/20 text-[#e9762b] border border-orange-500/30'
                             : task.priority === 'med'
@@ -964,9 +1193,10 @@ export const HomeScreen: React.FC = () => {
                       </span>
                       <button
                         onClick={() => deleteTask(task.id)}
-                        className="opacity-40 group-hover:opacity-100 hover:text-rose-400 transition"
+                        className="opacity-40 group-hover:opacity-100 hover:text-rose-400 transition p-1"
+                        title="Delete task"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                       </button>
                     </div>
                   </div>
@@ -977,112 +1207,10 @@ export const HomeScreen: React.FC = () => {
         )}
       </main>
 
-      {/* 4. CUSTOM TIMER MODAL (1s to 24h) */}
-      {showCustomModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-[#141413] border border-white/20 p-6 space-y-6 shadow-2xl rounded-2xl">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h3 className="text-xs uppercase tracking-widest font-bold text-white flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-[#e9762b]" />
-                Customize Timer (1s – 24h)
-              </h3>
-              <button
-                onClick={() => setShowCustomModal(false)}
-                className="p-1 text-slate-500 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Inputs for Hours, Minutes, Seconds */}
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 uppercase tracking-widest block font-bold">Hours</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="24"
-                  value={inputHours}
-                  onChange={(e) => setInputHours(Math.max(0, Math.min(24, Number(e.target.value))))}
-                  className="w-full text-center text-2xl font-bold bg-black border border-white/20 rounded-lg py-2 text-white focus:outline-none focus:border-[#e9762b]"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 uppercase tracking-widest block font-bold">Minutes</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="59"
-                  value={inputMinutes}
-                  onChange={(e) => setInputMinutes(Math.max(0, Math.min(59, Number(e.target.value))))}
-                  className="w-full text-center text-2xl font-bold bg-black border border-white/20 rounded-lg py-2 text-white focus:outline-none focus:border-[#e9762b]"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-[10px] text-slate-400 uppercase tracking-widest block font-bold">Seconds</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="59"
-                  value={inputSeconds}
-                  onChange={(e) => setInputSeconds(Math.max(0, Math.min(59, Number(e.target.value))))}
-                  className="w-full text-center text-2xl font-bold bg-black border border-white/20 rounded-lg py-2 text-[#e9762b] focus:outline-none focus:border-[#e9762b]"
-                />
-              </div>
-            </div>
-
-            {/* Quick Presets Inside Modal */}
-            <div className="space-y-2 border-t border-white/10 pt-3">
-              <span className="text-[10px] text-slate-500 uppercase tracking-widest block font-bold">Quick Presets:</span>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { label: '25m (Default)', h: 0, m: 25, s: 0 },
-                  { label: '5m', h: 0, m: 5, s: 0 },
-                  { label: '45m', h: 0, m: 45, s: 0 },
-                  { label: '1 Hour', h: 1, m: 0, s: 0 },
-                  { label: '2 Hours', h: 2, m: 0, s: 0 },
-                  { label: '4 Hours', h: 4, m: 0, s: 0 },
-                ].map((qp) => (
-                  <button
-                    key={qp.label}
-                    onClick={() => {
-                      setInputHours(qp.h);
-                      setInputMinutes(qp.m);
-                      setInputSeconds(qp.s);
-                    }}
-                    className="px-2.5 py-1 text-[11px] bg-white/5 hover:bg-white/15 border border-white/10 rounded text-slate-300 font-mono"
-                  >
-                    {qp.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="flex justify-end gap-3 text-xs tracking-wider uppercase pt-2">
-              <button
-                onClick={() => setShowCustomModal(false)}
-                className="px-4 py-2 border border-white/10 opacity-70 hover:opacity-100 rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleApplyCustomTime}
-                className="px-6 py-2 bg-[#e9762b] text-black font-extrabold hover:brightness-110 rounded-lg transition"
-              >
-                Set Timer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 5. POST-SESSION FOCUS RATING MODAL */}
       {showRating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-[#141413] border border-white/20 p-6 space-y-6 shadow-2xl rounded-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-md glass-modal p-6 sm:p-7 space-y-6 rounded-2xl">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <h3 className="text-xs uppercase tracking-widest font-bold text-white flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[#e9762b]" />
@@ -1123,23 +1251,23 @@ export const HomeScreen: React.FC = () => {
                 value={sessionNotes}
                 onChange={(e) => setSessionNotes(e.target.value)}
                 placeholder="What did you study during this timer?..."
-                className="w-full h-20 bg-black border border-white/15 p-3 text-xs text-white focus:outline-none focus:border-[#e9762b] rounded-lg placeholder-slate-700"
+                className="w-full h-20 glass-input p-3 text-xs text-white focus:outline-none rounded-xl placeholder-slate-700"
               />
             </div>
 
             <div className="flex justify-end gap-3 text-xs tracking-wider uppercase">
               <button
                 onClick={() => setShowRating(false)}
-                className="px-4 py-2 border border-white/10 opacity-70 hover:opacity-100 rounded-lg"
+                className="px-4 py-2 glass-pill text-slate-300 hover:text-white rounded-lg transition"
               >
                 Cancel
               </button>
-              <button
+              <ShinyButton
                 onClick={handleSaveSession}
-                className="px-6 py-2 bg-[#e9762b] text-black font-extrabold hover:brightness-110 rounded-lg transition"
-              >
-                Save
-              </button>
+                label="Save"
+                cornerRadius={8}
+                className="!px-6 !py-2 !text-xs !font-mono !font-extrabold !uppercase !tracking-wider active:scale-95 transition"
+              />
             </div>
           </div>
         </div>

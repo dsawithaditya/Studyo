@@ -38,7 +38,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSupabaseModal, onOpenHalft
   ];
 
   return (
-    <header className="sticky top-0 z-40 bg-[#0c0c0b]/80 backdrop-blur-md border-b border-white/10 px-4 lg:px-8 py-3 transition-colors">
+    <header className="sticky top-0 z-40 glass-header px-4 lg:px-8 py-3 transition-colors">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
         {/* Logo and Tagline */}
         <div className="flex items-center gap-3">

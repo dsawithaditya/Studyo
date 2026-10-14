@@ -75,11 +75,20 @@ export interface DistractionNote {
 export interface UserProfile {
   name: string;
   email?: string;
-  dailyTargetMinutes: number; // e.g. 300 = 5 hours
+  dailyTargetMinutes?: number;
   streakDays: number;
   longestStreak: number;
   lastStudiedDate?: string;
   lastActiveSubjectId?: string;
+}
+
+export type CustomColumnType = 'boolean' | 'number' | 'text' | 'select';
+
+export interface CustomColumn {
+  id: string;
+  name: string;
+  type: CustomColumnType;
+  options?: string[]; // for 'select' type (e.g. ['Good', 'Okay', 'Bad'])
 }
 
 export interface DailyLogEntry {
@@ -92,6 +101,7 @@ export interface DailyLogEntry {
   sleepHours: number;
   focusRating: number; // 1-5
   notes?: string;
+  customData?: Record<string, any>;
 }
 
 export interface StopwatchLap {

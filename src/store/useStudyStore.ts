@@ -13,7 +13,8 @@ import {
   TopicStatus,
   TimerMode,
   DailyLogEntry,
-  StopwatchLap
+  StopwatchLap,
+  CustomColumn
 } from '../types';
 import { SoundType, soundSynth } from '../services/soundSynth';
 
@@ -49,6 +50,14 @@ interface StudyState {
   updateDailyLogField: <K extends keyof DailyLogEntry>(date: string, field: K, value: DailyLogEntry[K]) => void;
   deleteDailyLog: (date: string) => void;
 
+  // Custom Columns Module
+  customColumns: CustomColumn[];
+  addCustomColumn: (col: Omit<CustomColumn, 'id'>) => void;
+  updateCustomColumn: (id: string, updates: Partial<CustomColumn>) => void;
+  deleteCustomColumn: (id: string) => void;
+  reorderCustomColumns: (fromIndex: number, toIndex: number) => void;
+  updateDailyLogCustomField: (date: string, columnId: string, value: any) => void;
+
   // Timer Settings & Stopwatch Module
   autoStartNextRound: boolean;
   soundAlertOnFinish: boolean;
@@ -65,6 +74,7 @@ interface StudyState {
   // Actions
   setLanguage: (lang: Language) => void;
   setUserTarget: (minutes: number) => void;
+  updateUserProfile: (updates: Partial<UserProfile>) => void;
   setZenMode: (zen: boolean) => void;
   setAmbientSound: (sound: SoundType) => void;
   setAmbientVolume: (vol: number) => void;
@@ -72,6 +82,7 @@ interface StudyState {
   // Timer Actions
   setTimerMode: (mode: TimerMode, durationMinutes?: number) => void;
   setTimerDuration: (seconds: number) => void;
+  adjustTimerSeconds: (delta: number) => void;
   setActiveSubject: (subjectId: string, chapterId?: string) => void;
   startTimer: () => void;
   pauseTimer: () => void;
@@ -106,6 +117,7 @@ interface StudyState {
   // Cloud Config
   setSupabaseConfig: (url: string, key: string) => void;
   resetToDefaults: () => void;
+  loadDemoData: () => void;
 }
 
 // Generate realistic 365-day seed history
@@ -320,13 +332,32 @@ const INITIAL_SUBJECTS: Subject[] = [
   },
 ];
 
+export const INITIAL_CUSTOM_COLUMNS: CustomColumn[] = [
+  {
+    id: 'col-water',
+    name: 'Water (L)',
+    type: 'number',
+  },
+  {
+    id: 'col-energy',
+    name: 'Energy Level',
+    type: 'select',
+    options: ['High', 'Normal', 'Low'],
+  },
+  {
+    id: 'col-workout',
+    name: 'Workout',
+    type: 'boolean',
+  },
+];
+
 const INITIAL_TASKS: Task[] = [
   {
     id: 'task-1',
     title: 'Solve 15 integration problem sets (LIATE rule practice)',
     subjectId: 'sub-math',
     priority: 'high',
-    dueDate: new Date().toISOString().split('T')[0],
+    dueDate: '2026-10-14',
     completed: false,
     estimatedPomodoros: 2,
     notes: 'Focus on trigonometric substitution and partial fractions',
@@ -336,7 +367,7 @@ const INITIAL_TASKS: Task[] = [
     title: 'Revise Gauss Law & Lenz Law formula sheet',
     subjectId: 'sub-phys',
     priority: 'high',
-    dueDate: new Date().toISOString().split('T')[0],
+    dueDate: '2026-10-14',
     completed: false,
     estimatedPomodoros: 1,
     notes: 'Draw diagrams for induced currents',
@@ -346,7 +377,7 @@ const INITIAL_TASKS: Task[] = [
     title: 'Code Dijkstra and Topological Sort implementations',
     subjectId: 'sub-cs',
     priority: 'med',
-    dueDate: new Date().toISOString().split('T')[0],
+    dueDate: '2026-10-14',
     completed: false,
     estimatedPomodoros: 2,
     notes: 'Verify edge cases with disconnected graphs',
@@ -356,88 +387,210 @@ const INITIAL_TASKS: Task[] = [
     title: 'Complete Aldol condensation reaction chart',
     subjectId: 'sub-chem',
     priority: 'high',
-    dueDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+    dueDate: '2026-10-15',
+    completed: false,
+    estimatedPomodoros: 2,
+    notes: 'Cross-aldol products and dehydration step mechanisms',
+  },
+  {
+    id: 'task-5',
+    title: 'Review Organic Isomerism & Stereochemistry',
+    subjectId: 'sub-chem',
+    priority: 'med',
+    dueDate: '2026-10-16',
     completed: false,
     estimatedPomodoros: 2,
   },
   {
-    id: 'task-5',
+    id: 'task-6',
     title: 'Past 5-year paper solving: Electromagnetism',
     subjectId: 'sub-phys',
     priority: 'low',
-    dueDate: new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0],
+    dueDate: '2026-10-14',
     completed: true,
-    completedAt: new Date(Date.now() - 3600000).toISOString(),
+    completedAt: '2026-10-14T15:30:00.000Z',
     estimatedPomodoros: 3,
+  },
+  {
+    id: 'task-7',
+    title: 'Calculus limits & continuity practice test',
+    subjectId: 'sub-math',
+    priority: 'med',
+    dueDate: '2026-10-13',
+    completed: true,
+    completedAt: '2026-10-13T17:45:00.000Z',
+    estimatedPomodoros: 2,
   },
 ];
 
-const INITIAL_DAILY_LOGS: DailyLogEntry[] = [
+export const INITIAL_DAILY_LOGS: DailyLogEntry[] = [
+  {
+    date: '2026-10-14',
+    studyHours: 6.5,
+    attendedClass: true,
+    pyqsSolved: 25,
+    revisionDone: true,
+    mockTestTaken: false,
+    sleepHours: 7.0,
+    focusRating: 5,
+    notes: 'Deep focus on electromagnetic induction & organic synthesis pathways. Solved 25 PYQs with zero distractions.',
+    customData: { 'col-water': 3.2, 'col-energy': 'High', 'col-workout': true },
+  },
   {
     date: '2026-10-13',
-    studyHours: 4.5,
+    studyHours: 5.0,
     attendedClass: true,
-    pyqsSolved: 12,
+    pyqsSolved: 18,
     revisionDone: true,
     mockTestTaken: false,
     sleepHours: 6.5,
     focusRating: 4,
-    notes: 'Solved Gauss law numericals and mechanics problem sets',
+    notes: 'Gauss Law numericals and mechanics problem sets completed. Fast review of rotational motion formulas.',
+    customData: { 'col-water': 2.8, 'col-energy': 'High', 'col-workout': true },
   },
   {
     date: '2026-10-12',
-    studyHours: 3.0,
+    studyHours: 3.5,
     attendedClass: true,
-    pyqsSolved: 5,
+    pyqsSolved: 8,
     revisionDone: false,
     mockTestTaken: false,
-    sleepHours: 7.0,
+    sleepHours: 7.5,
     focusRating: 3,
-    notes: 'Attended college lectures on thermodynamics',
+    notes: 'Attended college lectures on thermodynamics & heat transfer. Heavy college schedule left limited self-study time.',
+    customData: { 'col-water': 2.2, 'col-energy': 'Normal', 'col-workout': false },
   },
   {
     date: '2026-10-11',
-    studyHours: 5.5,
+    studyHours: 7.0,
     attendedClass: false,
-    pyqsSolved: 20,
+    pyqsSolved: 35,
     revisionDone: true,
     mockTestTaken: true,
-    sleepHours: 6.0,
+    sleepHours: 6.5,
     focusRating: 5,
-    notes: 'Full length mock test 1 completed with score analysis',
+    notes: 'Sunday mock test 1 completed (Score: 168/200). Analyzed mistakes in coordinate geometry and optics.',
+    customData: { 'col-water': 3.5, 'col-energy': 'High', 'col-workout': true },
   },
   {
     date: '2026-10-10',
-    studyHours: 2.0,
+    studyHours: 2.5,
     attendedClass: true,
     pyqsSolved: 0,
     revisionDone: false,
     mockTestTaken: false,
-    sleepHours: 8.0,
+    sleepHours: 8.5,
     focusRating: 2,
-    notes: 'Felt fatigued, light reading only',
+    notes: 'Felt fatigued, light reading and formula sheets review only. Took proper rest in the evening.',
+    customData: { 'col-water': 2.0, 'col-energy': 'Low', 'col-workout': false },
   },
   {
     date: '2026-10-09',
-    studyHours: 4.0,
+    studyHours: 5.5,
     attendedClass: true,
-    pyqsSolved: 10,
+    pyqsSolved: 22,
     revisionDone: true,
     mockTestTaken: false,
-    sleepHours: 6.5,
+    sleepHours: 7.0,
     focusRating: 4,
-    notes: 'Reaction mechanism flashcards revised',
+    notes: 'Reaction mechanism flashcards revised. Solved aromatic substitution problems and carbonyl reactions.',
+    customData: { 'col-water': 2.5, 'col-energy': 'High', 'col-workout': true },
   },
   {
     date: '2026-10-08',
     studyHours: 6.0,
     attendedClass: true,
+    pyqsSolved: 30,
+    revisionDone: true,
+    mockTestTaken: false,
+    sleepHours: 7.0,
+    focusRating: 5,
+    notes: 'Calculus integration by parts & differential equations drill. Solved 30 tough past-year questions.',
+    customData: { 'col-water': 3.0, 'col-energy': 'High', 'col-workout': false },
+  },
+  {
+    date: '2026-10-07',
+    studyHours: 4.0,
+    attendedClass: true,
+    pyqsSolved: 14,
+    revisionDone: true,
+    mockTestTaken: false,
+    sleepHours: 6.5,
+    focusRating: 4,
+    notes: 'Mid-week review: Capacitors, dielectrics, and Kirchhoff loop rules. Cleared backlog notes.',
+    customData: { 'col-water': 2.6, 'col-energy': 'Normal', 'col-workout': true },
+  },
+  {
+    date: '2026-10-06',
+    studyHours: 5.5,
+    attendedClass: false,
+    pyqsSolved: 28,
+    revisionDone: true,
+    mockTestTaken: false,
+    sleepHours: 7.5,
+    focusRating: 4,
+    notes: 'Binary search trees, AVL rotations and graph traversal algorithms implemented and tested.',
+    customData: { 'col-water': 2.9, 'col-energy': 'High', 'col-workout': true },
+  },
+  {
+    date: '2026-10-05',
+    studyHours: 4.5,
+    attendedClass: true,
     pyqsSolved: 15,
+    revisionDone: false,
+    mockTestTaken: false,
+    sleepHours: 6.0,
+    focusRating: 3,
+    notes: 'College lab practicals + 3 hours evening study on organic isomerism and IUPAC nomenclature.',
+    customData: { 'col-water': 2.1, 'col-energy': 'Normal', 'col-workout': false },
+  },
+  {
+    date: '2026-10-04',
+    studyHours: 7.5,
+    attendedClass: false,
+    pyqsSolved: 40,
     revisionDone: true,
     mockTestTaken: true,
-    sleepHours: 7.5,
+    sleepHours: 7.0,
     focusRating: 5,
-    notes: 'Excellent focus session on calculus and vector algebra',
+    notes: 'Full subject mini-mock test on Mechanics & Algebra. Great timing, finished 15 mins before time.',
+    customData: { 'col-water': 3.4, 'col-energy': 'High', 'col-workout': true },
+  },
+  {
+    date: '2026-10-03',
+    studyHours: 3.0,
+    attendedClass: true,
+    pyqsSolved: 6,
+    revisionDone: false,
+    mockTestTaken: false,
+    sleepHours: 8.0,
+    focusRating: 3,
+    notes: 'Quick study sprint before weekend. Covered electrostatics electric potential and field lines.',
+    customData: { 'col-water': 2.0, 'col-energy': 'Normal', 'col-workout': false },
+  },
+  {
+    date: '2026-10-02',
+    studyHours: 6.0,
+    attendedClass: false,
+    pyqsSolved: 20,
+    revisionDone: true,
+    mockTestTaken: false,
+    sleepHours: 7.5,
+    focusRating: 4,
+    notes: 'Holiday study marathon! Comprehensive revision of chemical equilibrium and Le Chatelier principle.',
+    customData: { 'col-water': 3.0, 'col-energy': 'High', 'col-workout': true },
+  },
+  {
+    date: '2026-10-01',
+    studyHours: 5.0,
+    attendedClass: true,
+    pyqsSolved: 16,
+    revisionDone: true,
+    mockTestTaken: false,
+    sleepHours: 6.5,
+    focusRating: 4,
+    notes: 'October goal kickoff: Planned study targets for the month. Covered limits, continuity, and differentiability.',
+    customData: { 'col-water': 2.7, 'col-energy': 'High', 'col-workout': true },
   },
 ];
 
@@ -473,8 +626,6 @@ export const useStudyStore = create<StudyState>()(
       language: 'en',
       user: {
         name: 'Alex',
-        email: 'alex.student@studytracker.app',
-        dailyTargetMinutes: 300, // 5 hours
         streakDays: 14,
         longestStreak: 21,
         lastStudiedDate: new Date().toISOString().split('T')[0],
@@ -484,6 +635,7 @@ export const useStudyStore = create<StudyState>()(
       sessions: generateSeedSessions(),
       tasks: INITIAL_TASKS,
       dailyLogs: INITIAL_DAILY_LOGS,
+      customColumns: INITIAL_CUSTOM_COLUMNS,
       autoStartNextRound: false,
       soundAlertOnFinish: true,
       stopwatchTime: 0,
@@ -537,13 +689,14 @@ export const useStudyStore = create<StudyState>()(
       // Daily Study Log Actions
       addOrUpdateDailyLog: (entry) => {
         set((state) => {
-          const existingIndex = state.dailyLogs.findIndex((l) => l.date === entry.date);
+          const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : INITIAL_DAILY_LOGS;
+          const existingIndex = logs.findIndex((l) => l.date === entry.date);
           let updated: DailyLogEntry[];
           if (existingIndex >= 0) {
-            updated = [...state.dailyLogs];
+            updated = [...logs];
             updated[existingIndex] = entry;
           } else {
-            updated = [entry, ...state.dailyLogs];
+            updated = [entry, ...logs];
           }
           updated.sort((a, b) => b.date.localeCompare(a.date));
           return { dailyLogs: updated };
@@ -552,7 +705,8 @@ export const useStudyStore = create<StudyState>()(
 
       updateDailyLogField: (date, field, value) => {
         set((state) => {
-          const updated = state.dailyLogs.map((l) => {
+          const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : INITIAL_DAILY_LOGS;
+          const updated = logs.map((l) => {
             if (l.date === date) {
               return { ...l, [field]: value };
             }
@@ -563,9 +717,68 @@ export const useStudyStore = create<StudyState>()(
       },
 
       deleteDailyLog: (date) => {
+        set((state) => {
+          const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : INITIAL_DAILY_LOGS;
+          return { dailyLogs: logs.filter((l) => l.date !== date) };
+        });
+      },
+
+      // Custom Columns Actions
+      addCustomColumn: (col) => {
+        const newCol: CustomColumn = {
+          ...col,
+          id: `col_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        };
         set((state) => ({
-          dailyLogs: state.dailyLogs.filter((l) => l.date !== date),
+          customColumns: [...(state.customColumns || []), newCol],
         }));
+      },
+      updateCustomColumn: (id, updates) => {
+        set((state) => ({
+          customColumns: (state.customColumns || []).map((c) =>
+            c.id === id ? { ...c, ...updates } : c
+          ),
+        }));
+      },
+      deleteCustomColumn: (id) => {
+        set((state) => ({
+          customColumns: (state.customColumns || []).filter((c) => c.id !== id),
+          dailyLogs: (state.dailyLogs || []).map((log) => {
+            if (!log.customData || !(id in log.customData)) return log;
+            const nextData = { ...log.customData };
+            delete nextData[id];
+            return { ...log, customData: nextData };
+          }),
+        }));
+      },
+      reorderCustomColumns: (fromIndex, toIndex) => {
+        set((state) => {
+          const list = [...(state.customColumns || [])];
+          if (fromIndex < 0 || fromIndex >= list.length || toIndex < 0 || toIndex >= list.length) {
+            return state;
+          }
+          const [moved] = list.splice(fromIndex, 1);
+          list.splice(toIndex, 0, moved);
+          return { customColumns: list };
+        });
+      },
+      updateDailyLogCustomField: (date, columnId, value) => {
+        set((state) => {
+          const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : INITIAL_DAILY_LOGS;
+          const updated = logs.map((l) => {
+            if (l.date === date) {
+              return {
+                ...l,
+                customData: {
+                  ...(l.customData || {}),
+                  [columnId]: value,
+                },
+              };
+            }
+            return l;
+          });
+          return { dailyLogs: updated };
+        });
       },
 
       // Timer Settings & Stopwatch Actions
@@ -616,6 +829,7 @@ export const useStudyStore = create<StudyState>()(
 
       setLanguage: (lang) => set({ language: lang }),
       setUserTarget: (minutes) => set((state) => ({ user: { ...state.user, dailyTargetMinutes: minutes } })),
+      updateUserProfile: (updates) => set((state) => ({ user: { ...state.user, ...updates } })),
       setZenMode: (zen) => set({ zenMode: zen }),
       
       setAmbientSound: (sound) => {
@@ -661,6 +875,22 @@ export const useStudyStore = create<StudyState>()(
             timeLeft: validSeconds,
             initialDuration: validSeconds,
             isRunning: false,
+          },
+        });
+      },
+
+      adjustTimerSeconds: (delta: number) => {
+        const { timer } = get();
+        if (timer.mode === 'stopwatch') return;
+        const newTime = Math.max(1, Math.min(24 * 3600, timer.timeLeft + delta));
+        if (timer.isRunning) {
+          targetEndTime = Date.now() + newTime * 1000;
+        }
+        set({
+          timer: {
+            ...timer,
+            timeLeft: newTime,
+            initialDuration: Math.max(newTime, timer.initialDuration),
           },
         });
       },
@@ -1098,11 +1328,30 @@ export const useStudyStore = create<StudyState>()(
           subjects: INITIAL_SUBJECTS,
           sessions: generateSeedSessions(),
           tasks: INITIAL_TASKS,
+          dailyLogs: INITIAL_DAILY_LOGS,
+          customColumns: INITIAL_CUSTOM_COLUMNS,
+          stopwatchLaps: [
+            { id: 'lap-1', lapNumber: 1, timestampSeconds: 1500, lapDurationSeconds: 1500 },
+            { id: 'lap-2', lapNumber: 2, timestampSeconds: 3300, lapDurationSeconds: 1800 },
+          ],
+        });
+      },
+
+      loadDemoData: () => {
+        set({
+          dailyLogs: INITIAL_DAILY_LOGS,
+          customColumns: INITIAL_CUSTOM_COLUMNS,
+          tasks: INITIAL_TASKS,
+          sessions: generateSeedSessions(),
+          stopwatchLaps: [
+            { id: 'lap-1', lapNumber: 1, timestampSeconds: 1500, lapDurationSeconds: 1500 },
+            { id: 'lap-2', lapNumber: 2, timestampSeconds: 3300, lapDurationSeconds: 1800 },
+          ],
         });
       },
     }),
     {
-      name: 'studypulse_storage_v1',
+      name: 'studypulse_storage_v2',
       partialize: (state) => ({
         language: state.language,
         user: state.user,
@@ -1116,9 +1365,27 @@ export const useStudyStore = create<StudyState>()(
         supabaseAnonKey: state.supabaseAnonKey,
         isCloudSynced: state.isCloudSynced,
         dailyLogs: state.dailyLogs,
+        customColumns: state.customColumns,
         autoStartNextRound: state.autoStartNextRound,
         soundAlertOnFinish: state.soundAlertOnFinish,
       }),
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState as Partial<StudyState>) || {};
+        const persistedLogs = Array.isArray(persisted.dailyLogs) ? persisted.dailyLogs : [];
+        const mergedMap = new Map<string, DailyLogEntry>();
+        INITIAL_DAILY_LOGS.forEach(log => mergedMap.set(log.date, log));
+        persistedLogs.forEach(log => mergedMap.set(log.date, log));
+        const mergedLogs = Array.from(mergedMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+
+        return {
+          ...currentState,
+          ...persisted,
+          dailyLogs: mergedLogs,
+          customColumns: Array.isArray(persisted.customColumns) && persisted.customColumns.length > 0
+            ? persisted.customColumns
+            : INITIAL_CUSTOM_COLUMNS,
+        };
+      },
     }
   )
 );
