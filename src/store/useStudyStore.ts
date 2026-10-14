@@ -11,7 +11,9 @@ import {
   UserProfile, 
   RevisionConfidence, 
   TopicStatus,
-  TimerMode 
+  TimerMode,
+  DailyLogEntry,
+  StopwatchLap
 } from '../types';
 import { SoundType, soundSynth } from '../services/soundSynth';
 
@@ -40,6 +42,25 @@ interface StudyState {
   supabaseUrl: string;
   supabaseAnonKey: string;
   isCloudSynced: boolean;
+
+  // Daily Study Log Module
+  dailyLogs: DailyLogEntry[];
+  addOrUpdateDailyLog: (entry: DailyLogEntry) => void;
+  updateDailyLogField: <K extends keyof DailyLogEntry>(date: string, field: K, value: DailyLogEntry[K]) => void;
+  deleteDailyLog: (date: string) => void;
+
+  // Timer Settings & Stopwatch Module
+  autoStartNextRound: boolean;
+  soundAlertOnFinish: boolean;
+  stopwatchTime: number; // in seconds
+  stopwatchRunning: boolean;
+  stopwatchLaps: StopwatchLap[];
+  setAutoStartNextRound: (val: boolean) => void;
+  setSoundAlertOnFinish: (val: boolean) => void;
+  startStopwatch: () => void;
+  pauseStopwatch: () => void;
+  resetStopwatch: () => void;
+  lapStopwatch: () => void;
 
   // Actions
   setLanguage: (lang: Language) => void;
@@ -351,6 +372,75 @@ const INITIAL_TASKS: Task[] = [
   },
 ];
 
+const INITIAL_DAILY_LOGS: DailyLogEntry[] = [
+  {
+    date: '2026-10-13',
+    studyHours: 4.5,
+    attendedClass: true,
+    pyqsSolved: 12,
+    revisionDone: true,
+    mockTestTaken: false,
+    sleepHours: 6.5,
+    focusRating: 4,
+    notes: 'Solved Gauss law numericals and mechanics problem sets',
+  },
+  {
+    date: '2026-10-12',
+    studyHours: 3.0,
+    attendedClass: true,
+    pyqsSolved: 5,
+    revisionDone: false,
+    mockTestTaken: false,
+    sleepHours: 7.0,
+    focusRating: 3,
+    notes: 'Attended college lectures on thermodynamics',
+  },
+  {
+    date: '2026-10-11',
+    studyHours: 5.5,
+    attendedClass: false,
+    pyqsSolved: 20,
+    revisionDone: true,
+    mockTestTaken: true,
+    sleepHours: 6.0,
+    focusRating: 5,
+    notes: 'Full length mock test 1 completed with score analysis',
+  },
+  {
+    date: '2026-10-10',
+    studyHours: 2.0,
+    attendedClass: true,
+    pyqsSolved: 0,
+    revisionDone: false,
+    mockTestTaken: false,
+    sleepHours: 8.0,
+    focusRating: 2,
+    notes: 'Felt fatigued, light reading only',
+  },
+  {
+    date: '2026-10-09',
+    studyHours: 4.0,
+    attendedClass: true,
+    pyqsSolved: 10,
+    revisionDone: true,
+    mockTestTaken: false,
+    sleepHours: 6.5,
+    focusRating: 4,
+    notes: 'Reaction mechanism flashcards revised',
+  },
+  {
+    date: '2026-10-08',
+    studyHours: 6.0,
+    attendedClass: true,
+    pyqsSolved: 15,
+    revisionDone: true,
+    mockTestTaken: true,
+    sleepHours: 7.5,
+    focusRating: 5,
+    notes: 'Excellent focus session on calculus and vector algebra',
+  },
+];
+
 // Module-level persistent timer ticker engine
 let timerInterval: number | null = null;
 let targetEndTime: number | null = null;
@@ -363,6 +453,18 @@ function clearTimerLoop() {
   }
   targetEndTime = null;
   stopwatchStartedAt = null;
+}
+
+// Module-level persistent stopwatch engine
+let stopwatchInterval: number | null = null;
+let stopwatchTimeStartedAt: number | null = null;
+
+function clearStopwatchLoop() {
+  if (stopwatchInterval !== null) {
+    window.clearInterval(stopwatchInterval);
+    stopwatchInterval = null;
+  }
+  stopwatchTimeStartedAt = null;
 }
 
 export const useStudyStore = create<StudyState>()(
@@ -381,6 +483,12 @@ export const useStudyStore = create<StudyState>()(
       subjects: INITIAL_SUBJECTS,
       sessions: generateSeedSessions(),
       tasks: INITIAL_TASKS,
+      dailyLogs: INITIAL_DAILY_LOGS,
+      autoStartNextRound: false,
+      soundAlertOnFinish: true,
+      stopwatchTime: 0,
+      stopwatchRunning: false,
+      stopwatchLaps: [],
       examCountdowns: [
         {
           id: 'exam-1',
@@ -425,6 +533,86 @@ export const useStudyStore = create<StudyState>()(
       supabaseUrl: '',
       supabaseAnonKey: '',
       isCloudSynced: false,
+
+      // Daily Study Log Actions
+      addOrUpdateDailyLog: (entry) => {
+        set((state) => {
+          const existingIndex = state.dailyLogs.findIndex((l) => l.date === entry.date);
+          let updated: DailyLogEntry[];
+          if (existingIndex >= 0) {
+            updated = [...state.dailyLogs];
+            updated[existingIndex] = entry;
+          } else {
+            updated = [entry, ...state.dailyLogs];
+          }
+          updated.sort((a, b) => b.date.localeCompare(a.date));
+          return { dailyLogs: updated };
+        });
+      },
+
+      updateDailyLogField: (date, field, value) => {
+        set((state) => {
+          const updated = state.dailyLogs.map((l) => {
+            if (l.date === date) {
+              return { ...l, [field]: value };
+            }
+            return l;
+          });
+          return { dailyLogs: updated };
+        });
+      },
+
+      deleteDailyLog: (date) => {
+        set((state) => ({
+          dailyLogs: state.dailyLogs.filter((l) => l.date !== date),
+        }));
+      },
+
+      // Timer Settings & Stopwatch Actions
+      setAutoStartNextRound: (val) => set({ autoStartNextRound: val }),
+      setSoundAlertOnFinish: (val) => set({ soundAlertOnFinish: val }),
+
+      startStopwatch: () => {
+        const { stopwatchRunning, stopwatchTime } = get();
+        if (stopwatchRunning) return;
+        clearStopwatchLoop();
+        stopwatchTimeStartedAt = Date.now() - stopwatchTime * 1000;
+        set({ stopwatchRunning: true });
+        stopwatchInterval = window.setInterval(() => {
+          if (!get().stopwatchRunning) {
+            clearStopwatchLoop();
+            return;
+          }
+          const elapsed = Math.floor((Date.now() - stopwatchTimeStartedAt!) / 1000);
+          if (elapsed !== get().stopwatchTime) {
+            set({ stopwatchTime: elapsed });
+          }
+        }, 250);
+      },
+
+      pauseStopwatch: () => {
+        clearStopwatchLoop();
+        set({ stopwatchRunning: false });
+      },
+
+      resetStopwatch: () => {
+        clearStopwatchLoop();
+        set({ stopwatchRunning: false, stopwatchTime: 0, stopwatchLaps: [] });
+      },
+
+      lapStopwatch: () => {
+        const { stopwatchTime, stopwatchLaps } = get();
+        if (stopwatchTime === 0) return;
+        const previousLapTime = stopwatchLaps.length > 0 ? stopwatchLaps[0].timestampSeconds : 0;
+        const lapDuration = Math.max(0, stopwatchTime - previousLapTime);
+        const newLap: StopwatchLap = {
+          id: `lap-${Date.now()}`,
+          lapNumber: stopwatchLaps.length + 1,
+          timestampSeconds: stopwatchTime,
+          lapDurationSeconds: lapDuration,
+        };
+        set({ stopwatchLaps: [newLap, ...stopwatchLaps] });
+      },
 
       setLanguage: (lang) => set({ language: lang }),
       setUserTarget: (minutes) => set((state) => ({ user: { ...state.user, dailyTargetMinutes: minutes } })),
@@ -534,19 +722,32 @@ export const useStudyStore = create<StudyState>()(
             const remaining = Math.max(0, Math.ceil((targetEndTime - Date.now()) / 1000));
             if (remaining <= 0) {
               clearTimerLoop();
-              soundSynth.playChime();
-              confetti({
-                particleCount: 80,
-                spread: 60,
-                origin: { y: 0.6 },
-              });
-              set({
-                timer: {
-                  ...current,
-                  timeLeft: 0,
-                  isRunning: false,
-                },
-              });
+              if (get().soundAlertOnFinish) {
+                soundSynth.playChime();
+                confetti({
+                  particleCount: 80,
+                  spread: 60,
+                  origin: { y: 0.6 },
+                });
+              }
+              if (get().autoStartNextRound) {
+                set({
+                  timer: {
+                    ...current,
+                    timeLeft: current.initialDuration,
+                    isRunning: true,
+                  },
+                });
+                get().startTimer();
+              } else {
+                set({
+                  timer: {
+                    ...current,
+                    timeLeft: 0,
+                    isRunning: false,
+                  },
+                });
+              }
             } else if (remaining !== current.timeLeft) {
               set({
                 timer: {
@@ -914,6 +1115,9 @@ export const useStudyStore = create<StudyState>()(
         supabaseUrl: state.supabaseUrl,
         supabaseAnonKey: state.supabaseAnonKey,
         isCloudSynced: state.isCloudSynced,
+        dailyLogs: state.dailyLogs,
+        autoStartNextRound: state.autoStartNextRound,
+        soundAlertOnFinish: state.soundAlertOnFinish,
       }),
     }
   )

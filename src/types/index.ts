@@ -81,3 +81,23 @@ export interface UserProfile {
   lastStudiedDate?: string;
   lastActiveSubjectId?: string;
 }
+
+export interface DailyLogEntry {
+  date: string; // YYYY-MM-DD
+  studyHours: number;
+  attendedClass: boolean;
+  pyqsSolved: number;
+  revisionDone: boolean;
+  mockTestTaken: boolean;
+  sleepHours: number;
+  focusRating: number; // 1-5
+  notes?: string;
+}
+
+export interface StopwatchLap {
+  id: string;
+  lapNumber: number;
+  timestampSeconds: number;
+  lapDurationSeconds: number;
+}
+

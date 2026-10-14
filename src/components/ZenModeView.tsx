@@ -1,40 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { useStudyStore } from '../store/useStudyStore';
-import { translations } from '../i18n/translations';
-import { SoundType } from '../services/soundSynth';
-import { 
-  Minimize2, 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Check, 
-  Volume2, 
-  Sparkles, 
-  Star,
-  Wind
-} from 'lucide-react';
+import { Play, Pause, RotateCcw, Check, Minimize2 } from 'lucide-react';
 
 export const ZenModeView: React.FC = () => {
   const { 
-    language, 
     timer, 
-    ambientSound, 
-    ambientVolume, 
     setZenMode, 
     startTimer, 
     pauseTimer, 
     resetTimer, 
-    logSession, 
-    setAmbientSound, 
-    setAmbientVolume 
+    logSession 
   } = useStudyStore();
-  const t = translations[language];
 
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [rating, setRating] = useState(5);
   const [notes, setNotes] = useState('');
 
-  // Keyboard shortcuts in Zen Mode
+  // Keyboard shortcuts in Focus Mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
@@ -57,9 +39,12 @@ export const ZenModeView: React.FC = () => {
   const hours = Math.floor(timer.timeLeft / 3600);
   const minutes = Math.floor((timer.timeLeft % 3600) / 60);
   const seconds = timer.timeLeft % 60;
-  const formattedTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-  const handleComplete = () => {
+  const hhStr = String(hours).padStart(2, '0');
+  const mmStr = String(minutes).padStart(2, '0');
+  const ssStr = String(seconds).padStart(2, '0');
+
+  const handleFinish = () => {
     pauseTimer();
     setShowRatingModal(true);
   };
@@ -70,178 +55,161 @@ export const ZenModeView: React.FC = () => {
     setZenMode(false);
   };
 
-  const sounds: { type: SoundType; label: string }[] = [
-    { type: 'off', label: 'Mute' },
-    { type: 'rain', label: 'Rain' },
-    { type: 'brown', label: 'Brown Noise' },
-    { type: 'binaural', label: 'Binaural 40Hz' },
-    { type: 'cafe', label: 'Cafe' },
-    { type: 'clock', label: 'Clock' },
-  ];
-
   return (
-    <div className="fixed inset-0 z-50 bg-[#0c0c0b] text-[#e9e4da] flex flex-col justify-between p-6 sm:p-12 animate-fadeIn select-none font-mono">
-      {/* Top bar: Zen status & Exit Zen button */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#e9762b] animate-ping" />
-          <span className="text-xs font-bold uppercase tracking-widest text-slate-400">
-            Zen Focus
-          </span>
-        </div>
-
-        {/* Exit Zen Button */}
-        <button
-          onClick={() => setZenMode(false)}
-          className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-bold transition"
-        >
-          <Minimize2 className="w-4 h-4" />
-          <span>{t.studyRoom.exitZen}</span>
-        </button>
-      </div>
-
-      {/* Center Focus Element: Giant Breathing Ring and Digital Display */}
-      <div className="flex flex-col items-center justify-center my-auto relative">
-        {/* Soft breathing pulse effect */}
-        <div 
-          className={`w-80 h-80 sm:w-96 sm:h-96 rounded-full border border-white/10 flex items-center justify-center transition-transform duration-1000 ${
-            timer.isRunning ? 'animate-breathe' : ''
-          }`}
-          style={{ borderColor: 'rgba(233, 118, 43, 0.25)' }}
-        >
-          <div 
-            className="w-64 h-64 sm:w-80 sm:h-80 rounded-full flex flex-col items-center justify-center text-center p-6 bg-gradient-to-b from-white/[0.03] to-transparent shadow-2xl"
-          >
-            <span className="text-[2.6rem] min-[380px]:text-5xl sm:text-7xl md:text-8xl font-black font-mono-numbers tracking-tighter text-white drop-shadow-2xl whitespace-nowrap">
-              {formattedTime}
+    <div className="fixed inset-0 z-50 bg-[#0c0c0b] text-[#f2eee3] flex flex-col items-center justify-center p-4 sm:p-8 select-none font-mono">
+      {/* Centered Clock Face & Controls (Exact Screenshot 1 match) */}
+      <div className="flex flex-col items-center justify-center w-full max-w-5xl my-auto">
+        {/* Giant Monospace Digits */}
+        <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-8 text-[4.5rem] sm:text-[7rem] md:text-[9.5rem] lg:text-[11.5rem] font-bold tracking-tight leading-none select-none">
+          {/* Hours */}
+          <div className="flex flex-col items-center">
+            <span className="text-[#f2eee3] drop-shadow-sm font-mono tabular-nums">
+              {hhStr}
             </span>
-            <span className="text-xs font-bold tracking-widest uppercase text-slate-500 mt-3">
-              {timer.mode.replace('_', ' ')}
+            <span className="text-[10px] sm:text-xs md:text-sm uppercase tracking-widest text-slate-500 font-semibold mt-2 sm:mt-4">
+              Hours
             </span>
-            {timer.isRunning && (
-              <span className="text-[11px] text-[#e9762b] flex items-center gap-1.5 mt-2 font-medium">
-                <Wind className="w-3.5 h-3.5 animate-spin" />
-                In The Zone
-              </span>
-            )}
+          </div>
+
+          {/* Colon */}
+          <div className="text-slate-600 pb-5 sm:pb-8 text-[3rem] sm:text-[5rem] md:text-[7rem] font-light">
+            :
+          </div>
+
+          {/* Minutes */}
+          <div className="flex flex-col items-center">
+            <span className="text-[#f2eee3] drop-shadow-sm font-mono tabular-nums">
+              {mmStr}
+            </span>
+            <span className="text-[10px] sm:text-xs md:text-sm uppercase tracking-widest text-slate-500 font-semibold mt-2 sm:mt-4">
+              Minutes
+            </span>
+          </div>
+
+          {/* Colon */}
+          <div className="text-slate-600 pb-5 sm:pb-8 text-[3rem] sm:text-[5rem] md:text-[7rem] font-light">
+            :
+          </div>
+
+          {/* Seconds (Highlighted vibrant orange with soft radial glow) */}
+          <div className="flex flex-col items-center relative">
+            <div className="absolute inset-0 bg-[#e9762b]/15 blur-2xl rounded-full pointer-events-none" />
+            <span className="text-[#e9762b] drop-shadow-[0_0_35px_rgba(233,118,43,0.35)] font-mono tabular-nums relative z-10">
+              {ssStr}
+            </span>
+            <span className="text-[10px] sm:text-xs md:text-sm uppercase tracking-widest text-[#e9762b]/80 font-semibold mt-2 sm:mt-4 relative z-10">
+              Seconds
+            </span>
           </div>
         </div>
 
-        {/* Big Minimal Controls */}
-        <div className="flex items-center gap-6 mt-10">
+        {/* Action Controls Row (Exact Screenshot 1 match) */}
+        <div className="flex items-center justify-center gap-2.5 sm:gap-3.5 mt-10 sm:mt-14 flex-wrap">
+          {/* Start / Pause */}
+          <button
+            onClick={timer.isRunning ? pauseTimer : startTimer}
+            className="flex items-center gap-2 px-6 sm:px-8 py-3 rounded-lg bg-[#e9762b] hover:bg-orange-500 text-black font-extrabold text-xs sm:text-sm uppercase tracking-wider transition shadow-lg shadow-orange-500/20 active:scale-95 cursor-pointer"
+          >
+            {timer.isRunning ? (
+              <>
+                <Pause className="w-4 h-4 fill-black text-black" />
+                <span>Pause</span>
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4 fill-black text-black" />
+                <span>Start</span>
+              </>
+            )}
+          </button>
+
+          {/* Reset */}
           <button
             onClick={resetTimer}
-            className="p-4 rounded-2xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition"
-            title={t.studyRoom.reset}
+            className="flex items-center gap-2 px-5 sm:px-6 py-3 rounded-lg bg-[#181817] hover:bg-[#222220] border border-white/10 hover:border-white/20 text-[#f2eee3] font-bold text-xs sm:text-sm uppercase tracking-wider transition active:scale-95 cursor-pointer"
           >
-            <RotateCcw className="w-6 h-6" />
+            <RotateCcw className="w-4 h-4 text-slate-400" />
+            <span>Reset</span>
           </button>
 
-          {timer.isRunning ? (
-            <button
-              onClick={pauseTimer}
-              className="p-6 rounded-3xl bg-[#e9762b] hover:brightness-110 text-slate-950 font-bold transition transform hover:scale-105 active:scale-95 shadow-xl shadow-orange-500/25"
-              title="Pause Timer (Space)"
-            >
-              <Pause className="w-8 h-8 fill-current" />
-            </button>
-          ) : (
-            <button
-              onClick={startTimer}
-              className="p-6 rounded-3xl bg-[#e9762b] hover:brightness-110 text-slate-950 font-bold transition transform hover:scale-105 active:scale-95 shadow-xl shadow-orange-500/25"
-              title="Start Timer (Space)"
-            >
-              <Play className="w-8 h-8 fill-current ml-0.5" />
-            </button>
-          )}
-
+          {/* Finish */}
           <button
-            onClick={handleComplete}
-            className="p-4 rounded-2xl bg-emerald-600/80 hover:bg-emerald-500 text-white border border-emerald-400/30 transition shadow-lg"
-            title={t.studyRoom.complete}
+            onClick={handleFinish}
+            className="flex items-center gap-2 px-5 sm:px-6 py-3 rounded-lg bg-[#111f18] hover:bg-[#14281e] border border-[#10b981]/40 text-[#10b981] font-bold text-xs sm:text-sm uppercase tracking-wider transition active:scale-95 cursor-pointer"
           >
-            <Check className="w-6 h-6" />
+            <Check className="w-4 h-4 text-[#10b981]" />
+            <span>Finish</span>
+          </button>
+
+          {/* Exit Focus Mode (Square Icon Button) */}
+          <button
+            onClick={() => setZenMode(false)}
+            className="p-3 rounded-lg bg-[#181817] hover:bg-[#222220] border border-white/10 hover:border-white/20 text-slate-300 hover:text-white transition active:scale-95 cursor-pointer"
+            title="Exit Focus Mode (Esc or Z)"
+          >
+            <Minimize2 className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Bottom Bar: Ambient sound switch & breathing prompt */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-white/5 pt-4">
-        <div className="flex items-center gap-2">
-          <Volume2 className="w-4 h-4 text-cyan-400" />
-          <div className="flex items-center gap-1.5">
-            {sounds.map((s) => (
-              <button
-                key={s.type}
-                onClick={() => setAmbientSound(s.type)}
-                className={`px-2.5 py-1 rounded-xl text-xs font-semibold transition ${
-                  ambientSound === s.type
-                    ? 'bg-cyan-500 text-slate-950'
-                    : 'bg-white/5 text-slate-400 hover:text-white'
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <p className="text-xs text-slate-500">
-          Inhale calm, exhale distraction. Deep uninterrupted focus.
-        </p>
-      </div>
-
-      {/* Rating modal in Zen mode */}
+      {/* Optional Rating Modal when clicking Finish in Focus Mode */}
       {showRatingModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-3xl p-6 sm:p-8 bg-[#0c0c0b] border border-indigo-500/30 shadow-2xl space-y-6">
-            <div className="text-center space-y-2">
-              <Sparkles className="w-8 h-8 text-indigo-400 mx-auto" />
-              <h3 className="text-xl font-extrabold text-white">
-                {t.studyRoom.ratingModalTitle}
-              </h3>
-              <p className="text-xs text-slate-400">
-                {t.studyRoom.ratingPrompt}
-              </p>
-            </div>
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#141413] border border-white/10 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl">
+            <h3 className="text-lg font-bold text-white uppercase tracking-wider mb-2">
+              Rate Focus Session
+            </h3>
+            <p className="text-xs text-slate-400 mb-6">
+              Rate your concentration level for this session.
+            </p>
 
-            <div className="flex items-center justify-center gap-2">
+            {/* 1-5 Rating Stars */}
+            <div className="flex items-center justify-center gap-2 mb-6">
               {[1, 2, 3, 4, 5].map((star) => (
                 <button
                   key={star}
                   type="button"
                   onClick={() => setRating(star)}
-                  className="p-2 transition transform hover:scale-125"
+                  className={`w-11 h-11 rounded-lg border flex items-center justify-center text-sm font-bold transition ${
+                    rating >= star
+                      ? 'bg-[#e9762b] text-black border-[#e9762b]'
+                      : 'bg-white/5 text-slate-400 border-white/10 hover:border-white/20'
+                  }`}
                 >
-                  <Star
-                    className={`w-7 h-7 ${
-                      rating >= star ? 'text-amber-400 fill-amber-400' : 'text-slate-600'
-                    }`}
-                  />
+                  {star}
                 </button>
               ))}
             </div>
 
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder={t.studyRoom.sessionNotesPlaceholder}
-              rows={3}
-              className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-xs text-white placeholder:text-slate-500 focus:outline-none"
-            />
+            {/* Notes */}
+            <div className="mb-6">
+              <label className="text-xs uppercase text-slate-400 font-bold block mb-2">
+                Session Note (optional)
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="What did you work on or learn?"
+                rows={3}
+                className="w-full bg-[#1c1c1a] border border-white/10 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-[#e9762b] transition"
+              />
+            </div>
 
-            <div className="flex items-center gap-3">
+            {/* Buttons */}
+            <div className="flex items-center justify-end gap-3">
               <button
+                type="button"
                 onClick={() => setShowRatingModal(false)}
-                className="flex-1 py-3 rounded-xl bg-slate-800 text-slate-300 font-bold text-xs"
+                className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-bold uppercase transition"
               >
-                {t.common.cancel}
+                Skip
               </button>
               <button
+                type="button"
                 onClick={handleSaveRating}
-                className="flex-1 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md"
+                className="px-5 py-2 rounded-lg bg-[#e9762b] text-black text-xs font-bold uppercase transition"
               >
-                {t.studyRoom.saveSession}
+                Save
               </button>
             </div>
           </div>
