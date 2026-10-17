@@ -142,20 +142,20 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
       {/* ======================================================== */}
       {/* 1. GREETING BANNER & QUICK LAUNCH HERO                   */}
       {/* ======================================================== */}
-      <div className="relative overflow-hidden rounded-3xl p-6 sm:p-8 bg-gradient-to-br from-indigo-950/70 via-slate-900/90 to-[#000000] border border-indigo-500/30 shadow-2xl shadow-indigo-950/50">
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 right-20 w-48 h-48 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
+      <div className="relative overflow-hidden rounded-3xl p-6 sm:p-8 bg-gradient-to-br from-orange-100/90 via-amber-50/80 to-orange-50/50 dark:from-indigo-950/70 dark:via-slate-900/90 dark:to-[#000000] border border-orange-200/80 dark:border-indigo-500/30 shadow-2xl shadow-orange-950/5 dark:shadow-indigo-950/50">
+        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 bg-orange-500/10 dark:bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 right-20 w-48 h-48 bg-amber-500/10 dark:bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2 max-w-xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-orange-500/15 dark:bg-indigo-500/20 text-orange-800 dark:text-indigo-300 border border-orange-500/30 dark:border-indigo-500/30">
+              <Sparkles className="w-3.5 h-3.5 text-orange-600 dark:text-indigo-400" />
               <span>{user.name}'s Focus Engine</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-stone-900 dark:text-white">
               {t.dashboard.greeting}
             </h1>
-            <p className="text-sm text-slate-300 leading-relaxed">
+            <p className="text-sm text-stone-600 dark:text-slate-300 leading-relaxed">
               {t.dashboard.subGreeting}
             </p>
           </div>
@@ -183,17 +183,17 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
         </div>
 
         {/* Motivational Quote pill inside hero */}
-        <div className="mt-6 pt-5 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-300">
+        <div className="mt-6 pt-5 border-t border-stone-200/80 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-stone-600 dark:text-slate-300">
           <div className="flex items-start gap-2.5">
-            <span className="text-indigo-400 font-bold mt-0.5">💡</span>
+            <span className="text-orange-600 dark:text-indigo-400 font-bold mt-0.5">💡</span>
             <div>
               <span className="italic">"{currentQuote.quote}"</span>
-              <span className="text-slate-400 ml-2 font-medium">— {currentQuote.author}</span>
+              <span className="text-stone-500 dark:text-slate-400 ml-2 font-medium">— {currentQuote.author}</span>
             </div>
           </div>
           <button
             onClick={() => setQuoteIdx((prev) => prev + 1)}
-            className="self-end sm:self-auto flex items-center gap-1 text-[11px] text-slate-400 hover:text-indigo-300 transition"
+            className="self-end sm:self-auto flex items-center gap-1 text-[11px] text-stone-500 dark:text-slate-400 hover:text-orange-700 dark:hover:text-indigo-300 transition"
             title="Next Motivation Tip"
           >
             <RefreshCw className="w-3 h-3" />
@@ -206,23 +206,23 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
       {/* 2. NEGLECTED SUBJECT ALERT BANNER (If Applicable)        */}
       {/* ======================================================== */}
       {primaryNeglected && (
-        <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 shadow-lg text-amber-200">
+        <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-500/15 dark:bg-amber-500/10 border border-amber-500/30 shadow-lg text-amber-950 dark:text-amber-200">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
-              <AlertTriangle className="w-5 h-5 text-amber-400" />
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider text-amber-400">
+              <p className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">
                 {t.dashboard.neglectedWarning}
               </p>
-              <p className="text-sm font-semibold text-amber-100">
+              <p className="text-sm font-semibold text-amber-950 dark:text-amber-100">
                 {t.analyticsHub.neglectedAlert(primaryNeglected.subject.name, primaryNeglected.daysSince)}
               </p>
             </div>
           </div>
           <button
             onClick={() => handleContinueStudying(primaryNeglected.subject.id)}
-            className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition shrink-0 ml-2"
+            className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs shadow-md transition shrink-0 ml-2"
           >
             {t.analyticsHub.studyNow}
           </button>
@@ -234,18 +234,18 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
       {/* ======================================================== */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Daily Target Progress Ring Card */}
-        <div className="md:col-span-2 rounded-3xl p-6 glass-panel border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl">
+        <div className="md:col-span-2 rounded-3xl p-6 glass-panel border border-stone-200/60 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl">
           <div className="space-y-3 text-center sm:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-              <Target className="w-3.5 h-3.5 text-indigo-400" />
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30">
+              <Target className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
               <span>{t.dashboard.dailyTarget}</span>
             </div>
             <div>
-              <div className="text-3xl sm:text-4xl font-extrabold text-white font-mono-numbers">
+              <div className="text-3xl sm:text-4xl font-extrabold text-stone-900 dark:text-white font-mono-numbers">
                 {(todayMinutes / 60).toFixed(1)}{' '}
-                <span className="text-slate-400 text-lg font-normal">/ {(targetMinutes / 60).toFixed(1)} hrs</span>
+                <span className="text-stone-500 dark:text-slate-400 text-lg font-normal">/ {(targetMinutes / 60).toFixed(1)} hrs</span>
               </div>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-stone-600 dark:text-slate-400 mt-1">
                 {todayMinutes >= targetMinutes
                   ? '🎉 Daily goal accomplished! Outstanding effort.'
                   : `${((targetMinutes - todayMinutes) / 60).toFixed(1)} hours remaining to reach today's target.`}
@@ -255,12 +255,12 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
             {/* Micro stats under progress */}
             <div className="flex items-center gap-4 pt-2">
               <div className="text-xs">
-                <span className="text-slate-400">Sessions Today: </span>
-                <span className="font-bold text-white">{todaySessions.length}</span>
+                <span className="text-stone-500 dark:text-slate-400">Sessions Today: </span>
+                <span className="font-bold text-stone-900 dark:text-white">{todaySessions.length}</span>
               </div>
               <div className="text-xs">
-                <span className="text-slate-400">Status: </span>
-                <span className="font-bold text-emerald-400">{progressPercent}% complete</span>
+                <span className="text-stone-500 dark:text-slate-400">Status: </span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">{progressPercent}% complete</span>
               </div>
             </div>
           </div>
@@ -270,7 +270,8 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
             <svg height={radius * 2} width={radius * 2} className="transform -rotate-90">
               {/* Background track circle */}
               <circle
-                stroke="rgba(255, 255, 255, 0.08)"
+                stroke="currentColor"
+                className="text-stone-300/60 dark:text-white/10"
                 fill="transparent"
                 strokeWidth={stroke}
                 r={normalizedRadius}
@@ -298,10 +299,10 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
               </defs>
             </svg>
             <div className="absolute flex flex-col items-center justify-center text-center">
-              <span className="text-2xl font-extrabold text-white font-mono-numbers">
+              <span className="text-2xl font-extrabold text-stone-900 dark:text-white font-mono-numbers">
                 {progressPercent}%
               </span>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+              <span className="text-[10px] text-stone-500 dark:text-slate-400 uppercase tracking-wider font-semibold">
                 Target
               </span>
             </div>
@@ -309,34 +310,34 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
         </div>
 
         {/* Streak Counter Card */}
-        <div className="rounded-3xl p-6 glass-panel border border-amber-500/20 flex flex-col justify-between shadow-xl relative overflow-hidden bg-gradient-to-br from-amber-950/20 via-slate-900 to-slate-900">
+        <div className="rounded-3xl p-6 glass-panel border border-amber-500/20 flex flex-col justify-between shadow-xl relative overflow-hidden bg-gradient-to-br from-amber-500/10 via-amber-100/30 to-stone-100/80 dark:from-amber-950/20 dark:via-slate-900 dark:to-slate-900">
           <div className="absolute top-0 right-0 -mr-6 -mt-6 w-28 h-28 bg-amber-500/10 rounded-full blur-xl pointer-events-none" />
 
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-              <Flame className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30">
+              <Flame className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 fill-amber-500 dark:fill-amber-400" />
               <span>{t.dashboard.streakCounter}</span>
             </div>
-            <span className="text-xs text-slate-400">Best: {user.longestStreak}d</span>
+            <span className="text-xs text-stone-500 dark:text-slate-400">Best: {user.longestStreak}d</span>
           </div>
 
           <div className="my-4">
             <div className="flex items-baseline gap-2">
-              <span className="text-4xl sm:text-5xl font-extrabold text-amber-200 font-mono-numbers">
+              <span className="text-4xl sm:text-5xl font-extrabold text-amber-600 dark:text-amber-200 font-mono-numbers">
                 {user.streakDays}
               </span>
-              <span className="text-sm font-bold text-amber-400 uppercase tracking-wide">
+              <span className="text-sm font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
                 {t.dashboard.streakDays}
               </span>
             </div>
-            <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+            <p className="text-xs text-stone-600 dark:text-slate-300 mt-2 leading-relaxed">
               Active fire! Study session logged today maintains streak integrity.
             </p>
           </div>
 
-          <div className="pt-3 border-t border-white/5 flex items-center justify-between text-xs text-slate-400">
+          <div className="pt-3 border-t border-stone-200/60 dark:border-white/5 flex items-center justify-between text-xs text-stone-500 dark:text-slate-400">
             <span>Streak Safeguard</span>
-            <span className="text-emerald-400 font-semibold">Active Protected</span>
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Active Protected</span>
           </div>
         </div>
       </div>
@@ -344,24 +345,24 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
       {/* ======================================================== */}
       {/* 4. TODAY'S TOP 3 PRIORITY TASKS                          */}
       {/* ======================================================== */}
-      <div className="rounded-3xl p-6 glass-panel border border-white/10 shadow-xl space-y-4">
+      <div className="rounded-3xl p-6 glass-panel border border-stone-200/60 dark:border-white/10 shadow-xl space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-indigo-500/20 flex items-center justify-center">
-              <CheckCircle2 className="w-4 h-4 text-indigo-400" />
+              <CheckCircle2 className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">
+              <h2 className="text-base font-bold text-stone-900 dark:text-white">
                 {t.dashboard.topTasks}
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-stone-500 dark:text-slate-400">
                 1-tap check-off directly from the dashboard
               </p>
             </div>
           </div>
           <button
             onClick={() => onNavigate('taskPlanner')}
-            className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition"
+            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1 transition"
           >
             <span>View All</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -369,8 +370,8 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
         </div>
 
         {topPriorityTasks.length === 0 ? (
-          <div className="text-center py-8 text-xs text-slate-400 bg-white/[0.02] rounded-2xl border border-white/5">
-            <Sparkles className="w-6 h-6 text-indigo-400 mx-auto mb-2" />
+          <div className="text-center py-8 text-xs text-stone-500 dark:text-slate-400 bg-black/[0.02] dark:bg-white/[0.02] rounded-2xl border border-stone-200/60 dark:border-white/5">
+            <Sparkles className="w-6 h-6 text-indigo-500 dark:text-indigo-400 mx-auto mb-2" />
             {t.dashboard.noTasksToday}
           </div>
         ) : (
@@ -380,21 +381,21 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
               return (
                 <div
                   key={task.id}
-                  className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-900/60 border border-white/5 hover:border-white/15 transition-all group"
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-stone-100/90 dark:bg-slate-900/60 border border-stone-200/80 dark:border-white/5 hover:border-stone-300 dark:hover:border-white/15 transition-all group"
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
                     <button
                       onClick={() => toggleTask(task.id)}
-                      className="text-slate-400 hover:text-emerald-400 transition transform hover:scale-110 shrink-0"
+                      className="text-stone-400 dark:text-slate-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition transform hover:scale-110 shrink-0"
                     >
                       {task.completed ? (
-                        <CheckCircle2 className="w-5 h-5 text-emerald-400 fill-emerald-400/20" />
+                        <CheckCircle2 className="w-5 h-5 text-emerald-500 dark:text-emerald-400 fill-emerald-500/20" />
                       ) : (
                         <Circle className="w-5 h-5" />
                       )}
                     </button>
                     <div className="min-w-0">
-                      <p className={`text-sm font-medium truncate ${task.completed ? 'line-through text-slate-500' : 'text-slate-200'}`}>
+                      <p className={`text-sm font-medium truncate ${task.completed ? 'line-through text-stone-400 dark:text-slate-500' : 'text-stone-800 dark:text-slate-200'}`}>
                         {task.title}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
@@ -407,10 +408,10 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
                           </span>
                         )}
                         <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full uppercase ${task.priority === 'high'
-                            ? 'bg-rose-500/20 text-rose-300'
+                            ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300'
                             : task.priority === 'med'
-                              ? 'bg-amber-500/20 text-amber-300'
-                              : 'bg-emerald-500/20 text-emerald-300'
+                              ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+                              : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
                           }`}>
                           {task.priority}
                         </span>
@@ -425,7 +426,7 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
                       startTimer();
                       onNavigate('studyRoom');
                     }}
-                    className="opacity-80 group-hover:opacity-100 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white text-xs font-semibold transition shrink-0 ml-2"
+                    className="opacity-80 group-hover:opacity-100 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/15 dark:bg-indigo-600/20 hover:bg-indigo-600 text-indigo-700 dark:text-indigo-300 hover:text-white text-xs font-semibold transition shrink-0 ml-2"
                   >
                     <Play className="w-3 h-3 fill-current" />
                     <span className="hidden sm:inline">Start Timer</span>
@@ -442,57 +443,57 @@ export const DashboardScreen: React.FC<DashboardScreenProps> = ({ onNavigate }) 
       {/* ======================================================== */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Today */}
-        <div className="p-4 rounded-2xl glass-panel border border-white/5 space-y-1">
-          <div className="flex items-center justify-between text-slate-400">
+        <div className="p-4 rounded-2xl glass-panel border border-stone-200/60 dark:border-white/5 space-y-1">
+          <div className="flex items-center justify-between text-stone-500 dark:text-slate-400">
             <span className="text-xs font-medium">{t.dashboard.statsTotalToday}</span>
-            <Clock className="w-4 h-4 text-indigo-400" />
+            <Clock className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
           </div>
-          <div className="text-xl sm:text-2xl font-extrabold text-white font-mono-numbers">
+          <div className="text-xl sm:text-2xl font-extrabold text-stone-900 dark:text-white font-mono-numbers">
             {(todayMinutes / 60).toFixed(1)}h
           </div>
-          <p className="text-[11px] text-emerald-400 font-medium">
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
             {todaySessions.length} logged sessions
           </p>
         </div>
 
         {/* This Week */}
-        <div className="p-4 rounded-2xl glass-panel border border-white/5 space-y-1">
-          <div className="flex items-center justify-between text-slate-400">
+        <div className="p-4 rounded-2xl glass-panel border border-stone-200/60 dark:border-white/5 space-y-1">
+          <div className="flex items-center justify-between text-stone-500 dark:text-slate-400">
             <span className="text-xs font-medium">{t.dashboard.statsWeekTotal}</span>
-            <TrendingUp className="w-4 h-4 text-cyan-400" />
+            <TrendingUp className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
           </div>
-          <div className="text-xl sm:text-2xl font-extrabold text-white font-mono-numbers">
+          <div className="text-xl sm:text-2xl font-extrabold text-stone-900 dark:text-white font-mono-numbers">
             {(weekMinutes / 60).toFixed(1)}h
           </div>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-stone-500 dark:text-slate-400">
             Avg: {(weekMinutes / 7 / 60).toFixed(1)}h / day
           </p>
         </div>
 
         {/* Tasks Finished */}
-        <div className="p-4 rounded-2xl glass-panel border border-white/5 space-y-1">
-          <div className="flex items-center justify-between text-slate-400">
+        <div className="p-4 rounded-2xl glass-panel border border-stone-200/60 dark:border-white/5 space-y-1">
+          <div className="flex items-center justify-between text-stone-500 dark:text-slate-400">
             <span className="text-xs font-medium">{t.dashboard.statsTasksDone}</span>
-            <Award className="w-4 h-4 text-amber-400" />
+            <Award className="w-4 h-4 text-amber-500 dark:text-amber-400" />
           </div>
-          <div className="text-xl sm:text-2xl font-extrabold text-white font-mono-numbers">
+          <div className="text-xl sm:text-2xl font-extrabold text-stone-900 dark:text-white font-mono-numbers">
             {tasks.filter((t) => t.completed).length}
           </div>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-stone-500 dark:text-slate-400">
             {tasks.filter((t) => !t.completed).length} remaining
           </p>
         </div>
 
         {/* Syllabus Covered */}
-        <div className="p-4 rounded-2xl glass-panel border border-white/5 space-y-1">
-          <div className="flex items-center justify-between text-slate-400">
+        <div className="p-4 rounded-2xl glass-panel border border-stone-200/60 dark:border-white/5 space-y-1">
+          <div className="flex items-center justify-between text-stone-500 dark:text-slate-400">
             <span className="text-xs font-medium">{t.dashboard.statsSyllabusProgress}</span>
-            <BookOpen className="w-4 h-4 text-emerald-400" />
+            <BookOpen className="w-4 h-4 text-emerald-500 dark:text-emerald-400" />
           </div>
-          <div className="text-xl sm:text-2xl font-extrabold text-white font-mono-numbers">
+          <div className="text-xl sm:text-2xl font-extrabold text-stone-900 dark:text-white font-mono-numbers">
             {syllabusPercent}%
           </div>
-          <p className="text-[11px] text-emerald-400">
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
             {completedTopics}/{totalTopics} topics mastered
           </p>
         </div>

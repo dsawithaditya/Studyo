@@ -128,7 +128,7 @@ export const StudyRoomScreen: React.FC = () => {
             className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
               timer.mode === 'pomodoro'
                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30'
-                : 'bg-slate-800/80 text-slate-400 hover:text-white'
+                : 'bg-stone-200/90 dark:bg-slate-800/80 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white border border-stone-300/60 dark:border-white/5'
             }`}
           >
             {t.studyRoom.pomodoro}
@@ -138,7 +138,7 @@ export const StudyRoomScreen: React.FC = () => {
             className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
               timer.mode === 'short_break'
                 ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
-                : 'bg-slate-800/80 text-slate-400 hover:text-white'
+                : 'bg-stone-200/90 dark:bg-slate-800/80 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white border border-stone-300/60 dark:border-white/5'
             }`}
           >
             {t.studyRoom.shortBreak}
@@ -148,7 +148,7 @@ export const StudyRoomScreen: React.FC = () => {
             className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
               timer.mode === 'long_break'
                 ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
-                : 'bg-slate-800/80 text-slate-400 hover:text-white'
+                : 'bg-stone-200/90 dark:bg-slate-800/80 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white border border-stone-300/60 dark:border-white/5'
             }`}
           >
             {t.studyRoom.longBreak}
@@ -158,7 +158,7 @@ export const StudyRoomScreen: React.FC = () => {
             className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
               timer.mode === 'stopwatch'
                 ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/30'
-                : 'bg-slate-800/80 text-slate-400 hover:text-white'
+                : 'bg-stone-200/90 dark:bg-slate-800/80 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white border border-stone-300/60 dark:border-white/5'
             }`}
           >
             {t.studyRoom.stopwatch}
@@ -168,11 +168,11 @@ export const StudyRoomScreen: React.FC = () => {
         {/* Subject & Chapter selector dropdowns */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 hidden lg:inline font-medium">Subject:</span>
+            <span className="text-xs text-stone-600 dark:text-slate-400 hidden lg:inline font-medium">Subject:</span>
             <select
               value={timer.activeSubjectId}
               onChange={(e) => setActiveSubject(e.target.value)}
-              className="bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 shadow-inner"
+              className="bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-stone-900 dark:text-white focus:outline-none focus:border-indigo-500 shadow-inner"
             >
               {subjects.map((subj) => (
                 <option key={subj.id} value={subj.id}>
@@ -186,7 +186,7 @@ export const StudyRoomScreen: React.FC = () => {
             <select
               value={timer.activeChapterId || ''}
               onChange={(e) => setActiveSubject(timer.activeSubjectId, e.target.value || undefined)}
-              className="bg-slate-900 border border-white/10 rounded-xl px-3 py-2 text-xs font-medium text-slate-300 focus:outline-none focus:border-indigo-500 shadow-inner max-w-[220px] truncate"
+              className="bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-medium text-stone-800 dark:text-slate-300 focus:outline-none focus:border-indigo-500 shadow-inner max-w-[220px] truncate"
             >
               <option value="">{t.studyRoom.noChapter}</option>
               {chapters.map((ch) => (
@@ -200,7 +200,7 @@ export const StudyRoomScreen: React.FC = () => {
           {/* Zen Mode Button */}
           <button
             onClick={() => setZenMode(true)}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-xs font-bold transition shadow-sm"
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 text-xs font-bold transition shadow-sm"
             title="Launch Fullscreen Zen Mode"
           >
             <Maximize2 className="w-3.5 h-3.5" />
@@ -212,7 +212,7 @@ export const StudyRoomScreen: React.FC = () => {
       {/* ======================================================== */}
       {/* 2. THE FOCUS ENGINE TIMER DISPLAY                        */}
       {/* ======================================================== */}
-      <div className="relative rounded-3xl p-8 sm:p-12 glass-panel border border-white/10 shadow-2xl flex flex-col items-center justify-center overflow-hidden">
+      <div className="relative rounded-3xl p-8 sm:p-12 glass-panel border border-stone-200/60 dark:border-white/10 shadow-2xl flex flex-col items-center justify-center overflow-hidden">
         {/* Ambient background glow according to active subject color */}
         <div 
           className="absolute w-96 h-96 rounded-full blur-3xl opacity-20 pointer-events-none transition-all duration-700"
@@ -231,7 +231,7 @@ export const StudyRoomScreen: React.FC = () => {
             <BookOpen className="w-3.5 h-3.5" />
             <span>{activeSubject?.name}</span>
           </div>
-          <h2 className="text-sm sm:text-base font-semibold text-slate-300 max-w-md truncate">
+          <h2 className="text-sm sm:text-base font-semibold text-stone-700 dark:text-slate-300 max-w-md truncate">
             {activeChapter ? activeChapter.title : t.studyRoom.noChapter}
           </h2>
         </div>
@@ -250,7 +250,7 @@ export const StudyRoomScreen: React.FC = () => {
               cx="50"
               cy="50"
               r="44"
-              className="text-slate-800/80 stroke-current"
+              className="text-stone-300/60 dark:text-slate-800/80 stroke-current"
               strokeWidth="4"
               fill="transparent"
             />
@@ -272,15 +272,15 @@ export const StudyRoomScreen: React.FC = () => {
 
           {/* Inner Content Display */}
           <div className="relative flex flex-col items-center justify-center text-center">
-            <span className="text-5xl sm:text-6xl font-extrabold tracking-tight text-white font-mono-numbers drop-shadow-md">
+            <span className="text-5xl sm:text-6xl font-extrabold tracking-tight text-stone-900 dark:text-white font-mono-numbers drop-shadow-md">
               {formattedTime}
             </span>
-            <span className="text-xs font-bold uppercase tracking-widest text-slate-400 mt-2">
+            <span className="text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-slate-400 mt-2">
               {timer.mode.replace('_', ' ')}
             </span>
             {timer.isRunning && (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 mt-1">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 mt-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-ping" />
                 Deep Focus Active
               </span>
             )}
@@ -292,7 +292,7 @@ export const StudyRoomScreen: React.FC = () => {
           {/* Reset */}
           <button
             onClick={resetTimer}
-            className="p-3.5 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white border border-white/10 transition shadow-md"
+            className="p-3.5 rounded-2xl bg-stone-200/90 dark:bg-slate-800/80 hover:bg-stone-300 dark:hover:bg-slate-700/80 text-stone-700 dark:text-slate-300 hover:text-black dark:hover:text-white border border-stone-300/80 dark:border-white/10 transition shadow-md"
             title={t.studyRoom.reset}
           >
             <RotateCcw className="w-5 h-5" />
@@ -334,23 +334,23 @@ export const StudyRoomScreen: React.FC = () => {
       {/* ======================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Ambient Sound Hook */}
-        <div className="p-6 rounded-3xl glass-panel border border-white/10 shadow-xl space-y-4">
+        <div className="p-6 rounded-3xl glass-panel border border-stone-200/60 dark:border-white/10 shadow-xl space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-cyan-500/20 flex items-center justify-center">
-                <Volume2 className="w-4 h-4 text-cyan-400" />
+                <Volume2 className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white">
+                <h3 className="text-sm font-bold text-stone-900 dark:text-white">
                   {t.studyRoom.ambientSound}
                 </h3>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-stone-500 dark:text-slate-400">
                   Synthesized via Web Audio API (100% offline, zero buffering)
                 </p>
               </div>
             </div>
             {ambientSound !== 'off' && (
-              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/30">
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan-700 dark:text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/30">
                 Playing
               </span>
             )}
@@ -364,13 +364,13 @@ export const StudyRoomScreen: React.FC = () => {
                 onClick={() => setAmbientSound(item.type)}
                 className={`px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all text-left flex items-center justify-between ${
                   ambientSound === item.type
-                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 shadow-md shadow-cyan-500/10'
-                    : 'bg-slate-900/60 border-white/5 text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                    ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-800 dark:text-cyan-200 shadow-md shadow-cyan-500/10'
+                    : 'bg-stone-100/90 dark:bg-slate-900/60 border-stone-200 dark:border-white/5 text-stone-700 dark:text-slate-300 hover:bg-stone-200 dark:hover:bg-slate-800/80 hover:text-black dark:hover:text-white'
                 }`}
               >
                 <span>{item.label}</span>
                 {ambientSound === item.type && (
-                  <span className="w-2 h-2 rounded-full bg-cyan-400" />
+                  <span className="w-2 h-2 rounded-full bg-cyan-500 dark:bg-cyan-400" />
                 )}
               </button>
             ))}
@@ -379,7 +379,7 @@ export const StudyRoomScreen: React.FC = () => {
           {/* Volume Slider */}
           {ambientSound !== 'off' && (
             <div className="pt-2 flex items-center gap-3">
-              <span className="text-xs text-slate-400 font-medium">Volume:</span>
+              <span className="text-xs text-stone-600 dark:text-slate-400 font-medium">Volume:</span>
               <input
                 type="range"
                 min="0"
@@ -387,9 +387,9 @@ export const StudyRoomScreen: React.FC = () => {
                 step="0.05"
                 value={ambientVolume}
                 onChange={(e) => setAmbientVolume(parseFloat(e.target.value))}
-                className="w-full accent-cyan-500 cursor-pointer h-1.5 bg-slate-800 rounded-lg"
+                className="w-full accent-[#e9762b] cursor-pointer h-1.5 bg-stone-200 dark:bg-slate-800 rounded-lg"
               />
-              <span className="text-xs font-mono-numbers text-slate-300 w-8">
+              <span className="text-xs font-mono-numbers text-stone-800 dark:text-slate-300 w-8">
                 {Math.round(ambientVolume * 100)}%
               </span>
             </div>
@@ -397,17 +397,17 @@ export const StudyRoomScreen: React.FC = () => {
         </div>
 
         {/* Distraction Quick-Scratchpad */}
-        <div className="p-6 rounded-3xl glass-panel border border-white/10 shadow-xl space-y-4">
+        <div className="p-6 rounded-3xl glass-panel border border-stone-200/60 dark:border-white/10 shadow-xl space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-indigo-500/20 flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-indigo-400" />
+                <Sparkles className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white">
+                <h3 className="text-sm font-bold text-stone-900 dark:text-white">
                   {t.studyRoom.scratchpadTitle}
                 </h3>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-stone-500 dark:text-slate-400">
                   {t.studyRoom.scratchpadHint}
                 </p>
               </div>
@@ -421,7 +421,7 @@ export const StudyRoomScreen: React.FC = () => {
               value={scratchpadInput}
               onChange={(e) => setScratchpadInput(e.target.value)}
               placeholder={t.studyRoom.scratchpadPlaceholder}
-              className="flex-1 bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 shadow-inner"
+              className="flex-1 bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white placeholder:text-stone-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500 shadow-inner"
             />
             <button
               type="submit"
@@ -434,30 +434,30 @@ export const StudyRoomScreen: React.FC = () => {
           {/* List of captured thoughts */}
           <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
             {distractionNotes.length === 0 ? (
-              <p className="text-center py-4 text-xs text-slate-500 italic">
+              <p className="text-center py-4 text-xs text-stone-500 dark:text-slate-500 italic">
                 No distractions logged. Mind is sharp and clear.
               </p>
             ) : (
               distractionNotes.map((note) => (
                 <div
                   key={note.id}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/60 border border-white/5 text-xs text-slate-300"
+                  className="flex items-center justify-between p-2.5 rounded-xl bg-stone-100/90 dark:bg-slate-900/60 border border-stone-200 dark:border-white/5 text-xs text-stone-800 dark:text-slate-300"
                 >
                   <div className="min-w-0 pr-2">
                     <p className="truncate font-medium">{note.text}</p>
-                    <span className="text-[10px] text-slate-500 font-mono-numbers">{note.timestamp}</span>
+                    <span className="text-[10px] text-stone-500 dark:text-slate-500 font-mono-numbers">{note.timestamp}</span>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={() => convertDistractionToTask(note.id, activeSubject.id)}
-                      className="p-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/25 text-indigo-300 transition"
+                      className="p-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/25 text-indigo-700 dark:text-indigo-300 transition"
                       title={t.studyRoom.convertToTask}
                     >
                       <CheckSquare className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => deleteDistraction(note.id)}
-                      className="p-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-300 transition"
+                      className="p-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/25 text-rose-600 dark:text-rose-300 transition"
                       title="Dismiss"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -477,13 +477,13 @@ export const StudyRoomScreen: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-md rounded-3xl p-6 sm:p-8 glass-modal shadow-2xl space-y-6">
             <div className="text-center space-y-2">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto shadow-inner">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-500 dark:text-indigo-400 flex items-center justify-center mx-auto shadow-inner">
                 <Sparkles className="w-6 h-6" />
               </div>
-              <h3 className="text-xl font-extrabold text-white">
+              <h3 className="text-xl font-extrabold text-stone-900 dark:text-white">
                 {t.studyRoom.ratingModalTitle}
               </h3>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-stone-500 dark:text-slate-400">
                 {t.studyRoom.ratingPrompt}
               </p>
             </div>
@@ -501,21 +501,21 @@ export const StudyRoomScreen: React.FC = () => {
                     <Star
                       className={`w-7 h-7 sm:w-8 sm:h-8 transition ${
                         rating >= star
-                          ? 'text-amber-400 fill-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]'
-                          : 'text-slate-600'
+                          ? 'text-amber-500 fill-amber-500 dark:text-amber-400 dark:fill-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.5)]'
+                          : 'text-stone-300 dark:text-slate-600'
                       }`}
                     />
                   </button>
                 ))}
               </div>
-              <span className="text-xs font-bold text-amber-300">
+              <span className="text-xs font-bold text-amber-600 dark:text-amber-300">
                 {t.studyRoom.ratingLabels[rating - 1]}
               </span>
             </div>
 
             {/* Session reflection notes */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              <label className="block text-xs font-semibold text-stone-700 dark:text-slate-300 mb-1.5">
                 Quick Session Reflection:
               </label>
               <textarea
@@ -523,7 +523,7 @@ export const StudyRoomScreen: React.FC = () => {
                 onChange={(e) => setSessionNotes(e.target.value)}
                 placeholder={t.studyRoom.sessionNotesPlaceholder}
                 rows={3}
-                className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl p-3 text-xs text-stone-900 dark:text-white placeholder:text-stone-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
               />
             </div>
 
@@ -531,7 +531,7 @@ export const StudyRoomScreen: React.FC = () => {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setShowRatingModal(false)}
-                className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition"
+                className="flex-1 py-3 rounded-xl bg-stone-200 hover:bg-stone-300 text-stone-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 font-bold text-xs transition"
               >
                 {t.common.cancel}
               </button>

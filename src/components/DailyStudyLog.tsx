@@ -1,7 +1,14 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { useStudyStore, INITIAL_DAILY_LOGS } from '../store/useStudyStore';
-import { DailyLogEntry, CustomColumn, CustomColumnType } from '../types';
+import { 
+  useStudyStore, 
+  INITIAL_DAILY_LOGS, 
+  getLocalTodayDateString, 
+  ensureDailyLogsDateWise 
+} from '../store/useStudyStore';
+import { DailyLogEntry, CustomColumn, CustomColumnType, CustomTableColumnType } from '../types';
 import { ShinyButton } from './ui/shiny-button';
+import { YesNoToggle } from './ui/YesNoToggle';
+import { CustomStudyTableView } from './CustomStudyTableView';
 import {
   Plus,
   Check,
@@ -20,7 +27,10 @@ import {
   Type,
   List,
   ArrowLeft,
-  ArrowRight
+  ArrowRight,
+  Table2,
+  Layers,
+  BookOpen
 } from 'lucide-react';
 
 export const DailyStudyLog: React.FC = () => {
@@ -28,31 +38,38 @@ export const DailyStudyLog: React.FC = () => {
   const tableSectionRef = useRef<HTMLDivElement>(null);
   const {
     dailyLogs: rawLogs,
+    ensureTodayDailyLog,
     addOrUpdateDailyLog,
     updateDailyLogField,
     deleteDailyLog,
-    customColumns: rawCustomCols,
+    customColumns,
     addCustomColumn,
     updateCustomColumn,
     deleteCustomColumn,
     reorderCustomColumns,
     updateDailyLogCustomField,
+    customTables,
+    activeTableId,
+    setActiveTableId,
+    addCustomTable,
   } = useStudyStore();
 
+  const todayStr = getLocalTodayDateString();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayYear = yesterday.getFullYear();
+  const yesterdayMonth = String(yesterday.getMonth() + 1).padStart(2, '0');
+  const yesterdayDay = String(yesterday.getDate()).padStart(2, '0');
+  const yesterdayStr = `${yesterdayYear}-${yesterdayMonth}-${yesterdayDay}`;
+
   const dailyLogs = useMemo(
-    () => (Array.isArray(rawLogs) && rawLogs.length > 0 ? rawLogs : INITIAL_DAILY_LOGS),
+    () => ensureDailyLogsDateWise(Array.isArray(rawLogs) && rawLogs.length > 0 ? rawLogs : INITIAL_DAILY_LOGS),
     [rawLogs]
   );
 
-  const customColumns = useMemo(
-    () => (Array.isArray(rawCustomCols) ? rawCustomCols : []),
-    [rawCustomCols]
-  );
-
-  const todayStr = new Date().toISOString().split('T')[0];
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  useEffect(() => {
+    ensureTodayDailyLog();
+  }, [ensureTodayDailyLog]);
 
   // UI state
   const [enableTopForm, setEnableTopForm] = useState(false); // By-default disabled per user request!
@@ -117,28 +134,89 @@ export const DailyStudyLog: React.FC = () => {
   const [selectedMonthYear, setSelectedMonthYear] = useState<string>('all');
   const [visibleLimit, setVisibleLimit] = useState<number>(20);
 
+  // Custom Tables Create Modal state
+  const [showCreateTableModal, setShowCreateTableModal] = useState(false);
+  const [newTableTitle, setNewTableTitle] = useState('');
+  const [newTableDesc, setNewTableDesc] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState<'mock' | 'pyq' | 'habits' | 'blank'>('mock');
+
+  const activeCustomTable = useMemo(() => {
+    return (customTables || []).find((t) => t.id === activeTableId);
+  }, [customTables, activeTableId]);
+
+  const handleCreateTable = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTableTitle.trim()) return;
+
+    let initialCols: Array<{ name: string; type: CustomTableColumnType; unit?: string; options?: string[] }> = [];
+
+    if (selectedTemplate === 'mock') {
+      initialCols = [
+        { name: 'PAPER', type: 'text' },
+        { name: 'SCORE', type: 'number' },
+        { name: 'TOTAL', type: 'number' },
+        { name: 'ACCURACY', type: 'number', unit: '%' },
+        { name: 'DIFFICULTY', type: 'select', options: ['High', 'Normal', 'Low'] },
+        { name: 'ANALYZED', type: 'boolean' },
+      ];
+    } else if (selectedTemplate === 'pyq') {
+      initialCols = [
+        { name: 'TOPIC', type: 'text' },
+        { name: 'SOLVED', type: 'number' },
+        { name: 'TIME', type: 'number', unit: 'm' },
+        { name: 'RATING', type: 'rating' },
+        { name: 'CLEARED', type: 'boolean' },
+      ];
+    } else if (selectedTemplate === 'habits') {
+      initialCols = [
+        { name: 'WATER', type: 'number', unit: 'L' },
+        { name: 'WORKOUT', type: 'boolean' },
+        { name: 'ENERGY', type: 'select', options: ['High', 'Normal', 'Low'] },
+        { name: 'SLEEP', type: 'number', unit: 'h' },
+        { name: 'FOCUS', type: 'rating' },
+      ];
+    } else {
+      initialCols = [
+        { name: 'ITEM', type: 'text' },
+        { name: 'DONE', type: 'boolean' },
+      ];
+    }
+
+    const createdId = addCustomTable({
+      title: newTableTitle.trim(),
+      description: newTableDesc.trim(),
+      columns: initialCols,
+    });
+
+    setNewTableTitle('');
+    setNewTableDesc('');
+    setSelectedTemplate('mock');
+    setShowCreateTableModal(false);
+    setActiveTableId(createdId);
+  };
+
   // Form State
   const [formDate, setFormDate] = useState(todayStr);
-  const [studyHours, setStudyHours] = useState<number>(0);
-  const [attendedClass, setAttendedClass] = useState<boolean>(true);
-  const [pyqsSolved, setPyqsSolved] = useState<number>(0);
+  const [studyHours, setStudyHours] = useState<number | ''>('');
+  const [attendedClass, setAttendedClass] = useState<boolean>(false);
+  const [pyqsSolved, setPyqsSolved] = useState<number | ''>('');
   const [revisionDone, setRevisionDone] = useState<boolean>(false);
   const [mockTestTaken, setMockTestTaken] = useState<boolean>(false);
-  const [sleepHours, setSleepHours] = useState<number>(7);
-  const [focusRating, setFocusRating] = useState<number>(4);
+  const [sleepHours, setSleepHours] = useState<number | ''>('');
+  const [focusRating, setFocusRating] = useState<number | null>(null);
   const [notes, setNotes] = useState<string>('');
   const [formCustomData, setFormCustomData] = useState<Record<string, any>>({});
 
   // Accordion editing state for "expand in place"
   const [accordionState, setAccordionState] = useState<{
     date: string;
-    studyHours: number;
+    studyHours: number | '';
     attendedClass: boolean;
-    pyqsSolved: number;
+    pyqsSolved: number | '';
     revisionDone: boolean;
     mockTestTaken: boolean;
-    sleepHours: number;
-    focusRating: number;
+    sleepHours: number | '';
+    focusRating: number | null;
     notes: string;
     customData: Record<string, any>;
   } | null>(null);
@@ -161,23 +239,23 @@ export const DailyStudyLog: React.FC = () => {
 
     setFormDate(d);
     if (existing) {
-      setStudyHours(existing.studyHours);
-      setAttendedClass(existing.attendedClass);
-      setPyqsSolved(existing.pyqsSolved);
-      setRevisionDone(existing.revisionDone);
-      setMockTestTaken(existing.mockTestTaken);
-      setSleepHours(existing.sleepHours);
-      setFocusRating(existing.focusRating);
+      setStudyHours(existing.studyHours != null && existing.studyHours > 0 ? existing.studyHours : '');
+      setAttendedClass(existing.attendedClass ?? false);
+      setPyqsSolved(existing.pyqsSolved != null && existing.pyqsSolved > 0 ? existing.pyqsSolved : '');
+      setRevisionDone(existing.revisionDone ?? false);
+      setMockTestTaken(existing.mockTestTaken ?? false);
+      setSleepHours(existing.sleepHours != null && existing.sleepHours > 0 ? existing.sleepHours : '');
+      setFocusRating(existing.focusRating && existing.focusRating > 0 ? existing.focusRating : null);
       setNotes(existing.notes || '');
       setFormCustomData({ ...(existing.customData || {}) });
     } else {
-      setStudyHours(0);
-      setAttendedClass(true);
-      setPyqsSolved(0);
+      setStudyHours('');
+      setAttendedClass(false);
+      setPyqsSolved('');
       setRevisionDone(false);
       setMockTestTaken(false);
-      setSleepHours(7);
-      setFocusRating(4);
+      setSleepHours('');
+      setFocusRating(null);
       setNotes('');
       setFormCustomData({});
     }
@@ -215,13 +293,13 @@ export const DailyStudyLog: React.FC = () => {
       setExpandedDate(entry.date);
       setAccordionState({
         date: entry.date,
-        studyHours: entry.studyHours,
-        attendedClass: entry.attendedClass,
-        pyqsSolved: entry.pyqsSolved,
-        revisionDone: entry.revisionDone,
-        mockTestTaken: entry.mockTestTaken,
-        sleepHours: entry.sleepHours,
-        focusRating: entry.focusRating,
+        studyHours: entry.studyHours != null && entry.studyHours > 0 ? entry.studyHours : '',
+        attendedClass: entry.attendedClass ?? false,
+        pyqsSolved: entry.pyqsSolved != null && entry.pyqsSolved > 0 ? entry.pyqsSolved : '',
+        revisionDone: entry.revisionDone ?? false,
+        mockTestTaken: entry.mockTestTaken ?? false,
+        sleepHours: entry.sleepHours != null && entry.sleepHours > 0 ? entry.sleepHours : '',
+        focusRating: entry.focusRating && entry.focusRating > 0 ? entry.focusRating : null,
         notes: entry.notes || '',
         customData: { ...(entry.customData || {}) },
       });
@@ -277,11 +355,20 @@ export const DailyStudyLog: React.FC = () => {
       });
   }, [dailyLogs]);
 
-  // Filter logs based on Month/Year selection
+  // Filter logs based on Month/Year / Last 30 Days selection
   const filteredDailyLogs = useMemo(() => {
     if (selectedMonthYear === 'all') return dailyLogs;
+    if (selectedMonthYear === 'last30') {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      const y = cutoff.getFullYear();
+      const m = String(cutoff.getMonth() + 1).padStart(2, '0');
+      const d = String(cutoff.getDate()).padStart(2, '0');
+      const cutoffStr = `${y}-${m}-${d}`;
+      return dailyLogs.filter((l) => l.date >= cutoffStr && l.date <= todayStr);
+    }
     return dailyLogs.filter((l) => l.date.startsWith(selectedMonthYear));
-  }, [dailyLogs, selectedMonthYear]);
+  }, [dailyLogs, selectedMonthYear, todayStr]);
 
   // Paginated/Chunked visible logs
   const visibleLogs = filteredDailyLogs.slice(0, visibleLimit);
@@ -300,13 +387,13 @@ export const DailyStudyLog: React.FC = () => {
     e.preventDefault();
     const newEntry: DailyLogEntry = {
       date: formDate,
-      studyHours: Number(studyHours) || 0,
+      studyHours: studyHours === '' ? null : Math.max(0, Number(studyHours)),
       attendedClass,
-      pyqsSolved: Number(pyqsSolved) || 0,
+      pyqsSolved: pyqsSolved === '' ? null : Math.max(0, Number(pyqsSolved)),
       revisionDone,
       mockTestTaken,
-      sleepHours: Number(sleepHours) || 0,
-      focusRating,
+      sleepHours: sleepHours === '' ? null : Math.max(0, Number(sleepHours)),
+      focusRating: focusRating ?? null,
       notes: notes.trim(),
       customData: formCustomData,
     };
@@ -317,17 +404,17 @@ export const DailyStudyLog: React.FC = () => {
   // Save accordion full day edits
   const handleSaveAccordion = (date: string) => {
     if (!accordionState) return;
-    updateDailyLogField(date, 'studyHours', Number(accordionState.studyHours) || 0);
+    updateDailyLogField(date, 'studyHours', accordionState.studyHours === '' ? null : Math.max(0, Number(accordionState.studyHours)));
     updateDailyLogField(date, 'attendedClass', accordionState.attendedClass);
-    updateDailyLogField(date, 'pyqsSolved', Number(accordionState.pyqsSolved) || 0);
+    updateDailyLogField(date, 'pyqsSolved', accordionState.pyqsSolved === '' ? null : Math.max(0, Number(accordionState.pyqsSolved)));
     updateDailyLogField(date, 'revisionDone', accordionState.revisionDone);
     updateDailyLogField(date, 'mockTestTaken', accordionState.mockTestTaken);
-    updateDailyLogField(date, 'sleepHours', Number(accordionState.sleepHours) || 0);
-    updateDailyLogField(date, 'focusRating', accordionState.focusRating);
-    updateDailyLogField(date, 'notes', accordionState.notes);
+    updateDailyLogField(date, 'sleepHours', accordionState.sleepHours === '' ? null : Math.max(0, Number(accordionState.sleepHours)));
+    updateDailyLogField(date, 'focusRating', accordionState.focusRating ?? null);
+    updateDailyLogField(date, 'notes', accordionState.notes.trim());
     if (accordionState.customData) {
       Object.entries(accordionState.customData).forEach(([colId, val]) => {
-        updateDailyLogCustomField(date, colId, val);
+        updateDailyLogCustomField(date, colId, val === '' ? null : val);
       });
     }
     setExpandedDate(null);
@@ -405,132 +492,81 @@ export const DailyStudyLog: React.FC = () => {
     }
   };
 
-  // Summary Metrics calculations
-  // 1. Current streak: consecutive days logged ending today or yesterday
-  const sortedDates = [...new Set(dailyLogs.map((l) => l.date))].sort().reverse();
-  let currentStreak = 0;
-  if (sortedDates.length > 0) {
-    const d = new Date();
-    const today = d.toISOString().split('T')[0];
-    d.setDate(d.getDate() - 1);
-    const yest = d.toISOString().split('T')[0];
-
-    let checkDate = sortedDates.includes(today) ? new Date() : sortedDates.includes(yest) ? d : null;
-    if (checkDate) {
-      while (true) {
-        const ds = checkDate.toISOString().split('T')[0];
-        if (sortedDates.includes(ds)) {
-          currentStreak++;
-          checkDate.setDate(checkDate.getDate() - 1);
-        } else {
-          break;
-        }
-      }
-    }
-  }
-
-  // 2. This week: study hours in last 7 days
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
-  const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0];
-  const thisWeekLogs = dailyLogs.filter((l) => l.date >= sevenDaysAgoStr);
-  const thisWeekHours = thisWeekLogs.reduce((acc, l) => acc + (l.studyHours || 0), 0);
-
-  // 3. Revision rate: % of logged days revision was done
-  const revisionCount = dailyLogs.filter((l) => l.revisionDone).length;
-  const revisionRate = dailyLogs.length > 0 ? Math.round((revisionCount / dailyLogs.length) * 100) : 0;
-
-  // 4. Avg focus rating
-  const totalFocus = dailyLogs.reduce((acc, l) => acc + (l.focusRating || 0), 0);
-  const avgFocus = dailyLogs.length > 0 ? (totalFocus / dailyLogs.length).toFixed(1) : '0.0';
-
   return (
-    <div className="w-full flex flex-col space-y-8 animate-fadeIn">
-      {/* 1. Header Section */}
-      <div className="w-full flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
-        <div>
-          <span className="text-[11px] font-mono tracking-widest uppercase text-[#e9762b] font-bold block mb-1">
-            STUDY TRACKER
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight uppercase font-mono">
-            Daily Study Log
-          </h1>
-        </div>
+    <div className="w-full flex flex-col space-y-6 animate-fadeIn">
+      {/* 0. Multi-Table Capsule Switcher Dock */}
+      <div className="flex items-center justify-between gap-3 overflow-x-auto pb-2 scrollbar-none border-b border-white/10">
+        <div className="flex items-center gap-2 overflow-x-auto py-1">
+          {/* Main Daily Study Log Tab */}
+          <button
+            type="button"
+            onClick={() => setActiveTableId('main')}
+            className={`px-4 py-2 rounded-full text-xs font-mono font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${
+              activeTableId === 'main'
+                ? 'bg-[#e9762b] text-black font-extrabold shadow-md shadow-orange-500/20'
+                : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border border-stone-300/80 dark:border-white/10'
+            }`}
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            <span>Study Log</span>
+          </button>
 
-        <ShinyButton
-          onClick={() => {
-            if (showForm && enableTopForm) {
-              setShowForm(false);
-            } else {
-              setEnableTopForm(true);
-              handleSelectDayForForm(undefined, todayStr);
-            }
-          }}
-          label="LOG A DAY"
-          cornerRadius={12}
-          className="!px-5 sm:!px-6 !py-2.5 !text-xs sm:!text-sm !font-mono !font-extrabold !uppercase !tracking-wider !rounded-xl active:scale-95 transition shadow-lg shadow-orange-500/20"
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
-          <span>LOG A DAY</span>
-        </ShinyButton>
-      </div>
+          {/* User Custom Tables */}
+          {(customTables || []).map((tbl) => (
+            <button
+              key={tbl.id}
+              type="button"
+              onClick={() => setActiveTableId(tbl.id)}
+              className={`px-4 py-2 rounded-full text-xs font-mono font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${
+                activeTableId === tbl.id
+                  ? 'bg-[#e9762b] text-black font-extrabold shadow-md shadow-orange-500/20'
+                  : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border border-stone-300/80 dark:border-white/10'
+              }`}
+            >
+              <Table2 className="w-3.5 h-3.5" />
+              <span>{tbl.title}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                  activeTableId === tbl.id ? 'bg-black/20 text-black font-extrabold' : 'bg-stone-200/80 dark:bg-white/10 text-stone-700 dark:text-slate-400'
+                }`}
+              >
+                {tbl.rows.length}
+              </span>
+            </button>
+          ))}
 
-      {/* 2. Summary Stats Cards (4 Cards) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-        {/* Card 1: Current Streak */}
-        <div className="p-5 sm:p-6 rounded-2xl glass-panel glass-panel-interactive flex flex-col justify-between min-h-[135px]">
-          <span className="text-xs font-mono uppercase tracking-widest text-slate-400 font-bold">
-            CURRENT STREAK
-          </span>
-          <div className="flex items-baseline gap-2 mt-3">
-            <span className="text-3xl sm:text-4xl font-black text-white font-mono">{currentStreak}</span>
-            <span className="text-xs sm:text-sm text-slate-400 font-mono font-medium">days</span>
-          </div>
-        </div>
-
-        {/* Card 2: This Week */}
-        <div className="p-5 sm:p-6 rounded-2xl glass-panel glass-panel-interactive flex flex-col justify-between min-h-[135px]">
-          <span className="text-xs font-mono uppercase tracking-widest text-slate-400 font-bold">
-            THIS WEEK
-          </span>
-          <div className="flex items-baseline gap-2 mt-3">
-            <span className="text-3xl sm:text-4xl font-black text-white font-mono">{thisWeekHours.toFixed(1)}</span>
-            <span className="text-xs sm:text-sm text-slate-400 font-mono font-medium">hrs studied</span>
-          </div>
-        </div>
-
-        {/* Card 3: Revision Rate */}
-        <div className="p-5 sm:p-6 rounded-2xl glass-panel glass-panel-interactive flex flex-col justify-between min-h-[135px]">
-          <span className="text-xs font-mono uppercase tracking-widest text-slate-400 font-bold">
-            REVISION RATE
-          </span>
-          <div className="flex items-baseline gap-2 mt-3">
-            <span className="text-3xl sm:text-4xl font-black text-white font-mono">{revisionRate}</span>
-            <span className="text-xs sm:text-sm text-slate-400 font-mono font-medium">% of days</span>
-          </div>
-        </div>
-
-        {/* Card 4: Avg Focus (Highlighted Orange Glass Card) */}
-        <div className="p-5 sm:p-6 rounded-2xl bg-gradient-to-br from-[#e9762b] to-[#ff5f00] text-black flex flex-col justify-between min-h-[135px] shadow-[0_10px_30px_rgba(233,118,43,0.35),inset_0_1px_0_rgba(255,255,255,0.4)] border border-white/20 transition-all duration-300 hover:scale-[1.02]">
-          <span className="text-xs font-mono uppercase tracking-widest text-black/80 font-bold">
-            AVG. FOCUS
-          </span>
-          <div className="flex items-baseline gap-2 mt-3">
-            <span className="text-3xl sm:text-4xl font-black text-black font-mono">{avgFocus}</span>
-            <span className="text-xs sm:text-sm text-black/80 font-mono font-bold">/ 5</span>
-          </div>
+          {/* + Add Table Button */}
+          <button
+            type="button"
+            onClick={() => {
+              setNewTableTitle('');
+              setNewTableDesc('');
+              setSelectedTemplate('mock');
+              setShowCreateTableModal(true);
+            }}
+            className="px-3.5 py-2 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white text-xs font-mono font-bold uppercase tracking-wider transition border border-dashed border-stone-300/80 dark:border-white/20 hover:border-[#e9762b] cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95"
+            title="Create a new custom table"
+          >
+            <Plus className="w-3.5 h-3.5 text-[#e9762b]" />
+            <span>Add Table</span>
+          </button>
         </div>
       </div>
 
-      {/* 3. Log an Entry (Quick Add / Edit Form) - ONLY SHOWN WHEN ENABLED VIA TOGGLE */}
-      {enableTopForm && showForm && (
+      {/* Render Active Custom Table OR Main Daily Study Log */}
+      {activeTableId !== 'main' && activeCustomTable ? (
+        <CustomStudyTableView table={activeCustomTable} />
+      ) : (
+        <>
+          {/* 3. Log an Entry (Quick Add / Edit Form) - ONLY SHOWN WHEN ENABLED VIA TOGGLE */}
+          {enableTopForm && showForm && (
         <div
           id="log-form-container"
           className="w-full p-6 sm:p-8 rounded-2xl glass-panel-glow shadow-2xl space-y-6 animate-fadeIn"
         >
           {/* Form Top Title */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
-            <h2 className="text-lg font-bold text-white font-mono">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-orange-950/10 dark:border-white/10 pb-4">
+            <h2 className="text-lg font-bold text-stone-900 dark:text-white font-mono">
               Editing – {formatDateDisplay(formDate)}
             </h2>
           </div>
@@ -538,14 +574,14 @@ export const DailyStudyLog: React.FC = () => {
           <form onSubmit={handleSaveEntry} className="space-y-6">
             {/* Row 1: Date Picker */}
             <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
-              <span className="text-slate-400 uppercase tracking-widest font-bold">DATE</span>
+              <span className="text-stone-500 dark:text-slate-400 uppercase tracking-widest font-bold">DATE</span>
               <button
                 type="button"
                 onClick={() => handleSelectDayForForm(undefined, todayStr)}
                 className={`px-3.5 py-1.5 rounded-lg uppercase tracking-wider font-bold transition cursor-pointer ${
                   formDate === todayStr
                     ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/20'
-                    : 'glass-pill text-slate-300 hover:text-white'
+                    : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
                 }`}
               >
                 TODAY
@@ -556,7 +592,7 @@ export const DailyStudyLog: React.FC = () => {
                 className={`px-3.5 py-1.5 rounded-lg uppercase tracking-wider font-bold transition cursor-pointer ${
                   formDate === yesterdayStr
                     ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/20'
-                    : 'glass-pill text-slate-300 hover:text-white'
+                    : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
                 }`}
               >
                 YESTERDAY
@@ -565,168 +601,177 @@ export const DailyStudyLog: React.FC = () => {
                 type="date"
                 value={formDate}
                 onChange={(e) => handleSelectDayForForm(undefined, e.target.value)}
-                className="glass-input rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none cursor-pointer"
+                className="glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
               />
             </div>
 
-            {/* Row 2: Grid of Inputs (Study Hours, Class, PYQs, Revision, Mock, Sleep) */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 text-xs font-mono">
+            {/* Row 1: Numerical & Rating Fields (Study Hours, PYQs, Sleep Hours, Focus Rating) - 4 in a row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-mono">
               {/* Study Hours */}
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold">
+              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
                   STUDY HOURS
                 </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  max="24"
-                  value={studyHours}
-                  onChange={(e) => setStudyHours(parseFloat(e.target.value) || 0)}
-                  className="w-full glass-input rounded-lg px-3 py-2 text-white font-mono text-center focus:outline-none"
-                />
-              </div>
-
-              {/* Attended Class */}
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold">
-                  ATTENDED CLASS?
-                </label>
-                <div className="grid grid-cols-2 gap-1 glass-pill p-1 rounded-lg">
-                  <button
-                    type="button"
-                    onClick={() => setAttendedClass(true)}
-                    className={`py-1.5 rounded font-bold uppercase transition text-center cursor-pointer ${
-                      attendedClass ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/20' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    YES
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAttendedClass(false)}
-                    className={`py-1.5 rounded font-bold uppercase transition text-center cursor-pointer ${
-                      !attendedClass ? 'glass-pill text-white border-white/20' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    NO
-                  </button>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="24"
+                    placeholder="--"
+                    value={studyHours}
+                    onChange={(e) => setStudyHours(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)))}
+                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-mono text-center font-bold focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
+                  />
+                  <span className="text-xs text-slate-400 font-bold">hrs</span>
                 </div>
               </div>
 
               {/* PYQs Solved */}
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold">
+              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
                   PYQS SOLVED
                 </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={pyqsSolved}
-                  onChange={(e) => setPyqsSolved(parseInt(e.target.value) || 0)}
-                  className="w-full glass-input rounded-lg px-3 py-2 text-white font-mono text-center focus:outline-none"
-                />
-              </div>
-
-              {/* Revision Done */}
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold">
-                  REVISION DONE?
-                </label>
-                <div className="grid grid-cols-2 gap-1 glass-pill p-1 rounded-lg">
-                  <button
-                    type="button"
-                    onClick={() => setRevisionDone(true)}
-                    className={`py-1.5 rounded font-bold uppercase transition text-center cursor-pointer ${
-                      revisionDone ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/20' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    YES
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRevisionDone(false)}
-                    className={`py-1.5 rounded font-bold uppercase transition text-center cursor-pointer ${
-                      !revisionDone ? 'glass-pill text-white border-white/20' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    NO
-                  </button>
-                </div>
-              </div>
-
-              {/* Mock Test Taken */}
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold">
-                  MOCK TEST TAKEN?
-                </label>
-                <div className="grid grid-cols-2 gap-1 glass-pill p-1 rounded-lg">
-                  <button
-                    type="button"
-                    onClick={() => setMockTestTaken(true)}
-                    className={`py-1.5 rounded font-bold uppercase transition text-center cursor-pointer ${
-                      mockTestTaken ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/20' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    YES
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMockTestTaken(false)}
-                    className={`py-1.5 rounded font-bold uppercase transition text-center cursor-pointer ${
-                      !mockTestTaken ? 'glass-pill text-white border-white/20' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    NO
-                  </button>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    placeholder="--"
+                    value={pyqsSolved}
+                    onChange={(e) => setPyqsSolved(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value)))}
+                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-mono text-center font-bold focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
+                  />
+                  <span className="text-xs text-slate-400 font-bold">ques</span>
                 </div>
               </div>
 
               {/* Sleep Hours */}
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold">
+              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
                   SLEEP HOURS
                 </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0"
-                  max="24"
-                  value={sleepHours}
-                  onChange={(e) => setSleepHours(parseFloat(e.target.value) || 0)}
-                  className="w-full glass-input rounded-lg px-3 py-2 text-white font-mono text-center focus:outline-none"
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="24"
+                    placeholder="--"
+                    value={sleepHours}
+                    onChange={(e) => setSleepHours(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)))}
+                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-mono text-center font-bold focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
+                  />
+                  <span className="text-xs text-slate-400 font-bold">hrs</span>
+                </div>
+              </div>
+
+              {/* Focus Rating */}
+              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
+                  FOCUS ({focusRating ? `${focusRating}/5` : '--'})
+                </label>
+                <div className="grid grid-cols-5 gap-1 pt-1 w-full min-w-0">
+                  {[1, 2, 3, 4, 5].map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setFocusRating(focusRating === val ? null : val)}
+                      className={`h-7 w-full min-w-0 rounded-md text-xs font-bold transition cursor-pointer flex items-center justify-center p-0 ${
+                        focusRating === val
+                          ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/30'
+                          : 'glass-pill text-stone-600 dark:text-slate-400 hover:text-black dark:hover:text-white'
+                      }`}
+                    >
+                      {val}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2: Habit Indicators (Class, Revision, Mock + Custom Yes/No Trackers) - 4 in a row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 font-mono text-xs">
+              {/* Attended Class */}
+              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
+                  ATTENDED CLASS?
+                </label>
+                <YesNoToggle
+                  size="sm"
+                  value={attendedClass}
+                  onChange={setAttendedClass}
                 />
               </div>
-            </div>
 
-            {/* Row 3: Focus Rating */}
-            <div className="space-y-2 font-mono">
-              <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold">
-                FOCUS RATING
-              </label>
-              <div className="flex items-center gap-2">
-                {[1, 2, 3, 4, 5].map((val) => (
-                  <button
-                    key={val}
-                    type="button"
-                    onClick={() => setFocusRating(val)}
-                    className={`w-12 h-10 rounded-lg font-bold text-sm transition flex items-center justify-center cursor-pointer ${
-                      focusRating === val
-                        ? 'bg-[#e9762b] text-black shadow-lg shadow-orange-500/20 font-extrabold'
-                        : 'glass-pill text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    {val}
-                  </button>
-                ))}
+              {/* Revision Done */}
+              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
+                  REVISION DONE?
+                </label>
+                <YesNoToggle
+                  size="sm"
+                  value={revisionDone}
+                  onChange={setRevisionDone}
+                />
               </div>
+
+              {/* Mock Test Taken */}
+              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
+                  MOCK TEST?
+                </label>
+                <YesNoToggle
+                  size="sm"
+                  value={mockTestTaken}
+                  onChange={setMockTestTaken}
+                />
+              </div>
+
+              {/* Custom Yes/No Trackers in Top Form */}
+              {customColumns
+                .filter((col) => col.type === 'boolean')
+                .map((col) => (
+                  <div key={col.id} className="space-y-1.5 glass-panel p-3 rounded-xl">
+                    <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
+                      {col.name.toUpperCase()}?
+                    </label>
+                    <YesNoToggle
+                      size="sm"
+                      value={Boolean(formCustomData[col.id])}
+                      onChange={(val: boolean) =>
+                        setFormCustomData({ ...formCustomData, [col.id]: val })
+                      }
+                    />
+                  </div>
+                ))}
+
+              {/* Quick Add Custom Habit/Tracker in 4th slot if no boolean columns exist */}
+              {customColumns.filter((col) => col.type === 'boolean').length === 0 && (
+                <div className="space-y-1.5 glass-panel p-3 rounded-xl flex flex-col justify-between border border-dashed border-stone-300 dark:border-white/20 hover:border-[#e9762b] dark:hover:border-[#e9762b] transition-all">
+                  <label className="text-[10px] uppercase tracking-widest text-stone-500 dark:text-slate-400 block font-bold truncate">
+                    CUSTOM TRACKER
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewColType('boolean');
+                      setShowAddColumnModal(true);
+                    }}
+                    className="w-full h-8 rounded-lg bg-orange-500/10 hover:bg-[#e9762b] text-[#e9762b] hover:text-black font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                    title="Add a custom Yes/No tracker column"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>+ TRACKER</span>
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Row 4: Notes */}
-            <div className="space-y-2 font-mono">
+            {/* Row 3: Notes */}
+            <div className="space-y-1.5 font-mono">
               <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold">
-                NOTES <span className="opacity-60">(optional)</span>
+                NOTES &amp; OBSERVATIONS <span className="opacity-60">(optional)</span>
               </label>
               <input
                 id="log-form-notes"
@@ -734,94 +779,70 @@ export const DailyStudyLog: React.FC = () => {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Anything worth remembering about today..."
-                className="w-full glass-input rounded-xl px-4 py-3 text-xs text-white placeholder-slate-600 focus:outline-none"
+                className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
               />
             </div>
 
-            {/* Custom Trackers (if user has added custom columns) */}
-            {customColumns.length > 0 && (
+            {/* Row 4: Additional Custom Trackers (Numbers, Select, Text) */}
+            {customColumns.some((col) => col.type !== 'boolean') && (
               <div className="space-y-3 pt-3 border-t border-white/10 font-mono">
                 <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
-                  CUSTOM TRACKERS
+                  ADDITIONAL CUSTOM TRACKERS
                 </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {customColumns.map((col) => (
-                    <div key={col.id} className="space-y-1.5 glass-panel p-3 rounded-xl">
-                      <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
-                        {col.name}
-                      </label>
-                      {col.type === 'boolean' && (
-                        <div className="grid grid-cols-2 gap-1.5 glass-pill p-1 rounded-xl">
-                          <button
-                            type="button"
-                            onClick={() => setFormCustomData({ ...formCustomData, [col.id]: true })}
-                            className={`py-1.5 rounded-lg font-bold uppercase transition text-xs ${
-                              formCustomData[col.id]
-                                ? 'bg-[#10b981] text-black font-extrabold shadow-sm'
-                                : 'text-slate-400 hover:text-white'
-                            }`}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  {customColumns
+                    .filter((col) => col.type !== 'boolean')
+                    .map((col) => (
+                      <div key={col.id} className="space-y-1.5 glass-panel p-3 rounded-xl">
+                        <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
+                          {col.name}
+                        </label>
+                        {col.type === 'number' && (
+                          <input
+                            type="number"
+                            step="any"
+                            value={formCustomData[col.id] ?? ''}
+                            onChange={(e) =>
+                              setFormCustomData({
+                                ...formCustomData,
+                                [col.id]: e.target.value === '' ? '' : Number(e.target.value),
+                              })
+                            }
+                            placeholder="Enter number..."
+                            className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#e9762b]"
+                          />
+                        )}
+                        {col.type === 'text' && (
+                          <input
+                            type="text"
+                            value={formCustomData[col.id] ?? ''}
+                            onChange={(e) =>
+                              setFormCustomData({ ...formCustomData, [col.id]: e.target.value })
+                            }
+                            placeholder="Enter text..."
+                            className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#e9762b]"
+                          />
+                        )}
+                        {col.type === 'select' && (
+                          <select
+                            value={formCustomData[col.id] ?? ''}
+                            onChange={(e) =>
+                              setFormCustomData({ ...formCustomData, [col.id]: e.target.value })
+                            }
+                            className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-[#e9762b] cursor-pointer"
                           >
-                            YES
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setFormCustomData({ ...formCustomData, [col.id]: false })}
-                            className={`py-1.5 rounded-lg font-bold uppercase transition text-xs ${
-                              !formCustomData[col.id]
-                                ? 'bg-white/10 text-white border border-white/20'
-                                : 'text-slate-400 hover:text-white'
-                            }`}
-                          >
-                            NO
-                          </button>
-                        </div>
-                      )}
-                      {col.type === 'number' && (
-                        <input
-                          type="number"
-                          step="any"
-                          value={formCustomData[col.id] ?? ''}
-                          onChange={(e) =>
-                            setFormCustomData({
-                              ...formCustomData,
-                              [col.id]: e.target.value === '' ? '' : Number(e.target.value),
-                            })
-                          }
-                          placeholder="Enter number..."
-                          className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#e9762b]"
-                        />
-                      )}
-                      {col.type === 'text' && (
-                        <input
-                          type="text"
-                          value={formCustomData[col.id] ?? ''}
-                          onChange={(e) =>
-                            setFormCustomData({ ...formCustomData, [col.id]: e.target.value })
-                          }
-                          placeholder="Enter text..."
-                          className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#e9762b]"
-                        />
-                      )}
-                      {col.type === 'select' && (
-                        <select
-                          value={formCustomData[col.id] ?? ''}
-                          onChange={(e) =>
-                            setFormCustomData({ ...formCustomData, [col.id]: e.target.value })
-                          }
-                          className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#e9762b] cursor-pointer"
-                        >
-                          <option value="" className="bg-[#141413] text-slate-500">
-                            -- Select --
-                          </option>
-                          {(col.options || []).map((opt) => (
-                            <option key={opt} value={opt} className="bg-[#141413] text-white">
-                              {opt}
+                            <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
+                              -- Select --
                             </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  ))}
+                            {(col.options || []).map((opt) => (
+                              <option key={opt} value={opt} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    ))}
                 </div>
               </div>
             )}
@@ -831,14 +852,13 @@ export const DailyStudyLog: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowForm(false)}
-                className="px-5 py-2.5 rounded-lg bg-[#141413] border border-white/10 text-slate-400 hover:text-white text-xs uppercase font-bold tracking-wider transition"
+                className="px-5 py-2.5 rounded-full bg-stone-200/90 hover:bg-stone-300 dark:bg-[#141413] dark:hover:bg-[#1f1f1e] border border-stone-300/80 dark:border-white/10 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white text-xs uppercase font-bold tracking-wider transition cursor-pointer shadow-sm"
               >
-                CANCEL
+                Cancel
               </button>
               <ShinyButton
                 type="submit"
-                label="SAVE ENTRY"
-                cornerRadius={10}
+                label="Save"
                 className="!px-7 !py-2.5 !text-xs !font-mono !font-extrabold !uppercase !tracking-wider active:scale-95 transition"
               />
             </div>
@@ -846,23 +866,23 @@ export const DailyStudyLog: React.FC = () => {
         </div>
       )}
 
-      {/* 4. Study History Table Section */}
+      {/* 4. Study Log Table Section */}
       <div className="space-y-4">
         {/* Table Top Controls */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 font-mono pb-2">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 font-mono pb-4 border-b border-white/10">
           <div 
             onClick={scrollToCenterTable}
             className="cursor-pointer group/title select-none"
             title="Click to center table on screen"
           >
-            <h2 className="text-xl sm:text-2xl font-extrabold text-white group-hover/title:text-[#e9762b] transition tracking-tight uppercase font-mono">
-              Study History
-            </h2>
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-stone-900 dark:text-white group-hover/title:text-[#e9762b] transition tracking-tight uppercase font-mono">
+              Study Log
+            </h1>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm">
             {/* Toggle to enable/disable Top Edit Form */}
-            <div className="flex items-center gap-2.5 glass-panel px-3.5 py-2 rounded-xl select-none">
+            <div className="flex items-center gap-2.5 border-magic-bar px-4 py-2 rounded-full select-none">
               <span className="text-xs uppercase tracking-wider text-slate-400 font-bold font-mono">
                 EDIT FORM:
               </span>
@@ -880,57 +900,72 @@ export const DailyStudyLog: React.FC = () => {
                     setShowForm(false);
                   }
                 }}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
-                  enableTopForm ? 'bg-[#e9762b]' : 'bg-[#252524]'
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+                  enableTopForm
+                    ? 'bg-[#e9762b] shadow-[0_0_10px_rgba(233,118,43,0.4)]'
+                    : 'bg-[#e0d2c4] dark:bg-[#252524] border border-orange-950/15 dark:border-white/10'
                 }`}
                 title={enableTopForm ? 'Click to disable Top Edit Form' : 'Click to enable Top Edit Form'}
               >
                 <span
-                  className={`inline-block h-3.5 w-3.5 transform rounded-full transition-transform ${
-                    enableTopForm ? 'translate-x-4 bg-black' : 'translate-x-1 bg-slate-400'
+                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-md transition-transform ${
+                    enableTopForm ? 'translate-x-4' : 'translate-x-1'
                   }`}
                 />
               </button>
-              <span className={`text-xs font-mono font-bold uppercase ${enableTopForm ? 'text-[#e9762b]' : 'text-slate-500'}`}>
+              <span className={`text-xs font-mono font-bold uppercase ${enableTopForm ? 'text-[#e9762b]' : 'text-stone-600 dark:text-slate-500'}`}>
                 {enableTopForm ? 'ON' : 'OFF'}
               </span>
             </div>
 
             {/* Month / Year Filter Dropdown */}
-            <div className="flex items-center gap-2 glass-panel px-3.5 py-2 rounded-xl">
+            <div className="flex items-center gap-2 border-magic-bar px-4 py-2 rounded-full">
               <span className="text-xs uppercase tracking-wider text-slate-400 font-bold">
                 MONTH:
               </span>
               <select
                 value={selectedMonthYear}
                 onChange={(e) => {
-                  setSelectedMonthYear(e.target.value);
-                  setVisibleLimit(20);
+                  const val = e.target.value;
+                  setSelectedMonthYear(val);
+                  setVisibleLimit(val === 'last30' ? 30 : 20);
                 }}
-                className="bg-transparent text-xs sm:text-sm text-white focus:outline-none font-bold uppercase cursor-pointer font-mono"
+                className="bg-transparent text-xs sm:text-sm text-slate-800 dark:text-white focus:outline-none font-bold uppercase cursor-pointer font-mono"
               >
-                <option value="all" className="bg-[#141413]">ALL MONTHS ({dailyLogs.length})</option>
+                <option value="all" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">ALL MONTHS</option>
+                <option value="last30" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">LAST 30 DAYS</option>
                 {availableMonths.map((m) => (
-                  <option key={m.value} value={m.value} className="bg-[#141413]">
-                    {m.label.toUpperCase()} ({m.count})
+                  <option key={m.value} value={m.value} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
+                    {m.label.toUpperCase()}
                   </option>
                 ))}
               </select>
             </div>
+
+            {/* + COLUMN Button at top right */}
+            <button
+              type="button"
+              onClick={() => setShowAddColumnModal(true)}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full glass-pill hover:bg-[#e9762b] text-slate-200 hover:text-black text-xs font-bold uppercase tracking-wider transition border border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm font-mono active:scale-95"
+              title="Add a custom column"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>COLUMN</span>
+            </button>
           </div>
         </div>
 
         {/* Table Container with Sticky Horizontal & Vertical Scroll */}
         <div ref={tableSectionRef} className="w-full rounded-2xl glass-panel overflow-hidden font-mono shadow-2xl scroll-mt-24">
           <div ref={tableContainerRef} className="overflow-x-auto max-h-[80vh] overflow-y-auto relative scrollbar-thin scrollbar-thumb-white/20">
-            <table className="w-full text-left text-xs sm:text-sm border-separate border-spacing-0">
+            <table className="w-full min-w-full text-left text-xs sm:text-sm border-separate border-spacing-0">
               {/* Sticky Top Header */}
               <thead 
                 onClick={scrollToCenterTable}
                 className="sticky top-0 z-40 glass-table-header cursor-pointer select-none"
                 title="Click table bar to center table on screen"
               >
-                <tr className="text-xs text-slate-200 uppercase tracking-widest font-bold">
+                <tr className="text-xs text-stone-800 dark:text-slate-200 uppercase tracking-widest font-bold">
                   {/* Sticky Date Column Header */}
                   <th 
                     onClick={scrollToCenterTable}
@@ -946,13 +981,13 @@ export const DailyStudyLog: React.FC = () => {
                   <th className="py-3.5 px-2.5 sm:px-3.5 font-bold text-center sticky top-0 z-40 min-w-[72px] sm:min-w-[84px]" title="Mock Test Taken">MOCK</th>
                   <th className="py-3.5 px-2.5 sm:px-3.5 font-bold text-center sticky top-0 z-40 min-w-[74px] sm:min-w-[86px]">SLEEP</th>
                   <th className="py-3.5 px-2.5 sm:px-3.5 font-bold text-center sticky top-0 z-40 min-w-[72px] sm:min-w-[84px]">NOTES</th>
-                  <th className="py-3.5 px-3 sm:px-4 font-bold text-center sticky top-0 z-40 min-w-[78px] sm:min-w-[92px]">FOCUS</th>
+                  <th className={`py-3.5 px-3 sm:px-4 font-bold text-center sticky top-0 z-40 min-w-[78px] sm:min-w-[92px] ${customColumns.length === 0 ? 'rounded-tr-xl' : ''}`}>FOCUS</th>
 
                   {/* Dynamic Custom Column Headers */}
                   {customColumns.map((col, idx) => (
                     <th
                       key={col.id}
-                      className="py-3.5 px-3 sm:px-4 font-bold text-center whitespace-nowrap sticky top-0 z-40 min-w-[100px] sm:min-w-[120px] max-w-[160px]"
+                      className={`py-3.5 px-3 sm:px-4 font-bold text-center whitespace-nowrap sticky top-0 z-40 min-w-[100px] sm:min-w-[120px] max-w-[160px] ${idx === customColumns.length - 1 ? 'rounded-tr-xl' : ''}`}
                     >
                       <button
                         type="button"
@@ -966,25 +1001,13 @@ export const DailyStudyLog: React.FC = () => {
                             index: idx,
                           });
                         }}
-                        className="text-xs uppercase tracking-wider font-bold text-slate-200 hover:text-[#e9762b] truncate max-w-[130px] cursor-pointer transition select-none font-mono"
+                        className="text-xs uppercase tracking-wider font-bold text-stone-800 dark:text-slate-200 hover:text-[#e9762b] truncate max-w-[130px] cursor-pointer transition select-none font-mono"
                         title={`Click to edit "${col.name}" column`}
                       >
                         {col.name}
                       </button>
                     </th>
                   ))}
-
-                  {/* Add Column Button at the end of the header row */}
-                  <th className="py-3.5 px-3 font-bold whitespace-nowrap text-center sticky right-0 top-0 z-50 glass-sticky-th-right border-l border-white/12 min-w-[95px] w-[95px] sm:min-w-[110px] sm:w-[110px]">
-                    <button
-                      type="button"
-                      onClick={() => setShowAddColumnModal(true)}
-                      className="inline-flex items-center justify-center px-2 py-1.5 rounded-lg bg-white/5 hover:bg-[#e9762b] hover:text-black text-[11px] text-slate-200 font-bold uppercase tracking-wider transition border border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm w-full font-mono"
-                      title="Add a custom column (e.g. Mood, Water, Exercise)"
-                    >
-                      + COLUMN
-                    </button>
-                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
@@ -1007,8 +1030,8 @@ export const DailyStudyLog: React.FC = () => {
                         {/* Pinned / Sticky Date Column - The ONLY button that opens edit/details */}
                         <td
                           onClick={scrollToCenterTable}
-                          className={`py-3 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap sticky left-0 z-20 glass-sticky-col-cell border-r border-white/10 min-w-[110px] w-[110px] sm:min-w-[125px] sm:w-[125px] cursor-pointer ${
-                            isExpanded ? '!bg-[#1a1a18]' : ''
+                          className={`py-3 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap sticky left-0 z-20 glass-sticky-col-cell border-r border-black/10 dark:border-white/10 min-w-[110px] w-[110px] sm:min-w-[125px] sm:w-[125px] cursor-pointer ${
+                            isExpanded ? '!bg-amber-500/15 dark:!bg-[#1a1a18]' : ''
                           }`}
                           title="Click date column to center table on screen"
                         >
@@ -1033,51 +1056,111 @@ export const DailyStudyLog: React.FC = () => {
 
                         {/* Study Hours Column */}
                         <td className="py-3 sm:py-3.5 px-3 sm:px-4 text-center min-w-[78px] sm:min-w-[92px]">
-                          <span className="text-white font-mono font-bold text-xs sm:text-sm">{entry.studyHours}h</span>
+                          {entry.studyHours != null && Number(entry.studyHours) > 0 ? (
+                            <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">{entry.studyHours}h</span>
+                          ) : (
+                            <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
+                          )}
                         </td>
 
-                        {/* Class Attended Dot */}
+                        {/* Class Attended Pill */}
                         <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
-                          <span
-                            className={`inline-block w-3.5 h-3.5 rounded-full transition-transform group-hover/row:scale-110 ${
-                              entry.attendedClass ? 'bg-[#10b981] shadow-sm shadow-emerald-500/50' : 'bg-[#374151]'
+                          <button
+                            type="button"
+                            disabled={!enableTopForm}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!enableTopForm) return;
+                              updateDailyLogField(entry.date, 'attendedClass', !entry.attendedClass);
+                            }}
+                            className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
+                              enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
+                            } ${
+                              entry.attendedClass
+                                ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
+                                : enableTopForm
+                                  ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
+                                  : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
                             }`}
-                          />
+                            title={enableTopForm ? "Click to toggle Class Attended" : "Enable 'EDIT FORM' switch or click date button to edit"}
+                          >
+                            {entry.attendedClass ? 'YES' : 'NO'}
+                          </button>
                         </td>
 
                         {/* PYQs Solved */}
                         <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[74px] sm:min-w-[86px]">
-                          <span className="text-white font-mono font-bold text-xs sm:text-sm">{entry.pyqsSolved}</span>
+                          {entry.pyqsSolved != null && Number(entry.pyqsSolved) > 0 ? (
+                            <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">{entry.pyqsSolved}</span>
+                          ) : (
+                            <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
+                          )}
                         </td>
 
-                        {/* Revision Done Dot */}
+                        {/* Revision Done Pill */}
                         <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
-                          <span
-                            className={`inline-block w-3.5 h-3.5 rounded-full transition-transform group-hover/row:scale-110 ${
-                              entry.revisionDone ? 'bg-[#10b981] shadow-sm shadow-emerald-500/50' : 'bg-[#374151]'
+                          <button
+                            type="button"
+                            disabled={!enableTopForm}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!enableTopForm) return;
+                              updateDailyLogField(entry.date, 'revisionDone', !entry.revisionDone);
+                            }}
+                            className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
+                              enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
+                            } ${
+                              entry.revisionDone
+                                ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
+                                : enableTopForm
+                                  ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
+                                  : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
                             }`}
-                          />
+                            title={enableTopForm ? "Click to toggle Revision Done" : "Enable 'EDIT FORM' switch or click date button to edit"}
+                          >
+                            {entry.revisionDone ? 'YES' : 'NO'}
+                          </button>
                         </td>
 
-                        {/* Mock Test Taken Dot */}
+                        {/* Mock Test Taken Pill */}
                         <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
-                          <span
-                            className={`inline-block w-3.5 h-3.5 rounded-full transition-transform group-hover/row:scale-110 ${
-                              entry.mockTestTaken ? 'bg-[#10b981] shadow-sm shadow-emerald-500/50' : 'bg-[#374151]'
+                          <button
+                            type="button"
+                            disabled={!enableTopForm}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!enableTopForm) return;
+                              updateDailyLogField(entry.date, 'mockTestTaken', !entry.mockTestTaken);
+                            }}
+                            className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
+                              enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
+                            } ${
+                              entry.mockTestTaken
+                                ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
+                                : enableTopForm
+                                  ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
+                                  : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
                             }`}
-                          />
+                            title={enableTopForm ? "Click to toggle Mock Test Taken" : "Enable 'EDIT FORM' switch or click date button to edit"}
+                          >
+                            {entry.mockTestTaken ? 'YES' : 'NO'}
+                          </button>
                         </td>
 
                         {/* Sleep Hours */}
                         <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[74px] sm:min-w-[86px]">
-                          <span className="text-white font-mono font-bold text-xs sm:text-sm">{entry.sleepHours}h</span>
+                          {entry.sleepHours != null && Number(entry.sleepHours) > 0 ? (
+                            <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">{entry.sleepHours}h</span>
+                          ) : (
+                            <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
+                          )}
                         </td>
 
                         {/* Notes Column with Rich Tooltip (no icon) */}
                         <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
                           {hasNote ? (
                             <div className="relative inline-flex items-center justify-center group/note">
-                              <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold text-[#e9762b] bg-orange-500/15 border border-orange-500/30 select-none">
+                              <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-bold text-orange-950 dark:text-[#e9762b] bg-orange-500/20 dark:bg-orange-500/15 border border-orange-500/40 dark:border-orange-500/30 select-none">
                                 Note
                               </span>
 
@@ -1086,20 +1169,24 @@ export const DailyStudyLog: React.FC = () => {
                                 <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1">
                                   {formatDateDisplay(entry.date)} Note:
                                 </span>
-                                <p className="text-slate-200 text-xs leading-relaxed break-words">
+                                <p className="text-stone-900 dark:text-slate-200 text-xs leading-relaxed break-words">
                                   {entry.notes}
                                 </p>
                                 <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
                               </div>
                             </div>
                           ) : (
-                            <span className="text-slate-600 font-mono text-xs">-</span>
+                            <span className="text-stone-400 dark:text-slate-600 font-mono text-xs">--</span>
                           )}
                         </td>
 
                         {/* Focus Rating */}
-                        <td className="py-3 sm:py-3.5 px-3 sm:px-4 text-center text-slate-200 font-mono font-bold text-xs sm:text-sm min-w-[78px] sm:min-w-[92px]">
-                          {entry.focusRating}/5
+                        <td className="py-3 sm:py-3.5 px-3 sm:px-4 text-center text-stone-900 dark:text-slate-200 font-mono font-bold text-xs sm:text-sm min-w-[78px] sm:min-w-[92px]">
+                          {entry.focusRating != null && Number(entry.focusRating) > 0 ? (
+                            <span>{entry.focusRating}/5</span>
+                          ) : (
+                            <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
+                          )}
                         </td>
 
                         {/* Dynamic Custom Column Cells */}
@@ -1110,58 +1197,64 @@ export const DailyStudyLog: React.FC = () => {
                               {col.type === 'boolean' && (
                                 <button
                                   type="button"
+                                  disabled={!enableTopForm}
                                   onClick={(e) => {
                                     e.stopPropagation();
+                                    if (!enableTopForm) return;
                                     updateDailyLogCustomField(entry.date, col.id, !val);
                                   }}
-                                  className="inline-flex items-center justify-center p-1 rounded-lg hover:bg-white/10 cursor-pointer transition"
-                                  title={`Click to toggle ${col.name}`}
+                                  className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
+                                    enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
+                                  } ${
+                                    val
+                                      ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
+                                      : enableTopForm
+                                        ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
+                                        : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
+                                  }`}
+                                  title={enableTopForm ? `Click to toggle ${col.name}` : "Enable 'EDIT FORM' switch or click date button to edit"}
                                 >
-                                  <span
-                                    className={`inline-block w-3.5 h-3.5 rounded-full transition-all ${
-                                      val ? 'bg-[#10b981] shadow-sm shadow-emerald-500/50 scale-110' : 'bg-[#374151]'
-                                    }`}
-                                  />
+                                  {val ? 'YES' : 'NO'}
                                 </button>
                               )}
                               {col.type === 'number' && (
-                                <span className="text-white font-bold">
-                                  {val !== undefined && val !== null && val !== '' ? (
-                                    val
-                                  ) : (
-                                    <span className="text-slate-600">-</span>
-                                  )}
-                                </span>
+                                val !== undefined && val !== null && val !== '' && Number(val) > 0 ? (
+                                  <span className="text-stone-900 dark:text-white font-bold">{val}</span>
+                                ) : (
+                                  <span className="text-stone-400 dark:text-slate-600 font-mono">--</span>
+                                )
                               )}
                               {col.type === 'text' && (
-                                <span
-                                  className="text-slate-200 text-xs sm:text-sm max-w-[130px] truncate inline-block"
-                                  title={val || ''}
-                                >
-                                  {val || <span className="text-slate-600">-</span>}
-                                </span>
-                              )}
-                              {col.type === 'select' && (
-                                val ? (
-                                  <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                val && String(val).trim() ? (
+                                  <span
+                                    className="text-stone-800 dark:text-slate-200 text-xs sm:text-sm max-w-[130px] truncate inline-block font-medium"
+                                    title={val || ''}
+                                  >
                                     {val}
                                   </span>
                                 ) : (
-                                  <span className="text-slate-600">-</span>
+                                  <span className="text-stone-400 dark:text-slate-600 font-mono">--</span>
+                                )
+                              )}
+                              {col.type === 'select' && (
+                                val && String(val).trim() ? (
+                                  <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/20 dark:bg-purple-500/15 text-purple-900 dark:text-purple-300 border border-purple-500/40 dark:border-purple-500/30">
+                                    {val}
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-400 dark:text-slate-600 font-mono">--</span>
                                 )
                               )}
                             </td>
                           );
                         })}
 
-                        {/* Blank cell under ADD COLUMN button */}
-                        <td className="py-3 sm:py-3.5 px-3 sticky right-0 z-20 glass-sticky-col-cell-right border-l border-white/5 min-w-[95px] w-[95px] sm:min-w-[110px] sm:w-[110px]"></td>
                       </tr>
 
                       {/* Expand in place accordion sub-panel */}
                       {isExpanded && accordionState && (
                         <tr className="bg-white/[0.02] backdrop-blur-2xl border-b border-white/10" onClick={(e) => e.stopPropagation()}>
-                          <td colSpan={10 + customColumns.length} className="p-0 border-b border-white/10">
+                          <td colSpan={9 + customColumns.length} className="p-0 border-b border-white/10">
                             <div 
                               className="sticky left-0 p-3.5 sm:p-5 md:p-6 space-y-4 sm:space-y-5 box-border overflow-hidden"
                               style={{
@@ -1175,14 +1268,14 @@ export const DailyStudyLog: React.FC = () => {
                                   <span className="text-[11px] font-mono uppercase tracking-widest text-[#e9762b] font-bold shrink-0">
                                     DETAILS &amp; EDITING —
                                   </span>
-                                  <span className="text-sm font-bold text-white font-mono truncate">
+                                  <span className="text-sm font-bold text-stone-900 dark:text-white font-mono truncate">
                                     {formatDateDisplay(entry.date)}
                                   </span>
                                 </div>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteEntry(entry.date)}
-                                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-xs font-mono font-bold transition cursor-pointer"
+                                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 dark:text-red-400 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-xs font-mono font-bold transition cursor-pointer"
                                   title="Delete this day's entry"
                                 >
                                   <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -1194,7 +1287,7 @@ export const DailyStudyLog: React.FC = () => {
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 font-mono">
                                 {/* Study Hours */}
                                 <div className="glass-panel p-3 rounded-xl space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
                                     STUDY HOURS
                                   </label>
                                   <div className="flex items-center gap-2">
@@ -1203,22 +1296,23 @@ export const DailyStudyLog: React.FC = () => {
                                       step="0.5"
                                       min="0"
                                       max="24"
+                                      placeholder="--"
                                       value={accordionState.studyHours}
                                       onChange={(e) =>
                                         setAccordionState({
                                           ...accordionState,
-                                          studyHours: parseFloat(e.target.value) || 0,
+                                          studyHours: e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)),
                                         })
                                       }
-                                      className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-white font-bold text-center focus:outline-none"
+                                      className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-bold text-center focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
                                     />
-                                    <span className="text-xs text-slate-400 font-bold">hrs</span>
+                                    <span className="text-xs text-stone-600 dark:text-slate-400 font-bold">hrs</span>
                                   </div>
                                 </div>
 
                                 {/* PYQs Solved */}
                                 <div className="glass-panel p-3 rounded-xl space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
                                     PYQS SOLVED
                                   </label>
                                   <div className="flex items-center gap-2">
@@ -1226,22 +1320,23 @@ export const DailyStudyLog: React.FC = () => {
                                       type="number"
                                       step="1"
                                       min="0"
+                                      placeholder="--"
                                       value={accordionState.pyqsSolved}
                                       onChange={(e) =>
                                         setAccordionState({
                                           ...accordionState,
-                                          pyqsSolved: parseInt(e.target.value) || 0,
+                                          pyqsSolved: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value)),
                                         })
                                       }
-                                      className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-white font-bold text-center focus:outline-none"
+                                      className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-bold text-center focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
                                     />
-                                    <span className="text-xs text-slate-400 font-bold">ques</span>
+                                    <span className="text-xs text-stone-600 dark:text-slate-400 font-bold">ques</span>
                                   </div>
                                 </div>
 
                                 {/* Sleep Hours */}
                                 <div className="glass-panel p-3 rounded-xl space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
                                     SLEEP HOURS
                                   </label>
                                   <div className="flex items-center gap-2">
@@ -1250,23 +1345,24 @@ export const DailyStudyLog: React.FC = () => {
                                       step="0.5"
                                       min="0"
                                       max="24"
+                                      placeholder="--"
                                       value={accordionState.sleepHours}
                                       onChange={(e) =>
                                         setAccordionState({
                                           ...accordionState,
-                                          sleepHours: parseFloat(e.target.value) || 0,
+                                          sleepHours: e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)),
                                         })
                                       }
-                                      className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-white font-bold text-center focus:outline-none"
+                                      className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-bold text-center focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
                                     />
-                                    <span className="text-xs text-slate-400 font-bold">hrs</span>
+                                    <span className="text-xs text-stone-600 dark:text-slate-400 font-bold">hrs</span>
                                   </div>
                                 </div>
 
                                 {/* Focus Rating */}
                                 <div className="glass-panel p-3 rounded-xl space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
-                                    FOCUS ({accordionState.focusRating}/5)
+                                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
+                                    FOCUS ({accordionState.focusRating ? `${accordionState.focusRating}/5` : '--'})
                                   </label>
                                   <div className="grid grid-cols-5 gap-1 pt-1 w-full min-w-0">
                                     {[1, 2, 3, 4, 5].map((val) => (
@@ -1274,12 +1370,15 @@ export const DailyStudyLog: React.FC = () => {
                                         key={val}
                                         type="button"
                                         onClick={() =>
-                                          setAccordionState({ ...accordionState, focusRating: val })
+                                          setAccordionState({
+                                            ...accordionState,
+                                            focusRating: accordionState.focusRating === val ? null : val,
+                                          })
                                         }
                                         className={`h-7 w-full min-w-0 rounded-md text-xs font-bold transition cursor-pointer flex items-center justify-center p-0 ${
                                           accordionState.focusRating === val
                                             ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/30'
-                                            : 'glass-pill text-slate-400 hover:text-white'
+                                            : 'glass-pill text-stone-700 dark:text-slate-400 hover:text-stone-950 dark:hover:text-white'
                                         }`}
                                       >
                                         {val}
@@ -1289,112 +1388,94 @@ export const DailyStudyLog: React.FC = () => {
                                 </div>
                               </div>
 
-                              {/* Row 2: Habit Indicators (Class, Revision, Mock) */}
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 font-mono text-xs">
+                              {/* Row 2: Habit Indicators (Class, Revision, Mock + Custom Yes/No Trackers) - 4 in a row */}
+                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 font-mono text-xs">
                                 {/* Attended Class? */}
                                 <div className="space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
                                     ATTENDED CLASS?
                                   </label>
-                                  <div className="grid grid-cols-2 gap-1.5 glass-pill p-1 rounded-xl">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setAccordionState({ ...accordionState, attendedClass: true })
-                                      }
-                                      className={`py-1.5 rounded-lg font-bold uppercase transition text-xs cursor-pointer ${
-                                        accordionState.attendedClass
-                                          ? 'bg-[#10b981] text-black font-extrabold shadow-sm'
-                                          : 'text-slate-400 hover:text-white'
-                                      }`}
-                                    >
-                                      YES
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setAccordionState({ ...accordionState, attendedClass: false })
-                                      }
-                                      className={`py-1.5 rounded-lg font-bold uppercase transition text-xs cursor-pointer ${
-                                        !accordionState.attendedClass
-                                          ? 'glass-pill text-white border-white/20'
-                                          : 'text-slate-400 hover:text-white'
-                                      }`}
-                                    >
-                                      NO
-                                    </button>
-                                  </div>
+                                  <YesNoToggle
+                                    size="sm"
+                                    value={accordionState.attendedClass}
+                                    onChange={(val: boolean) =>
+                                      setAccordionState({ ...accordionState, attendedClass: val })
+                                    }
+                                  />
                                 </div>
 
                                 {/* Revision Done? */}
                                 <div className="space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
                                     REVISION DONE?
                                   </label>
-                                  <div className="grid grid-cols-2 gap-1.5 glass-pill p-1 rounded-xl">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setAccordionState({ ...accordionState, revisionDone: true })
-                                      }
-                                      className={`py-1.5 rounded-lg font-bold uppercase transition text-xs cursor-pointer ${
-                                        accordionState.revisionDone
-                                          ? 'bg-[#10b981] text-black font-extrabold shadow-sm'
-                                          : 'text-slate-400 hover:text-white'
-                                      }`}
-                                    >
-                                      YES
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setAccordionState({ ...accordionState, revisionDone: false })
-                                      }
-                                      className={`py-1.5 rounded-lg font-bold uppercase transition text-xs cursor-pointer ${
-                                        !accordionState.revisionDone
-                                          ? 'glass-pill text-white border-white/20'
-                                          : 'text-slate-400 hover:text-white'
-                                      }`}
-                                    >
-                                      NO
-                                    </button>
-                                  </div>
+                                  <YesNoToggle
+                                    size="sm"
+                                    value={accordionState.revisionDone}
+                                    onChange={(val: boolean) =>
+                                      setAccordionState({ ...accordionState, revisionDone: val })
+                                    }
+                                  />
                                 </div>
 
                                 {/* Mock Test Taken? */}
                                 <div className="space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
                                     MOCK TEST?
                                   </label>
-                                  <div className="grid grid-cols-2 gap-1.5 glass-pill p-1 rounded-xl">
+                                  <YesNoToggle
+                                    size="sm"
+                                    value={accordionState.mockTestTaken}
+                                    onChange={(val: boolean) =>
+                                      setAccordionState({ ...accordionState, mockTestTaken: val })
+                                    }
+                                  />
+                                </div>
+
+                                {/* Custom Yes/No Trackers */}
+                                {customColumns
+                                  .filter((col) => col.type === 'boolean')
+                                  .map((col) => (
+                                    <div key={col.id} className="space-y-1.5">
+                                      <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
+                                        {col.name.toUpperCase()}?
+                                      </label>
+                                      <YesNoToggle
+                                        size="sm"
+                                        value={Boolean(accordionState.customData?.[col.id])}
+                                        onChange={(val: boolean) =>
+                                          setAccordionState({
+                                            ...accordionState,
+                                            customData: {
+                                              ...accordionState.customData,
+                                              [col.id]: val,
+                                            },
+                                          })
+                                        }
+                                      />
+                                    </div>
+                                  ))}
+
+                                {/* Quick Add Custom Habit/Tracker in 4th slot if no boolean custom columns exist */}
+                                {customColumns.filter((col) => col.type === 'boolean').length === 0 && (
+                                  <div className="space-y-1.5 flex flex-col justify-between">
+                                    <label className="text-[10px] uppercase tracking-widest text-stone-500 dark:text-slate-400 font-bold block truncate">
+                                      CUSTOM TRACKER
+                                    </label>
                                     <button
                                       type="button"
-                                      onClick={() =>
-                                        setAccordionState({ ...accordionState, mockTestTaken: true })
-                                      }
-                                      className={`py-1.5 rounded-lg font-bold uppercase transition text-xs cursor-pointer ${
-                                        accordionState.mockTestTaken
-                                          ? 'bg-[#10b981] text-black font-extrabold shadow-sm'
-                                          : 'text-slate-400 hover:text-white'
-                                      }`}
+                                      onClick={() => {
+                                        setNewColType('boolean');
+                                        setShowAddColumnModal(true);
+                                      }}
+                                      className="w-full h-8 rounded-lg bg-orange-500/10 hover:bg-[#e9762b] text-[#e9762b] hover:text-black font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 border border-dashed border-[#e9762b]/40 hover:border-[#e9762b]"
+                                      title="Add a custom Yes/No tracker column"
                                     >
-                                      YES
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setAccordionState({ ...accordionState, mockTestTaken: false })
-                                      }
-                                      className={`py-1.5 rounded-lg font-bold uppercase transition text-xs cursor-pointer ${
-                                        !accordionState.mockTestTaken
-                                          ? 'glass-pill text-white border-white/20'
-                                          : 'text-slate-400 hover:text-white'
-                                      }`}
-                                    >
-                                      NO
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>+ TRACKER</span>
                                     </button>
                                   </div>
-                                </div>
+                                )}
                               </div>
 
                               {/* Row 3: Notes Input in Accordion */}
@@ -1410,128 +1491,88 @@ export const DailyStudyLog: React.FC = () => {
                                     setAccordionState({ ...accordionState, notes: e.target.value })
                                   }
                                   placeholder="Write any thoughts, chapters covered, roadblocks..."
-                                  className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none"
+                                  className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
                                 />
                               </div>
 
-                              {/* Row 4: Custom Trackers & Metrics in Accordion */}
-                              {customColumns.length > 0 && (
+                              {/* Row 4: Custom Trackers & Metrics in Accordion (Non-boolean: Number, Text, Select) */}
+                              {customColumns.some((col) => col.type !== 'boolean') && (
                                 <div className="space-y-3 pt-3 border-t border-white/10 font-mono">
                                   <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
-                                    CUSTOM TRACKERS &amp; METRICS
+                                    ADDITIONAL CUSTOM TRACKERS
                                   </span>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                                    {customColumns.map((col) => (
-                                      <div
-                                        key={col.id}
-                                        className="glass-panel p-3 rounded-xl space-y-1.5"
-                                      >
-                                        <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
-                                          {col.name}
-                                        </label>
-                                        {col.type === 'boolean' && (
-                                          <div className="grid grid-cols-2 gap-1.5 glass-pill p-1 rounded-lg">
-                                            <button
-                                              type="button"
-                                              onClick={() =>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                                    {customColumns
+                                      .filter((col) => col.type !== 'boolean')
+                                      .map((col) => (
+                                        <div
+                                          key={col.id}
+                                          className="glass-panel p-3 rounded-xl space-y-1.5"
+                                        >
+                                          <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
+                                            {col.name}
+                                          </label>
+                                          {col.type === 'number' && (
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              value={accordionState.customData?.[col.id] ?? ''}
+                                              onChange={(e) =>
                                                 setAccordionState({
                                                   ...accordionState,
                                                   customData: {
                                                     ...accordionState.customData,
-                                                    [col.id]: true,
+                                                    [col.id]: e.target.value === '' ? '' : Number(e.target.value),
                                                   },
                                                 })
                                               }
-                                              className={`py-1.5 rounded font-bold uppercase transition text-xs cursor-pointer ${
-                                                accordionState.customData?.[col.id]
-                                                  ? 'bg-[#10b981] text-black font-extrabold shadow-sm'
-                                                  : 'text-slate-400 hover:text-white'
-                                              }`}
-                                            >
-                                              YES
-                                            </button>
-                                            <button
-                                              type="button"
-                                              onClick={() =>
+                                              placeholder="--"
+                                              className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
+                                            />
+                                          )}
+                                          {col.type === 'text' && (
+                                            <input
+                                              type="text"
+                                              value={accordionState.customData?.[col.id] ?? ''}
+                                              onChange={(e) =>
                                                 setAccordionState({
                                                   ...accordionState,
                                                   customData: {
                                                     ...accordionState.customData,
-                                                    [col.id]: false,
+                                                    [col.id]: e.target.value,
                                                   },
                                                 })
                                               }
-                                              className={`py-1.5 rounded font-bold uppercase transition text-xs cursor-pointer ${
-                                                !accordionState.customData?.[col.id]
-                                                  ? 'glass-pill text-white border-white/20'
-                                                  : 'text-slate-400 hover:text-white'
-                                              }`}
+                                              placeholder="--"
+                                              className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
+                                            />
+                                          )}
+                                          {col.type === 'select' && (
+                                            <select
+                                              value={accordionState.customData?.[col.id] ?? ''}
+                                              onChange={(e) =>
+                                                setAccordionState({
+                                                  ...accordionState,
+                                                  customData: {
+                                                    ...accordionState.customData,
+                                                    [col.id]: e.target.value,
+                                                  },
+                                                })
+                                              }
+                                              className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
                                             >
-                                              NO
-                                            </button>
-                                          </div>
-                                        )}
-                                        {col.type === 'number' && (
-                                          <input
-                                            type="number"
-                                            step="any"
-                                            value={accordionState.customData?.[col.id] ?? ''}
-                                            onChange={(e) =>
-                                              setAccordionState({
-                                                ...accordionState,
-                                                customData: {
-                                                  ...accordionState.customData,
-                                                  [col.id]: e.target.value === '' ? '' : Number(e.target.value),
-                                                },
-                                              })
-                                            }
-                                            placeholder="Enter number..."
-                                            className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none"
-                                          />
-                                        )}
-                                        {col.type === 'text' && (
-                                          <input
-                                            type="text"
-                                            value={accordionState.customData?.[col.id] ?? ''}
-                                            onChange={(e) =>
-                                              setAccordionState({
-                                                ...accordionState,
-                                                customData: {
-                                                  ...accordionState.customData,
-                                                  [col.id]: e.target.value,
-                                                },
-                                              })
-                                            }
-                                            placeholder="Enter text..."
-                                            className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none"
-                                          />
-                                        )}
-                                        {col.type === 'select' && (
-                                          <select
-                                            value={accordionState.customData?.[col.id] ?? ''}
-                                            onChange={(e) =>
-                                              setAccordionState({
-                                                ...accordionState,
-                                                customData: {
-                                                  ...accordionState.customData,
-                                                  [col.id]: e.target.value,
-                                                },
-                                              })
-                                            }
-                                            className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none cursor-pointer"
-                                          >
-                                            <option value="" className="bg-[#141413] text-slate-500">
-                                              -- Select --
-                                            </option>
-                                            {(col.options || []).map((opt) => (
-                                              <option key={opt} value={opt} className="bg-[#141413] text-white">
-                                                {opt}
+                                              <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
+                                                -- Select --
                                               </option>
-                                            ))}
-                                          </select>
-                                        )}
-                                      </div>
-                                    ))}
+                                              {(col.options || []).map((opt) => (
+                                                <option key={opt} value={opt} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
+                                                  {opt}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          )}
+                                        </div>
+                                      ))}
                                   </div>
                                 </div>
                               )}
@@ -1544,7 +1585,7 @@ export const DailyStudyLog: React.FC = () => {
                                     setExpandedDate(null);
                                     setAccordionState(null);
                                   }}
-                                  className="px-5 py-2 rounded-lg bg-[#1c1c1b] border border-white/10 text-slate-400 hover:text-white text-xs uppercase font-bold tracking-wider transition cursor-pointer"
+                                  className="px-5 py-2 rounded-lg bg-stone-200/90 hover:bg-stone-300 dark:bg-[#1c1c1b] dark:hover:bg-[#252524] border border-stone-300/80 dark:border-white/10 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white text-xs uppercase font-bold tracking-wider transition cursor-pointer shadow-sm"
                                 >
                                   CLOSE
                                 </button>
@@ -1568,10 +1609,10 @@ export const DailyStudyLog: React.FC = () => {
           </div>
 
           {/* Bottom Table Navigation & Chunk Loading Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-white/[0.03] backdrop-blur-xl border-t border-white/10 font-mono text-xs shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
-            <span className="text-slate-400">
-              Showing <span className="text-white font-bold">{visibleLogs.length}</span> of{' '}
-              <span className="text-white font-bold">{filteredDailyLogs.length}</span> days recorded
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-white/[0.03] backdrop-blur-xl border-t border-orange-950/10 dark:border-white/10 font-mono text-xs shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+            <span className="text-stone-600 dark:text-slate-400">
+              Showing <span className="text-stone-900 dark:text-white font-bold">{visibleLogs.length}</span> of{' '}
+              <span className="text-stone-900 dark:text-white font-bold">{filteredDailyLogs.length}</span> days recorded
             </span>
 
             <div className="flex items-center gap-2">
@@ -1590,47 +1631,32 @@ export const DailyStudyLog: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setVisibleLimit(10)}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white uppercase font-bold text-[11px] transition cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white uppercase font-bold text-[11px] transition cursor-pointer border border-stone-300/80 dark:border-white/10"
                 >
                   Show Less
                 </button>
               )}
             </div>
           </div>
-
-          {/* Table Legend */}
-          <div className="py-3 px-4 border-t border-white/10 flex items-center justify-between flex-wrap gap-4 text-[11px] text-slate-400 font-mono">
-            <div className="flex items-center gap-6">
-              <span className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#10b981]" />
-                Done / Yes
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-[#374151]" />
-                Missed / No
-              </span>
-            </div>
-          </div>
         </div>
       </div>
+        </>
+      )}
 
       {/* Modal: Add Custom Column */}
       {showAddColumnModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-md glass-modal rounded-2xl p-6 shadow-2xl font-mono space-y-6">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-3">
               <div>
-                <h3 className="text-base font-bold text-white uppercase tracking-tight">
-                  Add Custom Column
+                <h3 className="text-base font-bold text-stone-900 dark:text-white uppercase tracking-tight">
+                  Add Column
                 </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Expand your table into a personalized tracker
-                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setShowAddColumnModal(false)}
-                className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+                className="p-1 rounded-lg hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1638,7 +1664,7 @@ export const DailyStudyLog: React.FC = () => {
 
             <form onSubmit={handleCreateColumn} className="space-y-4 text-xs">
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
                   COLUMN NAME
                 </label>
                 <input
@@ -1647,21 +1673,21 @@ export const DailyStudyLog: React.FC = () => {
                   value={newColName}
                   onChange={(e) => setNewColName(e.target.value)}
                   placeholder="e.g. Mood, Water intake, Exercise, Pages read"
-                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none"
+                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
                   autoFocus
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
                   COLUMN TYPE
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
                     {
                       type: 'boolean' as CustomColumnType,
-                      label: 'Tick / Checkbox',
-                      desc: 'Yes/No status dot',
+                      label: 'YES / NO',
+                      desc: 'Clickable Yes/No badge',
                       icon: CheckSquare,
                       color: 'text-[#10b981]',
                     },
@@ -1697,14 +1723,14 @@ export const DailyStudyLog: React.FC = () => {
                         className={`p-3 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${
                           isSelected
                             ? 'bg-orange-500/10 border-[#e9762b] shadow-sm shadow-orange-500/20'
-                            : 'glass-pill text-slate-300 hover:border-white/20'
+                            : 'glass-pill text-stone-700 dark:text-slate-300 hover:border-stone-400 dark:hover:border-white/20'
                         }`}
                       >
                         <div className="flex items-center gap-2 mb-1">
                           <Icon className={`w-3.5 h-3.5 ${item.color}`} />
-                          <span className="font-bold text-white text-[11px]">{item.label}</span>
+                          <span className="font-bold text-stone-900 dark:text-white text-[11px]">{item.label}</span>
                         </div>
-                        <span className="text-[10px] text-slate-500">{item.desc}</span>
+                        <span className="text-[10px] text-stone-500 dark:text-slate-500">{item.desc}</span>
                       </button>
                     );
                   })}
@@ -1713,7 +1739,7 @@ export const DailyStudyLog: React.FC = () => {
 
               {newColType === 'select' && (
                 <div className="space-y-1.5 animate-fadeIn">
-                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
                     DROPDOWN OPTIONS (comma separated)
                   </label>
                   <input
@@ -1721,27 +1747,27 @@ export const DailyStudyLog: React.FC = () => {
                     value={newColOptions}
                     onChange={(e) => setNewColOptions(e.target.value)}
                     placeholder="e.g. Good, Okay, Bad, Exhausted"
-                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none"
+                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
                   />
-                  <span className="text-[10px] text-slate-500 block">
+                  <span className="text-[10px] text-stone-500 dark:text-slate-500 block">
                     Default if empty: Good, Okay, Bad
                   </span>
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-orange-950/10 dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setShowAddColumnModal(false)}
-                  className="px-4 py-2 glass-pill text-slate-400 hover:text-white uppercase font-bold text-xs transition cursor-pointer"
+                  className="px-4 py-2 glass-pill text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white uppercase font-bold text-xs transition cursor-pointer"
                 >
-                  CANCEL
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   className="px-6 py-2 rounded-lg bg-[#e9762b] text-black font-extrabold uppercase text-xs tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-md shadow-orange-500/20"
                 >
-                  CREATE COLUMN
+                  Create
                 </button>
               </div>
             </form>
@@ -1753,19 +1779,16 @@ export const DailyStudyLog: React.FC = () => {
       {editingColumn && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-md glass-modal rounded-2xl p-6 shadow-2xl font-mono space-y-6">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-3">
               <div>
-                <h3 className="text-base font-bold text-white uppercase tracking-tight">
+                <h3 className="text-base font-bold text-stone-900 dark:text-white uppercase tracking-tight">
                   Configure Column
                 </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Rename, reorder, change type, or delete
-                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingColumn(null)}
-                className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer"
+                className="p-1 rounded-lg hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1773,7 +1796,7 @@ export const DailyStudyLog: React.FC = () => {
 
             <form onSubmit={handleSaveEditColumn} className="space-y-4 text-xs">
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
                   COLUMN NAME
                 </label>
                 <input
@@ -1783,12 +1806,12 @@ export const DailyStudyLog: React.FC = () => {
                   onChange={(e) =>
                     setEditingColumn({ ...editingColumn, name: e.target.value })
                   }
-                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none"
+                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
                   COLUMN TYPE
                 </label>
                 <select
@@ -1799,18 +1822,18 @@ export const DailyStudyLog: React.FC = () => {
                       type: e.target.value as CustomColumnType,
                     })
                   }
-                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none cursor-pointer"
+                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
                 >
-                  <option value="boolean" className="bg-[#141413]">Tick / Checkbox (Yes/No dot)</option>
-                  <option value="number" className="bg-[#141413]">Number (Numeric input)</option>
-                  <option value="text" className="bg-[#141413]">Short Text (Free text)</option>
-                  <option value="select" className="bg-[#141413]">Dropdown / Select (Option badge)</option>
+                  <option value="boolean" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">YES / NO (Clickable badge)</option>
+                  <option value="number" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Number (Numeric input)</option>
+                  <option value="text" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Short Text (Free text)</option>
+                  <option value="select" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Dropdown / Select (Option badge)</option>
                 </select>
               </div>
 
               {editingColumn.type === 'select' && (
                 <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
                     OPTIONS (comma separated)
                   </label>
                   <input
@@ -1819,14 +1842,14 @@ export const DailyStudyLog: React.FC = () => {
                     onChange={(e) =>
                       setEditingColumn({ ...editingColumn, options: e.target.value })
                     }
-                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none"
+                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none"
                   />
                 </div>
               )}
 
               {/* Column Reordering */}
               <div className="space-y-1.5 pt-2">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
                   COLUMN POSITION
                 </label>
                 <div className="flex items-center gap-2">
@@ -1834,18 +1857,18 @@ export const DailyStudyLog: React.FC = () => {
                     type="button"
                     disabled={editingColumn.index === 0}
                     onClick={() => handleMoveColumn(editingColumn.index, 'left')}
-                    className="flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 text-slate-300 font-bold uppercase text-[11px] border border-white/10 transition cursor-pointer disabled:cursor-not-allowed"
+                    className="flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 disabled:opacity-30 text-stone-700 dark:text-slate-300 font-bold uppercase text-[11px] border border-stone-300/80 dark:border-white/10 transition cursor-pointer disabled:cursor-not-allowed"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
-                    <span>MOVE LEFT</span>
+                    <span>Move Left</span>
                   </button>
                   <button
                     type="button"
                     disabled={editingColumn.index === customColumns.length - 1}
                     onClick={() => handleMoveColumn(editingColumn.index, 'right')}
-                    className="flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-white/5 text-slate-300 font-bold uppercase text-[11px] border border-white/10 transition cursor-pointer disabled:cursor-not-allowed"
+                    className="flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 disabled:opacity-30 text-stone-700 dark:text-slate-300 font-bold uppercase text-[11px] border border-stone-300/80 dark:border-white/10 transition cursor-pointer disabled:cursor-not-allowed"
                   >
-                    <span>MOVE RIGHT</span>
+                    <span>Move Right</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -1856,27 +1879,148 @@ export const DailyStudyLog: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handleDeleteColumn(editingColumn.id, editingColumn.name)}
-                  className="w-full inline-flex items-center justify-center gap-2 py-2 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 text-[11px] font-bold uppercase tracking-wider transition cursor-pointer"
+                  className="w-full inline-flex items-center justify-center gap-2 py-2 rounded-lg bg-red-500/10 text-red-500 dark:text-red-400 hover:bg-red-500/20 border border-red-500/30 text-[11px] font-bold uppercase tracking-wider transition cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>DELETE THIS COLUMN</span>
+                  <span>Delete</span>
                 </button>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-orange-950/10 dark:border-white/10">
                 <button
                   type="button"
                   onClick={() => setEditingColumn(null)}
-                  className="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white uppercase font-bold text-xs transition cursor-pointer"
+                  className="px-4 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white uppercase font-bold text-xs transition cursor-pointer border border-stone-300/80 dark:border-white/10"
                 >
-                  CANCEL
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   className="px-6 py-2 rounded-lg bg-[#e9762b] text-black font-extrabold uppercase text-xs tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-md shadow-orange-500/20"
                 >
-                  SAVE CHANGES
+                  Save
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Create New Custom Table */}
+      {showCreateTableModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-lg glass-modal rounded-2xl p-6 sm:p-8 space-y-6 border border-white/15 shadow-2xl font-mono">
+            <div className="flex items-center justify-between border-b border-stone-200 dark:border-white/10 pb-4">
+              <div className="flex items-center gap-2">
+                <Table2 className="w-5 h-5 text-[#e9762b]" />
+                <h3 className="text-lg font-bold text-stone-900 dark:text-white tracking-wide uppercase">
+                  Create Custom Table
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateTableModal(false)}
+                className="p-1 rounded-full hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateTable} className="space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                  TABLE TITLE
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newTableTitle}
+                  onChange={(e) => setNewTableTitle(e.target.value)}
+                  placeholder="e.g. Mock Tests"
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                  DESCRIPTION (OPTIONAL)
+                </label>
+                <input
+                  type="text"
+                  value={newTableDesc}
+                  onChange={(e) => setNewTableDesc(e.target.value)}
+                  placeholder="Optional description..."
+                  className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                  CHOOSE A TEMPLATE
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {[
+                    {
+                      id: 'mock' as const,
+                      title: 'Mock Tests',
+                      icon: Sparkles,
+                    },
+                    {
+                      id: 'pyq' as const,
+                      title: 'PYQ Practice',
+                      icon: BookOpen,
+                    },
+                    {
+                      id: 'habits' as const,
+                      title: 'Habits',
+                      icon: Layers,
+                    },
+                    {
+                      id: 'blank' as const,
+                      title: 'Blank Table',
+                      icon: Plus,
+                    },
+                  ].map((tmpl) => {
+                    const Icon = tmpl.icon;
+                    const isSelected = selectedTemplate === tmpl.id;
+                    return (
+                      <button
+                        key={tmpl.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTemplate(tmpl.id);
+                          if (!newTableTitle.trim()) {
+                            setNewTableTitle(tmpl.title);
+                          }
+                        }}
+                        className={`px-3.5 py-3 rounded-xl border text-left transition flex items-center gap-2.5 cursor-pointer ${
+                          isSelected
+                            ? 'bg-orange-500/15 dark:bg-orange-500/20 border-[#e9762b] shadow-sm shadow-orange-500/20 text-stone-900 dark:text-white font-extrabold'
+                            : 'bg-stone-100/70 dark:bg-white/5 border-stone-200 dark:border-white/10 text-stone-700 dark:text-slate-300 hover:border-stone-300 dark:hover:border-white/20 hover:text-stone-900 dark:hover:text-white font-bold'
+                        }`}
+                      >
+                        <Icon className={`w-4 h-4 shrink-0 ${isSelected ? 'text-[#e9762b]' : 'text-stone-500 dark:text-slate-400'}`} />
+                        <span className="text-xs tracking-wide uppercase text-stone-900 dark:text-white">{tmpl.title}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateTableModal(false)}
+                  className="px-5 py-2.5 rounded-full border border-stone-300 dark:border-white/10 text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white text-xs uppercase font-bold tracking-wider transition cursor-pointer hover:bg-stone-100 dark:hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+                <ShinyButton
+                  type="submit"
+                  label="Create Table"
+                  className="!px-6 !py-2.5 !text-xs !font-mono !font-extrabold !uppercase !tracking-wider"
+                />
               </div>
             </form>
           </div>

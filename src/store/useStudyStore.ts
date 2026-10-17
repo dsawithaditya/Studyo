@@ -14,7 +14,14 @@ import {
   TimerMode,
   DailyLogEntry,
   StopwatchLap,
-  CustomColumn
+  CustomColumn,
+  FriendProfile,
+  FriendComment,
+  CustomStudyTable,
+  CustomTableColumn,
+  CustomTableRow,
+  CustomTableColumnType,
+  ThemeMode
 } from '../types';
 import { SoundType, soundSynth } from '../services/soundSynth';
 
@@ -29,6 +36,7 @@ interface TimerState {
 }
 
 interface StudyState {
+  theme: ThemeMode;
   language: Language;
   user: UserProfile;
   subjects: Subject[];
@@ -46,11 +54,12 @@ interface StudyState {
 
   // Daily Study Log Module
   dailyLogs: DailyLogEntry[];
+  ensureTodayDailyLog: () => void;
   addOrUpdateDailyLog: (entry: DailyLogEntry) => void;
   updateDailyLogField: <K extends keyof DailyLogEntry>(date: string, field: K, value: DailyLogEntry[K]) => void;
   deleteDailyLog: (date: string) => void;
 
-  // Custom Columns Module
+  // Custom Columns Module (for main daily study log)
   customColumns: CustomColumn[];
   addCustomColumn: (col: Omit<CustomColumn, 'id'>) => void;
   updateCustomColumn: (id: string, updates: Partial<CustomColumn>) => void;
@@ -58,20 +67,42 @@ interface StudyState {
   reorderCustomColumns: (fromIndex: number, toIndex: number) => void;
   updateDailyLogCustomField: (date: string, columnId: string, value: any) => void;
 
+  // Customizable Study Tables Module (Multiple user-defined tables)
+  customTables: CustomStudyTable[];
+  activeTableId: string;
+  setActiveTableId: (id: string) => void;
+  addCustomTable: (table: { title: string; description?: string; columns?: Omit<CustomTableColumn, 'id'>[] }) => string;
+  updateCustomTable: (tableId: string, updates: Partial<Omit<CustomStudyTable, 'id' | 'rows' | 'createdAt'>>) => void;
+  deleteCustomTable: (tableId: string) => void;
+  addCustomTableRow: (tableId: string, date: string, values?: Record<string, any>, notes?: string) => void;
+  updateCustomTableCell: (tableId: string, rowId: string, columnId: string, value: any) => void;
+  updateCustomTableRowNotes: (tableId: string, rowId: string, notes: string) => void;
+  deleteCustomTableRow: (tableId: string, rowId: string) => void;
+  addCustomTableColumn: (tableId: string, col: Omit<CustomTableColumn, 'id'>) => void;
+  updateCustomTableColumn: (tableId: string, columnId: string, updates: Partial<CustomTableColumn>) => void;
+  deleteCustomTableColumn: (tableId: string, columnId: string) => void;
+  reorderCustomTableColumns: (tableId: string, fromIndex: number, toIndex: number) => void;
+
   // Timer Settings & Stopwatch Module
   autoStartNextRound: boolean;
   soundAlertOnFinish: boolean;
+  enableQuickScratchpad: boolean;
+  showFinishButton: boolean;
   stopwatchTime: number; // in seconds
   stopwatchRunning: boolean;
   stopwatchLaps: StopwatchLap[];
   setAutoStartNextRound: (val: boolean) => void;
   setSoundAlertOnFinish: (val: boolean) => void;
+  setEnableQuickScratchpad: (val: boolean) => void;
+  setShowFinishButton: (val: boolean) => void;
   startStopwatch: () => void;
   pauseStopwatch: () => void;
   resetStopwatch: () => void;
   lapStopwatch: () => void;
 
   // Actions
+  setTheme: (theme: ThemeMode) => void;
+  toggleTheme: () => void;
   setLanguage: (lang: Language) => void;
   setUserTarget: (minutes: number) => void;
   updateUserProfile: (updates: Partial<UserProfile>) => void;
@@ -118,6 +149,19 @@ interface StudyState {
   setSupabaseConfig: (url: string, key: string) => void;
   resetToDefaults: () => void;
   loadDemoData: () => void;
+
+  // Friends & Social Study Circle Module
+  friends: FriendProfile[];
+  sendFriendRequest: (code: string) => { success: boolean; message: string; friend?: FriendProfile };
+  acceptFriendRequest: (code: string) => void;
+  declineFriendRequest: (code: string) => void;
+  cancelFriendRequest: (code: string) => void;
+  removeFriend: (code: string) => void;
+  addFriendComment: (friendCode: string, text: string) => void;
+  deleteFriendComment: (friendCode: string, commentId: string) => void;
+  generateNewFriendCode: () => string;
+  updateProfileMetricSlot: (slotIndex: 0 | 1 | 2, metricKey: string) => void;
+  setCustomWordmarkText: (text: string) => void;
 }
 
 // Generate realistic 365-day seed history
@@ -351,6 +395,67 @@ export const INITIAL_CUSTOM_COLUMNS: CustomColumn[] = [
   },
 ];
 
+export const INITIAL_CUSTOM_TABLES: CustomStudyTable[] = [
+  {
+    id: 'tbl-mock-tests',
+    title: 'Mock Tests & Practice Papers',
+    description: 'Track exam practice papers, scores, accuracy percentage, and analysis notes.',
+    createdAt: '2026-10-01',
+    columns: [
+      { id: 'col-paper', name: 'PAPER', type: 'text' },
+      { id: 'col-score', name: 'SCORE', type: 'number' },
+      { id: 'col-total', name: 'TOTAL', type: 'number' },
+      { id: 'col-accuracy', name: 'ACCURACY', type: 'number', unit: '%' },
+      { id: 'col-difficulty', name: 'DIFFICULTY', type: 'select', options: ['High', 'Normal', 'Low'] },
+      { id: 'col-analyzed', name: 'ANALYZED', type: 'boolean' },
+    ],
+    rows: [
+      {
+        id: 'row-1',
+        date: '2026-10-16',
+        values: {
+          'col-paper': 'Full Mock #04',
+          'col-score': 248,
+          'col-total': 300,
+          'col-accuracy': 88,
+          'col-difficulty': 'Normal',
+          'col-analyzed': true,
+        },
+        notes: 'Made 3 silly calculation errors in section B. Revise thermodynamics formulas.',
+        createdAt: '2026-10-16T18:00:00Z',
+      },
+      {
+        id: 'row-2',
+        date: '2026-10-14',
+        values: {
+          'col-paper': 'Adv Physics Drill',
+          'col-score': 82,
+          'col-total': 100,
+          'col-accuracy': 84,
+          'col-difficulty': 'High',
+          'col-analyzed': true,
+        },
+        notes: 'Rotational dynamics problems took longer than expected.',
+        createdAt: '2026-10-14T19:30:00Z',
+      },
+      {
+        id: 'row-3',
+        date: '2026-10-11',
+        values: {
+          'col-paper': 'Calculus Finals',
+          'col-score': 94,
+          'col-total': 100,
+          'col-accuracy': 96,
+          'col-difficulty': 'Low',
+          'col-analyzed': true,
+        },
+        notes: 'Great pacing, finished 15 mins ahead of time.',
+        createdAt: '2026-10-11T17:00:00Z',
+      },
+    ],
+  },
+];
+
 const INITIAL_TASKS: Task[] = [
   {
     id: 'task-1',
@@ -422,6 +527,68 @@ const INITIAL_TASKS: Task[] = [
     estimatedPomodoros: 2,
   },
 ];
+
+export const getLocalTodayDateString = (): string => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export const createDefaultDailyLog = (date: string): DailyLogEntry => ({
+  date,
+  studyHours: null,
+  attendedClass: false,
+  pyqsSolved: null,
+  revisionDone: false,
+  mockTestTaken: false,
+  sleepHours: null,
+  focusRating: null,
+  notes: '',
+  customData: {},
+});
+
+/**
+ * Ensures today's log exists date-wise, and guarantees no future dates exist.
+ * For today it generates today. For tomorrow it will only generate when tomorrow arrives.
+ */
+export const ensureDailyLogsDateWise = (logs: DailyLogEntry[]): DailyLogEntry[] => {
+  const todayStr = getLocalTodayDateString();
+  const map = new Map<string, DailyLogEntry>();
+
+  // Only include logs up to today (never generate tomorrow today)
+  if (Array.isArray(logs)) {
+    for (const log of logs) {
+      if (log && log.date && log.date <= todayStr) {
+        map.set(log.date, log);
+      }
+    }
+  }
+
+  // Ensure today's entry is generated
+  if (!map.has(todayStr)) {
+    map.set(todayStr, createDefaultDailyLog(todayStr));
+  } else {
+    // If today was previously auto-generated with default zeroes and has no user study notes or actions, clean to unentered state
+    const todayLog = map.get(todayStr)!;
+    if (
+      (todayLog.studyHours === 0 || todayLog.studyHours == null) &&
+      (todayLog.pyqsSolved === 0 || todayLog.pyqsSolved == null) &&
+      (todayLog.sleepHours === 0 || todayLog.sleepHours == null) &&
+      (todayLog.focusRating === 5 || todayLog.focusRating == null) &&
+      !todayLog.notes &&
+      !todayLog.attendedClass &&
+      !todayLog.revisionDone &&
+      !todayLog.mockTestTaken &&
+      (!todayLog.customData || Object.keys(todayLog.customData).length === 0)
+    ) {
+      map.set(todayStr, createDefaultDailyLog(todayStr));
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+};
 
 export const INITIAL_DAILY_LOGS: DailyLogEntry[] = [
   {
@@ -620,9 +787,247 @@ function clearStopwatchLoop() {
   stopwatchTimeStartedAt = null;
 }
 
+// Generate 4-5 digit unique alphanumeric student code (e.g. 7K9X2)
+export function generateStudentCode(): string {
+  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+  let result = '';
+  for (let i = 0; i < 5; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+const INITIAL_FRIENDS: FriendProfile[] = [
+  {
+    code: 'D4M8X',
+    name: 'Dev Patel',
+    avatar: 'D',
+    bio: '',
+    streakDays: 24,
+    dailyTargetMinutes: 240,
+    todayStudyMinutes: 210,
+    lastActive: '20m ago',
+    status: 'accepted',
+    studyLogs: [
+      {
+        date: '2026-10-16',
+        studyHours: 4.5,
+        attendedClass: true,
+        pyqsSolved: 25,
+        revisionDone: true,
+        mockTestTaken: false,
+        sleepHours: 7.5,
+        focusRating: 5,
+        notes: 'Binary search tree rebalancing, red-black tree insertion proofs, and graph DFS.',
+      },
+      {
+        date: '2026-10-15',
+        studyHours: 4.0,
+        attendedClass: true,
+        pyqsSolved: 18,
+        revisionDone: true,
+        mockTestTaken: true,
+        sleepHours: 7.0,
+        focusRating: 4,
+        notes: 'Mock exam on Operating Systems (Memory Management & Virtual Paging). Scored 92%.',
+      },
+      {
+        date: '2026-10-14',
+        studyHours: 3.5,
+        attendedClass: false,
+        pyqsSolved: 30,
+        revisionDone: false,
+        mockTestTaken: false,
+        sleepHours: 8.0,
+        focusRating: 4,
+        notes: 'Dynamic programming marathon: Knapsack variations and longest common subsequence.',
+      },
+      {
+        date: '2026-10-13',
+        studyHours: 5.0,
+        attendedClass: true,
+        pyqsSolved: 20,
+        revisionDone: true,
+        mockTestTaken: false,
+        sleepHours: 7.2,
+        focusRating: 5,
+        notes: 'System design fundamentals: Load balancing, caching patterns, and database indexing.',
+      },
+      {
+        date: '2026-10-12',
+        studyHours: 3.0,
+        attendedClass: true,
+        pyqsSolved: 15,
+        revisionDone: true,
+        mockTestTaken: false,
+        sleepHours: 6.8,
+        focusRating: 3,
+        notes: 'Computer networks: TCP 3-way handshake and congestion control window.',
+      },
+    ],
+    comments: [
+      {
+        id: 'comm-1',
+        authorCode: 'A9X4K',
+        authorName: 'Alex',
+        text: 'Insane consistency on dynamic programming yesterday! 🔥',
+        timestamp: new Date(Date.now() - 3600000 * 3).toISOString(),
+        reactions: ['🔥', '💪'],
+      },
+      {
+        id: 'comm-2',
+        authorCode: 'D4M8X',
+        authorName: 'Dev Patel',
+        text: 'Thanks Alex! Graph theory finals coming up next week, pushing hard.',
+        timestamp: new Date(Date.now() - 3600000 * 1.5).toISOString(),
+        reactions: ['⚡'],
+      },
+    ],
+  },
+  {
+    code: 'E7K92',
+    name: 'Elena Rostova',
+    avatar: 'E',
+    bio: '',
+    streakDays: 18,
+    dailyTargetMinutes: 330,
+    todayStudyMinutes: 270,
+    lastActive: '1h ago',
+    status: 'incoming_request',
+    requestedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
+    studyLogs: [
+      {
+        date: '2026-10-16',
+        studyHours: 5.5,
+        attendedClass: true,
+        pyqsSolved: 35,
+        revisionDone: true,
+        mockTestTaken: false,
+        sleepHours: 7.0,
+        focusRating: 5,
+        notes: 'Electrodynamics Maxwell equations, wave propagation in dielectric media.',
+      },
+      {
+        date: '2026-10-15',
+        studyHours: 5.0,
+        attendedClass: false,
+        pyqsSolved: 40,
+        revisionDone: true,
+        mockTestTaken: true,
+        sleepHours: 7.5,
+        focusRating: 5,
+        notes: 'Full length Physics mock exam. Rotational dynamics & angular momentum conservation.',
+      },
+      {
+        date: '2026-10-14',
+        studyHours: 4.5,
+        attendedClass: true,
+        pyqsSolved: 25,
+        revisionDone: true,
+        mockTestTaken: false,
+        sleepHours: 6.5,
+        focusRating: 4,
+        notes: 'Thermodynamics Carnot cycle, entropy integration problems.',
+      },
+    ],
+    comments: [],
+  },
+  {
+    code: 'S3W5Y',
+    name: 'Sara Chen',
+    avatar: 'S',
+    bio: '',
+    streakDays: 15,
+    dailyTargetMinutes: 360,
+    todayStudyMinutes: 310,
+    lastActive: '40m ago',
+    status: 'none',
+    studyLogs: [
+      {
+        date: '2026-10-16',
+        studyHours: 6.0,
+        attendedClass: true,
+        pyqsSolved: 30,
+        revisionDone: true,
+        mockTestTaken: false,
+        sleepHours: 8.0,
+        focusRating: 5,
+        notes: 'Aldol condensation, Cannizzaro reaction, and carboxylic acid derivatives.',
+      },
+      {
+        date: '2026-10-15',
+        studyHours: 5.5,
+        attendedClass: true,
+        pyqsSolved: 28,
+        revisionDone: true,
+        mockTestTaken: false,
+        sleepHours: 7.5,
+        focusRating: 4,
+        notes: 'Biomolecules: Peptide bond resonance, amino acid zwitterion titration curves.',
+      },
+    ],
+    comments: [],
+  },
+  {
+    code: 'R8P2T',
+    name: 'Rohan Sharma',
+    avatar: 'R',
+    bio: '',
+    streakDays: 12,
+    dailyTargetMinutes: 300,
+    todayStudyMinutes: 200,
+    lastActive: '2h ago',
+    status: 'none',
+    studyLogs: [
+      {
+        date: '2026-10-16',
+        studyHours: 4.0,
+        attendedClass: true,
+        pyqsSolved: 22,
+        revisionDone: true,
+        mockTestTaken: false,
+        sleepHours: 7.0,
+        focusRating: 4,
+        notes: 'Differential equations: Integrating factor methods and orthogonal trajectories.',
+      },
+      {
+        date: '2026-10-15',
+        studyHours: 4.5,
+        attendedClass: true,
+        pyqsSolved: 30,
+        revisionDone: false,
+        mockTestTaken: true,
+        sleepHours: 6.5,
+        focusRating: 3,
+        notes: 'Coordinate geometry conic sections: Parabola tangents and normal equations.',
+      },
+    ],
+    comments: [],
+  },
+];
+
+export const applyTheme = (theme: ThemeMode) => {
+  if (typeof document === 'undefined') return;
+  const root = document.documentElement;
+  if (theme === 'light') {
+    root.classList.remove('dark');
+    root.classList.add('light');
+    root.style.colorScheme = 'light';
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) metaTheme.setAttribute('content', '#fae8dc');
+  } else {
+    root.classList.add('dark');
+    root.classList.remove('light');
+    root.style.colorScheme = 'dark';
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) metaTheme.setAttribute('content', '#000000');
+  }
+};
+
 export const useStudyStore = create<StudyState>()(
   persist(
     (set, get) => ({
+      theme: 'dark',
       language: 'en',
       user: {
         name: 'Alex',
@@ -630,14 +1035,22 @@ export const useStudyStore = create<StudyState>()(
         longestStreak: 21,
         lastStudiedDate: new Date().toISOString().split('T')[0],
         lastActiveSubjectId: 'sub-phys',
+        friendCode: 'A9X4K',
+        profileMetricSlots: ['currentStreak', 'bestStreak', 'daysLogged'],
+        customWordmarkText: 'studyo',
       },
+      friends: INITIAL_FRIENDS,
       subjects: INITIAL_SUBJECTS,
       sessions: generateSeedSessions(),
       tasks: INITIAL_TASKS,
-      dailyLogs: INITIAL_DAILY_LOGS,
+      dailyLogs: ensureDailyLogsDateWise(INITIAL_DAILY_LOGS),
       customColumns: INITIAL_CUSTOM_COLUMNS,
+      customTables: INITIAL_CUSTOM_TABLES,
+      activeTableId: 'main',
       autoStartNextRound: false,
       soundAlertOnFinish: true,
+      enableQuickScratchpad: false,
+      showFinishButton: true,
       stopwatchTime: 0,
       stopwatchRunning: false,
       stopwatchLaps: [],
@@ -687,6 +1100,12 @@ export const useStudyStore = create<StudyState>()(
       isCloudSynced: false,
 
       // Daily Study Log Actions
+      ensureTodayDailyLog: () => {
+        set((state) => ({
+          dailyLogs: ensureDailyLogsDateWise(state.dailyLogs),
+        }));
+      },
+
       addOrUpdateDailyLog: (entry) => {
         set((state) => {
           const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : INITIAL_DAILY_LOGS;
@@ -698,8 +1117,7 @@ export const useStudyStore = create<StudyState>()(
           } else {
             updated = [entry, ...logs];
           }
-          updated.sort((a, b) => b.date.localeCompare(a.date));
-          return { dailyLogs: updated };
+          return { dailyLogs: ensureDailyLogsDateWise(updated) };
         });
       },
 
@@ -781,9 +1199,190 @@ export const useStudyStore = create<StudyState>()(
         });
       },
 
+      // Customizable Study Tables Actions
+      setActiveTableId: (id) => set({ activeTableId: id }),
+
+      addCustomTable: ({ title, description, columns = [] }) => {
+        const newId = `tbl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const initialColumns: CustomTableColumn[] = columns.length > 0
+          ? columns.map((c, idx) => ({
+              ...c,
+              id: `col_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+            }))
+          : [
+              { id: `col_${Date.now()}_1`, name: 'Topic / Item', type: 'text' },
+              { id: `col_${Date.now()}_2`, name: 'Status', type: 'boolean' },
+            ];
+
+        const todayStr = getLocalTodayDateString();
+        const newTable: CustomStudyTable = {
+          id: newId,
+          title: title.trim() || 'Untitled Table',
+          description: description?.trim() || '',
+          createdAt: todayStr,
+          columns: initialColumns,
+          rows: [
+            {
+              id: `row_${Date.now()}_1`,
+              date: todayStr,
+              values: {},
+              notes: '',
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        };
+
+        set((state) => ({
+          customTables: [...(state.customTables || []), newTable],
+          activeTableId: newId,
+        }));
+        return newId;
+      },
+
+      updateCustomTable: (tableId, updates) => {
+        set((state) => ({
+          customTables: (state.customTables || []).map((t) =>
+            t.id === tableId ? { ...t, ...updates } : t
+          ),
+        }));
+      },
+
+      deleteCustomTable: (tableId) => {
+        set((state) => ({
+          customTables: (state.customTables || []).filter((t) => t.id !== tableId),
+          activeTableId: state.activeTableId === tableId ? 'main' : state.activeTableId,
+        }));
+      },
+
+      addCustomTableRow: (tableId, date, values = {}, notes = '') => {
+        const newRow: CustomTableRow = {
+          id: `row_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          date,
+          values,
+          notes,
+          createdAt: new Date().toISOString(),
+        };
+
+        set((state) => ({
+          customTables: (state.customTables || []).map((tbl) => {
+            if (tbl.id !== tableId) return tbl;
+            const nextRows = [newRow, ...tbl.rows].sort((a, b) => b.date.localeCompare(a.date));
+            return { ...tbl, rows: nextRows };
+          }),
+        }));
+      },
+
+      updateCustomTableCell: (tableId, rowId, columnId, value) => {
+        set((state) => ({
+          customTables: (state.customTables || []).map((tbl) => {
+            if (tbl.id !== tableId) return tbl;
+            return {
+              ...tbl,
+              rows: tbl.rows.map((row) => {
+                if (row.id !== rowId) return row;
+                return {
+                  ...row,
+                  values: {
+                    ...row.values,
+                    [columnId]: value,
+                  },
+                };
+              }),
+            };
+          }),
+        }));
+      },
+
+      updateCustomTableRowNotes: (tableId, rowId, notes) => {
+        set((state) => ({
+          customTables: (state.customTables || []).map((tbl) => {
+            if (tbl.id !== tableId) return tbl;
+            return {
+              ...tbl,
+              rows: tbl.rows.map((row) => (row.id === rowId ? { ...row, notes } : row)),
+            };
+          }),
+        }));
+      },
+
+      deleteCustomTableRow: (tableId, rowId) => {
+        set((state) => ({
+          customTables: (state.customTables || []).map((tbl) => {
+            if (tbl.id !== tableId) return tbl;
+            return {
+              ...tbl,
+              rows: tbl.rows.filter((row) => row.id !== rowId),
+            };
+          }),
+        }));
+      },
+
+      addCustomTableColumn: (tableId, col) => {
+        const newCol: CustomTableColumn = {
+          ...col,
+          id: `col_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        };
+        set((state) => ({
+          customTables: (state.customTables || []).map((tbl) => {
+            if (tbl.id !== tableId) return tbl;
+            return {
+              ...tbl,
+              columns: [...tbl.columns, newCol],
+            };
+          }),
+        }));
+      },
+
+      updateCustomTableColumn: (tableId, columnId, updates) => {
+        set((state) => ({
+          customTables: (state.customTables || []).map((tbl) => {
+            if (tbl.id !== tableId) return tbl;
+            return {
+              ...tbl,
+              columns: tbl.columns.map((c) => (c.id === columnId ? { ...c, ...updates } : c)),
+            };
+          }),
+        }));
+      },
+
+      deleteCustomTableColumn: (tableId, columnId) => {
+        set((state) => ({
+          customTables: (state.customTables || []).map((tbl) => {
+            if (tbl.id !== tableId) return tbl;
+            return {
+              ...tbl,
+              columns: tbl.columns.filter((c) => c.id !== columnId),
+              rows: tbl.rows.map((row) => {
+                if (!(columnId in row.values)) return row;
+                const nextVals = { ...row.values };
+                delete nextVals[columnId];
+                return { ...row, values: nextVals };
+              }),
+            };
+          }),
+        }));
+      },
+
+      reorderCustomTableColumns: (tableId, fromIndex, toIndex) => {
+        set((state) => ({
+          customTables: (state.customTables || []).map((tbl) => {
+            if (tbl.id !== tableId) return tbl;
+            const cols = [...tbl.columns];
+            if (fromIndex < 0 || fromIndex >= cols.length || toIndex < 0 || toIndex >= cols.length) {
+              return tbl;
+            }
+            const [moved] = cols.splice(fromIndex, 1);
+            cols.splice(toIndex, 0, moved);
+            return { ...tbl, columns: cols };
+          }),
+        }));
+      },
+
       // Timer Settings & Stopwatch Actions
       setAutoStartNextRound: (val) => set({ autoStartNextRound: val }),
       setSoundAlertOnFinish: (val) => set({ soundAlertOnFinish: val }),
+      setEnableQuickScratchpad: (val) => set({ enableQuickScratchpad: val }),
+      setShowFinishButton: (val) => set({ showFinishButton: val }),
 
       startStopwatch: () => {
         const { stopwatchRunning, stopwatchTime } = get();
@@ -825,6 +1424,16 @@ export const useStudyStore = create<StudyState>()(
           lapDurationSeconds: lapDuration,
         };
         set({ stopwatchLaps: [newLap, ...stopwatchLaps] });
+      },
+
+      setTheme: (theme) => {
+        set({ theme });
+        applyTheme(theme);
+      },
+      toggleTheme: () => {
+        const next = get().theme === 'dark' ? 'light' : 'dark';
+        set({ theme: next });
+        applyTheme(next);
       },
 
       setLanguage: (lang) => set({ language: lang }),
@@ -1323,13 +1932,220 @@ export const useStudyStore = create<StudyState>()(
         });
       },
 
+      // Social / Friends Network Actions
+      sendFriendRequest: (code: string) => {
+        const cleanCode = code.trim().toUpperCase();
+        if (!cleanCode) {
+          return { success: false, message: 'Please enter a valid student code.' };
+        }
+        const { user, friends } = get();
+        if (cleanCode === (user.friendCode || 'A9X4K').toUpperCase()) {
+          return { success: false, message: 'You cannot connect with your own student code!' };
+        }
+
+        const acceptedCount = friends.filter((f) => f.status === 'accepted').length;
+        if (acceptedCount >= 51) {
+          return { success: false, message: 'Friend limit reached (max 51 friends allowed).' };
+        }
+
+        const existing = friends.find((f) => f.code.toUpperCase() === cleanCode);
+        if (existing) {
+          if (existing.status === 'accepted') {
+            return { success: false, message: `${existing.name} is already in your study circle!` };
+          }
+          if (existing.status === 'outgoing_request') {
+            return { success: false, message: `Request already pending for ${existing.name}.` };
+          }
+          if (existing.status === 'incoming_request') {
+            get().acceptFriendRequest(cleanCode);
+            return { success: true, message: `Accepted incoming request from ${existing.name}!`, friend: existing };
+          }
+          const updated = friends.map((f) =>
+            f.code.toUpperCase() === cleanCode
+              ? { ...f, status: 'outgoing_request' as const, requestedAt: new Date().toISOString() }
+              : f
+          );
+          set({ friends: updated });
+          return { success: true, message: `Friend request sent to ${existing.name}!`, friend: existing };
+        }
+
+        // Code not in known list - dynamically generate student profile so any valid 4-5 code works
+        const newFriend: FriendProfile = {
+          code: cleanCode,
+          name: `Student ${cleanCode}`,
+          avatar: cleanCode.charAt(0),
+          bio: '',
+          streakDays: Math.floor(Math.random() * 15) + 3,
+          dailyTargetMinutes: 300,
+          todayStudyMinutes: 180,
+          lastActive: 'Just now',
+          status: 'outgoing_request',
+          requestedAt: new Date().toISOString(),
+          studyLogs: [
+            {
+              date: new Date().toISOString().split('T')[0],
+              studyHours: 4.0,
+              attendedClass: true,
+              pyqsSolved: 20,
+              revisionDone: true,
+              mockTestTaken: false,
+              sleepHours: 7.5,
+              focusRating: 4,
+              notes: 'Active study sprint and problem solving.',
+            },
+            {
+              date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+              studyHours: 3.5,
+              attendedClass: true,
+              pyqsSolved: 15,
+              revisionDone: true,
+              mockTestTaken: false,
+              sleepHours: 7.0,
+              focusRating: 4,
+              notes: 'Topic review and question bank practice.',
+            },
+          ],
+          comments: [],
+        };
+        set({ friends: [newFriend, ...friends] });
+        return { success: true, message: `Friend request sent to Student ${cleanCode}!`, friend: newFriend };
+      },
+
+      acceptFriendRequest: (code: string) => {
+        const cleanCode = code.trim().toUpperCase();
+        const { friends } = get();
+        const acceptedCount = friends.filter((f) => f.status === 'accepted').length;
+        if (acceptedCount >= 51) {
+          alert('Friend limit reached (max 51 friends allowed).');
+          return;
+        }
+        set((state) => ({
+          friends: state.friends.map((f) =>
+            f.code.toUpperCase() === cleanCode
+              ? { ...f, status: 'accepted' as const }
+              : f
+          ),
+        }));
+        confetti({
+          particleCount: 70,
+          spread: 80,
+          origin: { y: 0.6 },
+        });
+      },
+
+      declineFriendRequest: (code: string) => {
+        const cleanCode = code.trim().toUpperCase();
+        set((state) => ({
+          friends: state.friends.map((f) =>
+            f.code.toUpperCase() === cleanCode
+              ? { ...f, status: 'none' as const }
+              : f
+          ),
+        }));
+      },
+
+      cancelFriendRequest: (code: string) => {
+        const cleanCode = code.trim().toUpperCase();
+        set((state) => ({
+          friends: state.friends.map((f) =>
+            f.code.toUpperCase() === cleanCode
+              ? { ...f, status: 'none' as const }
+              : f
+          ),
+        }));
+      },
+
+      removeFriend: (code: string) => {
+        const cleanCode = code.trim().toUpperCase();
+        set((state) => ({
+          friends: state.friends.map((f) =>
+            f.code.toUpperCase() === cleanCode
+              ? { ...f, status: 'none' as const }
+              : f
+          ),
+        }));
+      },
+
+      addFriendComment: (friendCode: string, text: string) => {
+        const cleanCode = friendCode.trim().toUpperCase();
+        const cleanText = text.trim();
+        if (!cleanText) return;
+        const { user } = get();
+
+        const newComment: FriendComment = {
+          id: `comm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          authorCode: user.friendCode || 'A9X4K',
+          authorName: user.name || 'Alex',
+          text: cleanText,
+          timestamp: new Date().toISOString(),
+          reactions: ['🔥'],
+        };
+
+        set((state) => ({
+          friends: state.friends.map((f) =>
+            f.code.toUpperCase() === cleanCode
+              ? { ...f, comments: [newComment, ...f.comments] }
+              : f
+          ),
+        }));
+      },
+
+      deleteFriendComment: (friendCode: string, commentId: string) => {
+        const cleanCode = friendCode.trim().toUpperCase();
+        set((state) => ({
+          friends: state.friends.map((f) =>
+            f.code.toUpperCase() === cleanCode
+              ? { ...f, comments: f.comments.filter((c) => c.id !== commentId) }
+              : f
+          ),
+        }));
+      },
+
+      generateNewFriendCode: () => {
+        const newCode = generateStudentCode();
+        set((state) => ({
+          user: {
+            ...state.user,
+            friendCode: newCode,
+          },
+        }));
+        return newCode;
+      },
+
+      updateProfileMetricSlot: (slotIndex: 0 | 1 | 2, metricKey: string) => {
+        set((state) => {
+          const currentSlots = state.user.profileMetricSlots || ['currentStreak', 'bestStreak', 'daysLogged'];
+          const newSlots: [string, string, string] = [currentSlots[0], currentSlots[1], currentSlots[2]];
+          newSlots[slotIndex] = metricKey;
+          return {
+            user: {
+              ...state.user,
+              profileMetricSlots: newSlots,
+            },
+          };
+        });
+      },
+
+      setCustomWordmarkText: (text: string) => {
+        const trimmed = text.trim().slice(0, 12);
+        set((state) => ({
+          user: {
+            ...state.user,
+            customWordmarkText: trimmed ? trimmed : 'studyo',
+          },
+        }));
+      },
+
       resetToDefaults: () => {
         set({
           subjects: INITIAL_SUBJECTS,
           sessions: generateSeedSessions(),
           tasks: INITIAL_TASKS,
-          dailyLogs: INITIAL_DAILY_LOGS,
+          dailyLogs: ensureDailyLogsDateWise(INITIAL_DAILY_LOGS),
           customColumns: INITIAL_CUSTOM_COLUMNS,
+          customTables: INITIAL_CUSTOM_TABLES,
+          activeTableId: 'main',
+          friends: INITIAL_FRIENDS,
           stopwatchLaps: [
             { id: 'lap-1', lapNumber: 1, timestampSeconds: 1500, lapDurationSeconds: 1500 },
             { id: 'lap-2', lapNumber: 2, timestampSeconds: 3300, lapDurationSeconds: 1800 },
@@ -1339,10 +2155,13 @@ export const useStudyStore = create<StudyState>()(
 
       loadDemoData: () => {
         set({
-          dailyLogs: INITIAL_DAILY_LOGS,
+          dailyLogs: ensureDailyLogsDateWise(INITIAL_DAILY_LOGS),
           customColumns: INITIAL_CUSTOM_COLUMNS,
+          customTables: INITIAL_CUSTOM_TABLES,
+          activeTableId: 'main',
           tasks: INITIAL_TASKS,
           sessions: generateSeedSessions(),
+          friends: INITIAL_FRIENDS,
           stopwatchLaps: [
             { id: 'lap-1', lapNumber: 1, timestampSeconds: 1500, lapDurationSeconds: 1500 },
             { id: 'lap-2', lapNumber: 2, timestampSeconds: 3300, lapDurationSeconds: 1800 },
@@ -1353,6 +2172,7 @@ export const useStudyStore = create<StudyState>()(
     {
       name: 'studypulse_storage_v2',
       partialize: (state) => ({
+        theme: state.theme,
         language: state.language,
         user: state.user,
         subjects: state.subjects,
@@ -1366,8 +2186,13 @@ export const useStudyStore = create<StudyState>()(
         isCloudSynced: state.isCloudSynced,
         dailyLogs: state.dailyLogs,
         customColumns: state.customColumns,
+        customTables: state.customTables,
+        activeTableId: state.activeTableId,
         autoStartNextRound: state.autoStartNextRound,
         soundAlertOnFinish: state.soundAlertOnFinish,
+        enableQuickScratchpad: state.enableQuickScratchpad,
+        showFinishButton: state.showFinishButton,
+        friends: state.friends,
       }),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<StudyState>) || {};
@@ -1375,17 +2200,66 @@ export const useStudyStore = create<StudyState>()(
         const mergedMap = new Map<string, DailyLogEntry>();
         INITIAL_DAILY_LOGS.forEach(log => mergedMap.set(log.date, log));
         persistedLogs.forEach(log => mergedMap.set(log.date, log));
-        const mergedLogs = Array.from(mergedMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+        const mergedLogs = ensureDailyLogsDateWise(Array.from(mergedMap.values()));
+
+        // Ensure user has friendCode, profileMetricSlots and customWordmarkText
+        const mergedUser = {
+          ...currentState.user,
+          ...(persisted.user || {}),
+          friendCode: persisted.user?.friendCode || currentState.user.friendCode || 'A9X4K',
+          profileMetricSlots: persisted.user?.profileMetricSlots || currentState.user.profileMetricSlots || ['currentStreak', 'bestStreak', 'daysLogged'],
+          customWordmarkText: persisted.user?.customWordmarkText || currentState.user.customWordmarkText || 'studyo',
+        };
+
+        // Merge friends: preserve user state, ensure seed friends are present
+        const persistedFriends = Array.isArray(persisted.friends) ? persisted.friends : [];
+        const friendsMap = new Map<string, FriendProfile>();
+        INITIAL_FRIENDS.forEach(f => friendsMap.set(f.code.toUpperCase(), f));
+        persistedFriends.forEach(f => friendsMap.set(f.code.toUpperCase(), f));
+        const mergedFriends = Array.from(friendsMap.values()).map(f => {
+          if (f.code.toUpperCase() === 'E7K92' && f.bio && f.bio.includes('Physics Olympiad')) {
+            return { ...f, bio: '' };
+          }
+          return f;
+        });
+
+        const resolvedTheme: ThemeMode = persisted.theme === 'light' ? 'light' : 'dark';
+        applyTheme(resolvedTheme);
 
         return {
           ...currentState,
           ...persisted,
+          theme: resolvedTheme,
+          user: mergedUser,
+          friends: mergedFriends,
+          enableQuickScratchpad: persisted.enableQuickScratchpad ?? false,
+          showFinishButton: persisted.showFinishButton ?? true,
           dailyLogs: mergedLogs,
           customColumns: Array.isArray(persisted.customColumns) && persisted.customColumns.length > 0
             ? persisted.customColumns
             : INITIAL_CUSTOM_COLUMNS,
+          customTables: Array.isArray(persisted.customTables) && persisted.customTables.length > 0
+            ? persisted.customTables
+            : INITIAL_CUSTOM_TABLES,
+          activeTableId: persisted.activeTableId || 'main',
         };
       },
     }
   )
 );
+
+// Initial browser rehydration sync
+if (typeof window !== 'undefined') {
+  try {
+    const raw = localStorage.getItem('studypulse_storage_v2');
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data?.state?.theme) {
+        applyTheme(data.state.theme);
+      }
+    }
+  } catch {
+    // fallback
+  }
+}
+

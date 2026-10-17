@@ -6,10 +6,45 @@ export const SUPABASE_SQL_SCHEMA = `-- PostgreSQL Schema for Study Tracker PWA
 -- 1. Enable UUID Extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. Subjects Table
+-- 2. Users Table (Secure Student Authentication)
+CREATE TABLE IF NOT EXISTS public.users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    salt VARCHAR(64) NOT NULL,
+    failed_attempts SMALLINT DEFAULT 0,
+    locked_until TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    last_login_at TIMESTAMP WITH TIME ZONE
+);
+
+-- 3. Sessions Table (Secure JWT & Session State)
+CREATE TABLE IF NOT EXISTS public.sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(255) UNIQUE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    remember_me BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 4. Password Reset Tokens Table (Single-Use 30-Minute Expiring Tokens)
+CREATE TABLE IF NOT EXISTS public.password_reset_tokens (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+    email VARCHAR(255) NOT NULL,
+    token_hash VARCHAR(255) UNIQUE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    used BOOLEAN DEFAULT false,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 5. Subjects Table
 CREATE TABLE IF NOT EXISTS public.subjects (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     icon TEXT DEFAULT 'BookOpen',
     color TEXT DEFAULT '#6366f1',
@@ -17,21 +52,21 @@ CREATE TABLE IF NOT EXISTS public.subjects (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 3. Chapters Table
+-- 6. Chapters Table
 CREATE TABLE IF NOT EXISTS public.chapters (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     subject_id UUID REFERENCES public.subjects(id) ON DELETE CASCADE,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     notes TEXT,
     formulas TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 4. Study Sessions Table (Crucial for Analytics)
+-- 7. Study Sessions Table (Crucial for Analytics)
 CREATE TABLE IF NOT EXISTS public.study_sessions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
     subject_id UUID REFERENCES public.subjects(id) ON DELETE CASCADE,
     chapter_id UUID REFERENCES public.chapters(id) ON DELETE SET NULL,
     duration_minutes INTEGER NOT NULL,
@@ -41,11 +76,11 @@ CREATE TABLE IF NOT EXISTS public.study_sessions (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- 5. Tasks Table
+-- 8. Tasks Table
 CREATE TABLE IF NOT EXISTS public.tasks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    subject_id UUID REFERENCES public.subjects(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES public.users(id) ON DELETE CASCADE,
+    subject_id REFERENCES public.subjects(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     priority TEXT CHECK (priority IN ('high', 'med', 'low')),
     due_date DATE,
@@ -55,21 +90,32 @@ CREATE TABLE IF NOT EXISTS public.tasks (
 );
 
 -- ==========================================================
--- 6. INDEXES FOR LIGHTNING FAST AGGREGATION (< 15ms Analytics)
--- Composite indices on (user_id, created_at) and (user_id, subject_id)
+-- 9. INDEXES FOR LIGHTNING FAST AGGREGATION & SECURITY LOOKUPS
 -- ==========================================================
+CREATE INDEX IF NOT EXISTS idx_users_email ON public.users (email);
+CREATE INDEX IF NOT EXISTS idx_sessions_token ON public.sessions (token_hash);
+CREATE INDEX IF NOT EXISTS idx_reset_token ON public.password_reset_tokens (token_hash);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_created ON public.study_sessions (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_subject ON public.study_sessions (user_id, subject_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_user_due ON public.tasks (user_id, due_date);
 
 -- ==========================================================
--- 7. ROW LEVEL SECURITY (RLS) POLICIES
+-- 10. ROW LEVEL SECURITY (RLS) POLICIES
 -- Ensures complete student privacy & data isolation
 -- ==========================================================
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.password_reset_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subjects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.chapters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.study_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own profile" 
+ON public.users FOR ALL USING (auth.uid() = id);
+
+CREATE POLICY "Users can manage own sessions" 
+ON public.sessions FOR ALL USING (auth.uid() = user_id);
 
 CREATE POLICY "Students can manage own subjects" 
 ON public.subjects FOR ALL USING (auth.uid() = user_id);
@@ -77,7 +123,7 @@ ON public.subjects FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "Students can manage own chapters" 
 ON public.chapters FOR ALL USING (auth.uid() = user_id);
 
-CREATE POLICY "Students can manage own sessions" 
+CREATE POLICY "Students can manage own study sessions" 
 ON public.study_sessions FOR ALL USING (auth.uid() = user_id);
 
 CREATE POLICY "Students can manage own tasks" 

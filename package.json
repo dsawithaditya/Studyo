@@ -12,11 +12,13 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.109.0",
     "@types/canvas-confetti": "^1.9.0",
+    "@types/styled-components": "^5.1.36",
     "canvas-confetti": "^1.9.4",
     "clsx": "^2.1.1",
     "lucide-react": "^1.56.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "styled-components": "^6.6.0",
     "tailwind-merge": "^3.7.0",
     "zustand": "^5.0.15"
   },

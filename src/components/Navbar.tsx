@@ -3,6 +3,7 @@ import { useStudyStore } from '../store/useStudyStore';
 import { translations } from '../i18n/translations';
 import { Language } from '../types';
 import { Flame, Target, Maximize2, Database, Sparkles, BookOpen } from 'lucide-react';
+import { ThemeSwitch } from './ThemeSwitch';
 
 interface NavbarProps {
   onOpenSupabaseModal: () => void;
@@ -42,19 +43,19 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSupabaseModal, onOpenHalft
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
         {/* Logo and Tagline */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
             <BookOpen className="w-5 h-5 text-white" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-indigo-100 to-indigo-300 bg-clip-text text-transparent">
+              <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-stone-900 via-indigo-900 to-indigo-700 dark:from-white dark:via-indigo-100 dark:to-indigo-300 bg-clip-text text-transparent">
                 Studyo
               </span>
-              <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+              <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30">
                 PWA • Zero-Lag
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 hidden md:block">
+            <p className="text-[11px] text-stone-500 dark:text-slate-400 hidden md:block">
               {t.tagline}
             </p>
           </div>
@@ -64,26 +65,26 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSupabaseModal, onOpenHalft
         <div className="hidden sm:flex items-center gap-2.5">
           {/* Streak pill */}
           <div 
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 shadow-sm transition hover:bg-amber-500/15 cursor-default"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 shadow-sm transition hover:bg-amber-500/15 cursor-default"
             title={`${user.streakDays} active consecutive study days`}
           >
-            <Flame className="w-4 h-4 text-amber-400 fill-amber-400 animate-pulse" />
+            <Flame className="w-4 h-4 text-amber-500 fill-amber-500 animate-pulse" />
             <div className="text-xs font-semibold">
-              <span className="font-mono-numbers text-amber-200 font-bold">{user.streakDays}</span> {t.dashboard.streakDays}
+              <span className="font-mono-numbers text-amber-900 dark:text-amber-200 font-bold">{user.streakDays}</span> {t.dashboard.streakDays}
             </div>
           </div>
 
           {/* Daily Target Progress Meter */}
           <div 
-            className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-200 shadow-sm"
+            className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-800 dark:text-indigo-200 shadow-sm"
             title={`Today: ${(todayMinutes / 60).toFixed(1)} / ${(targetMinutes / 60).toFixed(1)} hours`}
           >
-            <Target className="w-4 h-4 text-indigo-400" />
+            <Target className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
             <div className="text-xs">
-              <span className="font-mono-numbers font-bold text-white">{(todayMinutes / 60).toFixed(1)}h</span>
-              <span className="text-slate-400"> / {(targetMinutes / 60).toFixed(1)}h</span>
+              <span className="font-mono-numbers font-bold text-stone-900 dark:text-white">{(todayMinutes / 60).toFixed(1)}h</span>
+              <span className="text-stone-600 dark:text-slate-400"> / {(targetMinutes / 60).toFixed(1)}h</span>
             </div>
-            <div className="w-14 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div className="w-14 h-1.5 bg-stone-300 dark:bg-slate-800 rounded-full overflow-hidden">
               <div 
                 className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 rounded-full transition-all duration-500"
                 style={{ width: `${progressPercent}%` }}
@@ -92,18 +93,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSupabaseModal, onOpenHalft
           </div>
         </div>
 
-        {/* Right side controls: Language Pill Selector, Zen Mode, Cloud Sync */}
+        {/* Right side controls: Language Pill Selector, Theme Switch, Zen Mode, Cloud Sync */}
         <div className="flex items-center gap-2">
           {/* Multilingual Selector Pill (EN / Hinglish / Hindi) */}
-          <div className="flex items-center p-1 rounded-xl bg-slate-900/90 border border-white/10 shadow-inner">
+          <div className="flex items-center p-1 rounded-xl bg-stone-100 dark:bg-slate-900/90 border border-stone-200 dark:border-white/10 shadow-inner">
             {languages.map((l) => (
               <button
                 key={l.key}
                 onClick={() => setLanguage(l.key)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all ${
+                className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-all cursor-pointer ${
                   language === l.key
                     ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-600/30 font-semibold'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                    : 'text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/5'
                 }`}
                 title={`Switch to ${l.label}`}
               >
@@ -112,14 +113,17 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSupabaseModal, onOpenHalft
             ))}
           </div>
 
+          {/* Day / Night Animated Theme Switch */}
+          <ThemeSwitch size={13.5} className="shrink-0" id="navbar-theme-switch" />
+
           {/* Halftone Showcase Switcher */}
           {onOpenHalftoneShowcase && (
             <button
               onClick={onOpenHalftoneShowcase}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500/20 to-amber-500/20 hover:from-orange-500/30 hover:to-amber-500/30 text-orange-300 border border-orange-500/40 text-xs font-bold transition shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500/15 to-amber-500/15 hover:from-orange-500/25 hover:to-amber-500/25 text-orange-800 dark:text-orange-300 border border-orange-500/30 dark:border-orange-500/40 text-xs font-bold transition shadow-sm cursor-pointer"
               title="Open Halftone Wordmark Component Showcase"
             >
-              <Sparkles className="w-3.5 h-3.5 text-orange-400" />
+              <Sparkles className="w-3.5 h-3.5 text-orange-500 dark:text-orange-400" />
               <span className="hidden sm:inline">Halftone Showcase</span>
             </button>
           )}
@@ -127,7 +131,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSupabaseModal, onOpenHalft
           {/* Zen Mode Button */}
           <button
             onClick={() => setZenMode(!zenMode)}
-            className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 hover:text-white border border-white/10 transition shadow-sm"
+            className="p-2 rounded-xl bg-stone-200/90 dark:bg-slate-800/80 hover:bg-stone-300 dark:hover:bg-slate-700/80 text-stone-700 dark:text-slate-300 hover:text-black dark:hover:text-white border border-stone-300/80 dark:border-white/10 transition shadow-sm cursor-pointer"
             title="Zen Mode (Fullscreen Focus)"
           >
             <Maximize2 className="w-4 h-4" />
@@ -136,14 +140,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSupabaseModal, onOpenHalft
           {/* Supabase Cloud Sync pill */}
           <button
             onClick={onOpenSupabaseModal}
-            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border transition ${
+            className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border transition cursor-pointer ${
               isCloudSynced
-                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
-                : 'bg-slate-800/80 text-slate-300 border-white/10 hover:bg-slate-700/80'
+                ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
+                : 'bg-stone-200/90 dark:bg-slate-800/80 text-stone-700 dark:text-slate-300 border-stone-300 dark:border-white/10 hover:bg-stone-300 dark:hover:bg-slate-700/80'
             }`}
             title="Supabase PostgreSQL & Cloud Sync Settings"
           >
-            <Database className={`w-3.5 h-3.5 ${isCloudSynced ? 'text-emerald-400' : 'text-slate-400'}`} />
+            <Database className={`w-3.5 h-3.5 ${isCloudSynced ? 'text-emerald-500 dark:text-emerald-400' : 'text-stone-500 dark:text-slate-400'}`} />
             <span>{isCloudSynced ? 'Synced' : 'Offline'}</span>
           </button>
         </div>

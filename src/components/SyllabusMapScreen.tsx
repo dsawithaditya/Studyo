@@ -128,16 +128,16 @@ export const SyllabusMapScreen: React.FC = () => {
       {/* ======================================================== */}
       {/* 1. HEADER & OVERALL PROGRESS                             */}
       {/* ======================================================== */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-3xl glass-panel border border-white/10 shadow-xl">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-3xl glass-panel border border-stone-200 dark:border-white/10 shadow-xl">
         <div className="space-y-1">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
             <span>{t.syllabusMap.title}</span>
           </div>
-          <h1 className="text-2xl font-extrabold text-white">
+          <h1 className="text-2xl font-extrabold text-stone-900 dark:text-white">
             {t.syllabusMap.subtitle}
           </h1>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-stone-500 dark:text-slate-400">
             {completedTopics} of {totalTopics} topics mastered ({overallPercent}%)
           </p>
         </div>
@@ -148,8 +148,8 @@ export const SyllabusMapScreen: React.FC = () => {
             onClick={() => setFilterUrgent(!filterUrgent)}
             className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
               filterUrgent
-                ? 'bg-amber-500/20 border-amber-400 text-amber-200'
-                : 'bg-slate-800/80 border-white/10 text-slate-300 hover:text-white'
+                ? 'bg-amber-500/20 border-amber-400 text-amber-800 dark:text-amber-200'
+                : 'bg-stone-100 dark:bg-slate-800/80 border-stone-200 dark:border-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
             }`}
           >
             <Filter className="w-3.5 h-3.5" />
@@ -158,7 +158,7 @@ export const SyllabusMapScreen: React.FC = () => {
 
           <button
             onClick={() => setShowAddSubjectModal(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>{t.syllabusMap.addSubject}</span>
@@ -191,11 +191,11 @@ export const SyllabusMapScreen: React.FC = () => {
           return (
             <div
               key={subj.id}
-              className="rounded-3xl glass-panel border border-white/10 p-5 sm:p-6 shadow-xl space-y-4"
+              className="rounded-3xl glass-panel border border-stone-200 dark:border-white/10 p-5 sm:p-6 shadow-xl space-y-4"
               style={{ borderLeftColor: subj.color, borderLeftWidth: '5px' }}
             >
               {/* Subject Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-200/80 dark:border-white/5">
                 <div className="flex items-center gap-3">
                   <div 
                     className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-md font-bold"
@@ -205,21 +205,21 @@ export const SyllabusMapScreen: React.FC = () => {
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-extrabold text-white">
+                      <h2 className="text-lg font-extrabold text-stone-900 dark:text-white">
                         {subj.name}
                       </h2>
                       {daysToExam !== null && (
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
                           daysToExam <= 14 
-                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40' 
-                            : 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30'
+                            ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40' 
+                            : 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border-indigo-500/30'
                         }`}>
                           <Calendar className="w-3 h-3 inline mr-1" />
                           {t.syllabusMap.examIn} {daysToExam} {t.syllabusMap.days}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-stone-500 dark:text-slate-400">
                       {subj.chapters.length} chapters • {subjTopicsCompleted}/{subjTopicsTotal} topics mastered
                     </p>
                   </div>
@@ -228,20 +228,20 @@ export const SyllabusMapScreen: React.FC = () => {
                 {/* Subject completion bar & Add Chapter button */}
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-24 sm:w-32 h-2 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="w-24 sm:w-32 h-2 bg-stone-200 dark:bg-slate-800 rounded-full overflow-hidden">
                       <div 
                         className="h-full rounded-full transition-all duration-500"
                         style={{ width: `${subjPercent}%`, backgroundColor: subj.color }}
                       />
                     </div>
-                    <span className="text-xs font-mono-numbers font-bold text-white">
+                    <span className="text-xs font-mono-numbers font-bold text-stone-900 dark:text-white">
                       {subjPercent}%
                     </span>
                   </div>
 
                   <button
                     onClick={() => setAddChapterModalSubjId(subj.id)}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white text-xs font-semibold border border-white/10 transition"
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-stone-100 dark:bg-white/5 hover:bg-stone-200 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white text-xs font-semibold border border-stone-200 dark:border-white/10 transition cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">{t.syllabusMap.addChapter}</span>
@@ -252,7 +252,7 @@ export const SyllabusMapScreen: React.FC = () => {
               {/* Chapters List */}
               <div className="space-y-3 pt-1">
                 {subj.chapters.length === 0 ? (
-                  <p className="text-xs text-slate-500 py-3 text-center italic">
+                  <p className="text-xs text-stone-500 dark:text-slate-500 py-3 text-center italic">
                     No chapters added yet. Click "+ Add Chapter" above.
                   </p>
                 ) : (
@@ -264,21 +264,21 @@ export const SyllabusMapScreen: React.FC = () => {
                     return (
                       <div
                         key={chap.id}
-                        className="rounded-2xl bg-slate-900/50 border border-white/5 overflow-hidden transition"
+                        className="rounded-2xl bg-stone-100/90 dark:bg-slate-900/50 border border-stone-200/80 dark:border-white/5 overflow-hidden transition"
                       >
                         {/* Chapter Accordion Header */}
-                        <div className="flex items-center justify-between p-3.5 hover:bg-white/[0.02] cursor-pointer">
+                        <div className="flex items-center justify-between p-3.5 hover:bg-black/[0.02] dark:hover:bg-white/[0.02] cursor-pointer">
                           <div 
                             onClick={() => toggleChapter(chap.id)}
                             className="flex items-center gap-2.5 flex-1 min-w-0"
                           >
-                            <button className="text-slate-400 hover:text-white transition">
+                            <button className="text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition">
                               {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                             </button>
-                            <span className="text-sm font-bold text-slate-200 truncate">
+                            <span className="text-sm font-bold text-stone-800 dark:text-slate-200 truncate">
                               {chap.title}
                             </span>
-                            <span className="text-[11px] text-slate-400">
+                            <span className="text-[11px] text-stone-500 dark:text-slate-400">
                               ({chapDone}/{chapTotal})
                             </span>
                           </div>
@@ -293,7 +293,7 @@ export const SyllabusMapScreen: React.FC = () => {
                                 notes: chap.notes || '',
                                 formulas: chap.formulas || ''
                               })}
-                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 text-xs font-semibold border border-indigo-500/30 transition"
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-xs font-semibold border border-indigo-500/30 transition cursor-pointer"
                               title="Open Formulas and Cheat-Sheet"
                             >
                               <FileText className="w-3.5 h-3.5" />
@@ -303,7 +303,7 @@ export const SyllabusMapScreen: React.FC = () => {
                             {/* Add Topic to Chapter */}
                             <button
                               onClick={() => setAddTopicModal({ subjId: subj.id, chapId: chap.id })}
-                              className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition"
+                              className="p-1.5 rounded-lg bg-stone-200/80 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
                               title="Add Topic"
                             >
                               <Plus className="w-3.5 h-3.5" />
@@ -313,9 +313,9 @@ export const SyllabusMapScreen: React.FC = () => {
 
                         {/* Topics List (Accordion Body) */}
                         {isOpen && (
-                          <div className="p-3.5 pt-0 space-y-2 border-t border-white/5 bg-black/20">
+                          <div className="p-3.5 pt-0 space-y-2 border-t border-stone-200 dark:border-white/5 bg-stone-50/60 dark:bg-black/20">
                             {chap.topics.length === 0 ? (
-                              <p className="text-xs text-slate-500 py-2 italic text-center">
+                              <p className="text-xs text-stone-500 dark:text-slate-500 py-2 italic text-center">
                                 No topics in this chapter. Click + to add topics.
                               </p>
                             ) : (
@@ -326,27 +326,27 @@ export const SyllabusMapScreen: React.FC = () => {
                                 return (
                                   <div
                                     key={topic.id}
-                                    className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/80 border border-white/5 hover:border-white/10 transition"
+                                    className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-stone-200/80 dark:border-white/5 hover:border-stone-300 dark:hover:border-white/10 transition"
                                   >
                                     {/* 1-Tap Status Toggle */}
                                     <div className="flex items-center gap-3 min-w-0">
                                       <button
                                         onClick={() => toggleTopicStatus(subj.id, chap.id, topic.id)}
-                                        className="transition transform hover:scale-110 shrink-0"
+                                        className="transition transform hover:scale-110 shrink-0 cursor-pointer"
                                         title={`Status: ${topic.status}. Click to cycle.`}
                                       >
                                         {topic.status === 'completed' && (
-                                          <CheckCircle2 className="w-4 h-4 text-emerald-400 fill-emerald-400/20" />
+                                          <CheckCircle2 className="w-4 h-4 text-emerald-500 dark:text-emerald-400 fill-emerald-500/20" />
                                         )}
                                         {topic.status === 'in_progress' && (
-                                          <Clock className="w-4 h-4 text-amber-400 fill-amber-400/20" />
+                                          <Clock className="w-4 h-4 text-amber-500 dark:text-amber-400 fill-amber-500/20" />
                                         )}
                                         {topic.status === 'pending' && (
-                                          <div className="w-4 h-4 rounded-full border border-slate-600" />
+                                          <div className="w-4 h-4 rounded-full border border-stone-400 dark:border-slate-600" />
                                         )}
                                       </button>
                                       <span className={`text-xs font-medium truncate ${
-                                        topic.status === 'completed' ? 'text-slate-200 font-semibold' : 'text-slate-300'
+                                        topic.status === 'completed' ? 'text-stone-900 dark:text-slate-200 font-semibold' : 'text-stone-700 dark:text-slate-300'
                                       }`}>
                                         {topic.name}
                                       </span>
@@ -359,12 +359,12 @@ export const SyllabusMapScreen: React.FC = () => {
                                           const nextIdx = (confidenceCycles.indexOf(topic.confidence) + 1) % confidenceCycles.length;
                                           setTopicConfidence(subj.id, chap.id, topic.id, confidenceCycles[nextIdx]);
                                         }}
-                                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition ${
+                                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border transition cursor-pointer ${
                                           topic.confidence === 'strong'
-                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                            ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 dark:border-emerald-500/40'
                                             : topic.confidence === 'medium'
-                                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                                            : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                            ? 'bg-amber-500/15 dark:bg-amber-500/20 text-amber-800 dark:text-amber-300 border-amber-500/30 dark:border-amber-500/40'
+                                            : 'bg-rose-500/15 dark:bg-rose-500/20 text-rose-800 dark:text-rose-300 border-rose-500/30 dark:border-rose-500/40'
                                         }`}
                                         title="Click to toggle revision confidence (Strong / Medium / Weak)"
                                       >
@@ -391,18 +391,18 @@ export const SyllabusMapScreen: React.FC = () => {
       {/* 3. CHAPTER NOTES & FORMULAS MODAL                        */}
       {/* ======================================================== */}
       {activeNotesChap && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 dark:bg-black/80 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-lg rounded-3xl p-6 glass-modal shadow-2xl space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+            <div className="flex items-center justify-between pb-2 border-b border-stone-200 dark:border-white/10">
               <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-indigo-400" />
-                <h3 className="text-base font-bold text-white truncate max-w-[280px]">
+                <FileText className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
+                <h3 className="text-base font-bold text-stone-900 dark:text-white truncate max-w-[280px]">
                   {activeNotesChap.title}
                 </h3>
               </div>
               <button
                 onClick={() => setActiveNotesChap(null)}
-                className="text-slate-400 hover:text-white p-1"
+                className="text-stone-400 hover:text-stone-900 dark:text-slate-400 dark:hover:text-white p-1 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -410,7 +410,7 @@ export const SyllabusMapScreen: React.FC = () => {
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-slate-300 mb-1">
                   Key Formulas & Identities:
                 </label>
                 <textarea
@@ -418,12 +418,12 @@ export const SyllabusMapScreen: React.FC = () => {
                   onChange={(e) => setActiveNotesChap({ ...activeNotesChap, formulas: e.target.value })}
                   placeholder="e.g. ∫sec²x dx = tan x + C | Maxwell Equations"
                   rows={3}
-                  className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-xs font-mono text-cyan-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 shadow-inner"
+                  className="w-full bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl p-3 text-xs font-mono text-cyan-700 dark:text-cyan-200 placeholder:text-stone-400 dark:placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 shadow-inner"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                <label className="block text-xs font-semibold text-stone-700 dark:text-slate-300 mb-1">
                   Summary Notes & Mnemonics:
                 </label>
                 <textarea
@@ -431,7 +431,7 @@ export const SyllabusMapScreen: React.FC = () => {
                   onChange={(e) => setActiveNotesChap({ ...activeNotesChap, notes: e.target.value })}
                   placeholder="Key concepts, common exam pitfalls, shortcuts..."
                   rows={4}
-                  className="w-full bg-slate-900 border border-white/10 rounded-xl p-3 text-xs text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 shadow-inner"
+                  className="w-full bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl p-3 text-xs text-stone-800 dark:text-slate-200 placeholder:text-stone-400 dark:placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 shadow-inner"
                 />
               </div>
             </div>
@@ -439,13 +439,13 @@ export const SyllabusMapScreen: React.FC = () => {
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 onClick={() => setActiveNotesChap(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition"
+                className="px-4 py-2 rounded-xl bg-stone-200 dark:bg-slate-800 hover:bg-stone-300 dark:hover:bg-slate-700 text-stone-700 dark:text-slate-300 text-xs font-bold transition cursor-pointer"
               >
                 {t.common.cancel}
               </button>
               <button
                 onClick={handleSaveNotes}
-                className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 text-white text-xs font-bold shadow-lg transition"
+                className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 text-white text-xs font-bold shadow-lg transition cursor-pointer"
               >
                 <Save className="w-4 h-4" />
                 <span>{t.syllabusMap.saveNotes}</span>
@@ -459,14 +459,14 @@ export const SyllabusMapScreen: React.FC = () => {
       {/* 4. ADD SUBJECT MODAL                                     */}
       {/* ======================================================== */}
       {showAddSubjectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 dark:bg-black/80 backdrop-blur-md animate-fadeIn">
           <form onSubmit={handleCreateSubject} className="w-full max-w-md rounded-3xl p-6 glass-modal shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-white">
+            <h3 className="text-base font-bold text-stone-900 dark:text-white">
               {t.syllabusMap.addSubject}
             </h3>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
+              <label className="block text-xs font-semibold text-stone-700 dark:text-slate-300 mb-1">
                 {t.syllabusMap.subjectName}:
               </label>
               <input
@@ -475,12 +475,12 @@ export const SyllabusMapScreen: React.FC = () => {
                 value={newSubjName}
                 onChange={(e) => setNewSubjName(e.target.value)}
                 placeholder="e.g. Inorganic Chemistry, World History..."
-                className="w-full bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                className="w-full bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-indigo-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
+              <label className="block text-xs font-semibold text-stone-700 dark:text-slate-300 mb-1">
                 {t.syllabusMap.colorTheme}:
               </label>
               <div className="flex items-center gap-2">
@@ -489,7 +489,7 @@ export const SyllabusMapScreen: React.FC = () => {
                     key={color}
                     type="button"
                     onClick={() => setNewSubjColor(color)}
-                    className={`w-7 h-7 rounded-full transition transform ${newSubjColor === color ? 'scale-125 ring-2 ring-white' : 'opacity-70 hover:opacity-100'}`}
+                    className={`w-7 h-7 rounded-full transition transform cursor-pointer ${newSubjColor === color ? 'scale-125 ring-2 ring-stone-900 dark:ring-white' : 'opacity-70 hover:opacity-100'}`}
                     style={{ backgroundColor: color }}
                   />
                 ))}
@@ -497,14 +497,14 @@ export const SyllabusMapScreen: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
+              <label className="block text-xs font-semibold text-stone-700 dark:text-slate-300 mb-1">
                 Upcoming Exam Date (Optional):
               </label>
               <input
                 type="date"
                 value={newSubjExamDate}
                 onChange={(e) => setNewSubjExamDate(e.target.value)}
-                className="w-full bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                className="w-full bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-indigo-500"
               />
             </div>
 
@@ -512,13 +512,13 @@ export const SyllabusMapScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowAddSubjectModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-stone-200 dark:bg-slate-800 text-stone-700 dark:text-slate-300 text-xs font-bold hover:bg-stone-300 dark:hover:bg-slate-700 transition cursor-pointer"
               >
                 {t.common.cancel}
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md"
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md cursor-pointer"
               >
                 {t.syllabusMap.addSubject}
               </button>
@@ -531,14 +531,14 @@ export const SyllabusMapScreen: React.FC = () => {
       {/* 5. ADD CHAPTER MODAL                                     */}
       {/* ======================================================== */}
       {addChapterModalSubjId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 dark:bg-black/80 backdrop-blur-md animate-fadeIn">
           <form onSubmit={handleCreateChapter} className="w-full max-w-md rounded-3xl p-6 glass-modal shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-white">
+            <h3 className="text-base font-bold text-stone-900 dark:text-white">
               {t.syllabusMap.addChapter}
             </h3>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
+              <label className="block text-xs font-semibold text-stone-700 dark:text-slate-300 mb-1">
                 Chapter Title:
               </label>
               <input
@@ -547,7 +547,7 @@ export const SyllabusMapScreen: React.FC = () => {
                 value={newChapterTitle}
                 onChange={(e) => setNewChapterTitle(e.target.value)}
                 placeholder="e.g. Thermodynamics & Heat Transfer"
-                className="w-full bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                className="w-full bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-indigo-500"
               />
             </div>
 
@@ -555,13 +555,13 @@ export const SyllabusMapScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setAddChapterModalSubjId(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-stone-200 dark:bg-slate-800 text-stone-700 dark:text-slate-300 text-xs font-bold hover:bg-stone-300 dark:hover:bg-slate-700 transition cursor-pointer"
               >
                 {t.common.cancel}
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md"
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md cursor-pointer"
               >
                 {t.syllabusMap.addChapter}
               </button>
@@ -574,14 +574,14 @@ export const SyllabusMapScreen: React.FC = () => {
       {/* 6. ADD TOPIC MODAL                                       */}
       {/* ======================================================== */}
       {addTopicModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 dark:bg-black/80 backdrop-blur-md animate-fadeIn">
           <form onSubmit={handleCreateTopic} className="w-full max-w-md rounded-3xl p-6 glass-modal shadow-2xl space-y-4">
-            <h3 className="text-base font-bold text-white">
+            <h3 className="text-base font-bold text-stone-900 dark:text-white">
               {t.syllabusMap.addTopic}
             </h3>
 
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">
+              <label className="block text-xs font-semibold text-stone-700 dark:text-slate-300 mb-1">
                 Topic Name:
               </label>
               <input
@@ -590,7 +590,7 @@ export const SyllabusMapScreen: React.FC = () => {
                 value={newTopicName}
                 onChange={(e) => setNewTopicName(e.target.value)}
                 placeholder="e.g. Carnot Engine & Efficiency"
-                className="w-full bg-slate-900 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                className="w-full bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-indigo-500"
               />
             </div>
 
@@ -598,13 +598,13 @@ export const SyllabusMapScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setAddTopicModal(null)}
-                className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-stone-200 dark:bg-slate-800 text-stone-700 dark:text-slate-300 text-xs font-bold hover:bg-stone-300 dark:hover:bg-slate-700 transition cursor-pointer"
               >
                 {t.common.cancel}
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md"
+                className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md cursor-pointer"
               >
                 {t.syllabusMap.addTopic}
               </button>

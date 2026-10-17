@@ -13,10 +13,27 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script type="module" crossorigin src="./assets/index-BZqVagz_.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-QPlQMFRu.css">
+    <script>
+      (function() {
+        try {
+          var raw = localStorage.getItem('studypulse_storage_v2');
+          if (raw) {
+            var data = JSON.parse(raw);
+            if (data && data.state && data.state.theme === 'light') {
+              document.documentElement.classList.remove('dark');
+              document.documentElement.classList.add('light');
+              document.documentElement.style.colorScheme = 'light';
+              var meta = document.querySelector('meta[name="theme-color"]');
+              if (meta) meta.setAttribute('content', '#f7f5f0');
+            }
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-Cf_aog5Z.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-E4zSUoEd.css">
   </head>
-  <body class="bg-[#000000] text-slate-100 min-h-screen selection:bg-orange-500 selection:text-black">
+  <body class="bg-[#f7f5f0] text-slate-900 dark:bg-[#000000] dark:text-slate-100 min-h-screen selection:bg-orange-500 selection:text-black transition-colors duration-300">
     <div id="root"></div>
     <script>
       if ('serviceWorker' in navigator) {

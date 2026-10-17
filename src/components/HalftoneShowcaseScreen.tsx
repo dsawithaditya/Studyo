@@ -263,8 +263,9 @@ export default function Footer() {
                 <input
                   type="text"
                   placeholder="Custom word..."
+                  maxLength={12}
                   value={customWordmark}
-                  onChange={(e) => setCustomWordmark(e.target.value)}
+                  onChange={(e) => setCustomWordmark(e.target.value.slice(0, 12))}
                   className="bg-black/60 border border-white/10 rounded-xl px-2.5 py-1 text-xs text-white placeholder-slate-500 w-28 focus:outline-none focus:border-orange-500"
                 />
               </div>
