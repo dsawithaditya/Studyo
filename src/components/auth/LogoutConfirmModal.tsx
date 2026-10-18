@@ -100,7 +100,7 @@ export const LogoutConfirmModal: React.FC = () => {
       aria-modal="true"
       aria-labelledby="logout-dialog-title"
       aria-describedby="logout-dialog-desc"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isLoading) {
           closeLogoutModal();

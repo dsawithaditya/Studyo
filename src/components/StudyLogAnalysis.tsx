@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useStudyStore, INITIAL_DAILY_LOGS } from '../store/useStudyStore';
+import { useStudyStore } from '../store/useStudyStore';
 import { 
   TrendingUp, 
   Flame, 
@@ -18,7 +18,7 @@ export const StudyLogAnalysis: React.FC = () => {
   } = useStudyStore();
 
   const dailyLogs = useMemo(
-    () => (Array.isArray(rawLogs) && rawLogs.length > 0 ? rawLogs : INITIAL_DAILY_LOGS),
+    () => (Array.isArray(rawLogs) ? rawLogs : []),
     [rawLogs]
   );
   const [timeframe, setTimeframe] = useState<'week' | 'month'>('week');

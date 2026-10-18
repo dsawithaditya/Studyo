@@ -164,9 +164,13 @@ export const AuthModal: React.FC = () => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
     >
-      <div className="w-full max-w-md my-auto rounded-3xl p-6 sm:p-8 glass-modal shadow-2xl space-y-5 font-mono text-stone-900 dark:text-stone-100 border border-orange-500/20">
+      <div className="relative w-full max-w-md my-auto">
+        {/* Ambient atmospheric orange glow behind the frosted glass card */}
+        <div className="absolute -inset-2 bg-gradient-to-tr from-[#e9762b]/25 via-amber-500/10 to-orange-600/20 rounded-[2.5rem] blur-2xl opacity-75 pointer-events-none -z-10" />
+
+        <div className="w-full rounded-3xl p-6 sm:p-8 glass-auth-modal shadow-2xl space-y-5 font-mono text-stone-900 dark:text-stone-100 relative">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-stone-200 dark:border-white/10 pb-4">
           <div className="flex items-center gap-2.5">
@@ -244,8 +248,8 @@ export const AuthModal: React.FC = () => {
               <label htmlFor="login-email" className="text-[11px] uppercase tracking-wider font-bold block text-stone-700 dark:text-slate-300">
                 Email Address
               </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div className="relative group">
+                <Mail className="w-4 h-4 text-stone-400 dark:text-slate-500 group-focus-within:text-[#e9762b] transition-colors absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="login-email"
                   type="email"
@@ -253,8 +257,8 @@ export const AuthModal: React.FC = () => {
                   autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="student@example.com"
-                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm font-mono focus:outline-none"
+                  placeholder="Enter your email"
+                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm font-sans placeholder:text-stone-400/50 dark:placeholder:text-stone-600 focus:outline-none transition-all"
                 />
               </div>
             </div>
@@ -273,8 +277,8 @@ export const AuthModal: React.FC = () => {
                   Forgot password?
                 </button>
               </div>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div className="relative group">
+                <Lock className="w-4 h-4 text-stone-400 dark:text-slate-500 group-focus-within:text-[#e9762b] transition-colors absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="login-password"
                   type={showPassword ? 'text' : 'password'}
@@ -282,13 +286,13 @@ export const AuthModal: React.FC = () => {
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full glass-input rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm font-mono focus:outline-none"
+                  placeholder="Enter your password"
+                  className="w-full glass-input rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm font-sans placeholder:text-stone-400/50 dark:placeholder:text-stone-600 focus:outline-none transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="p-1.5 text-stone-400 hover:text-black dark:text-slate-400 dark:hover:text-white absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer"
+                  className="p-1.5 text-stone-400 hover:text-black dark:text-slate-400 dark:hover:text-white absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer transition-colors"
                   title={showPassword ? 'Hide password' : 'Show password'}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
@@ -353,8 +357,8 @@ export const AuthModal: React.FC = () => {
               <label htmlFor="reg-name" className="text-[11px] uppercase tracking-wider font-bold block text-stone-700 dark:text-slate-300">
                 Full Name
               </label>
-              <div className="relative">
-                <User className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div className="relative group">
+                <User className="w-4 h-4 text-stone-400 dark:text-slate-500 group-focus-within:text-[#e9762b] transition-colors absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="reg-name"
                   type="text"
@@ -362,8 +366,8 @@ export const AuthModal: React.FC = () => {
                   autoComplete="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Alex Rivera"
-                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm font-mono focus:outline-none"
+                  placeholder="Enter your name"
+                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm font-sans placeholder:text-stone-400/50 dark:placeholder:text-stone-600 focus:outline-none transition-all"
                 />
               </div>
             </div>
@@ -373,8 +377,8 @@ export const AuthModal: React.FC = () => {
               <label htmlFor="reg-email" className="text-[11px] uppercase tracking-wider font-bold block text-stone-700 dark:text-slate-300">
                 Email Address
               </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div className="relative group">
+                <Mail className="w-4 h-4 text-stone-400 dark:text-slate-500 group-focus-within:text-[#e9762b] transition-colors absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="reg-email"
                   type="email"
@@ -382,8 +386,8 @@ export const AuthModal: React.FC = () => {
                   autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="student@example.com"
-                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm font-mono focus:outline-none"
+                  placeholder="Enter your email"
+                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm font-sans placeholder:text-stone-400/50 dark:placeholder:text-stone-600 focus:outline-none transition-all"
                 />
               </div>
             </div>
@@ -393,8 +397,8 @@ export const AuthModal: React.FC = () => {
               <label htmlFor="reg-password" className="text-[11px] uppercase tracking-wider font-bold block text-stone-700 dark:text-slate-300">
                 Password
               </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div className="relative group">
+                <Lock className="w-4 h-4 text-stone-400 dark:text-slate-500 group-focus-within:text-[#e9762b] transition-colors absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="reg-password"
                   type={showPassword ? 'text' : 'password'}
@@ -402,13 +406,13 @@ export const AuthModal: React.FC = () => {
                   autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 chars, numbers & mixed casing"
-                  className="w-full glass-input rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm font-mono focus:outline-none"
+                  placeholder="Create a password (min 8 chars)"
+                  className="w-full glass-input rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm font-sans placeholder:text-stone-400/50 dark:placeholder:text-stone-600 focus:outline-none transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="p-1.5 text-stone-400 hover:text-black dark:text-slate-400 dark:hover:text-white absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer"
+                  className="p-1.5 text-stone-400 hover:text-black dark:text-slate-400 dark:hover:text-white absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer transition-colors"
                   title={showPassword ? 'Hide password' : 'Show password'}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
@@ -446,8 +450,8 @@ export const AuthModal: React.FC = () => {
               <label htmlFor="reg-confirm" className="text-[11px] uppercase tracking-wider font-bold block text-stone-700 dark:text-slate-300">
                 Confirm Password
               </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div className="relative group">
+                <Lock className="w-4 h-4 text-stone-400 dark:text-slate-500 group-focus-within:text-[#e9762b] transition-colors absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="reg-confirm"
                   type={showConfirmPassword ? 'text' : 'password'}
@@ -455,8 +459,8 @@ export const AuthModal: React.FC = () => {
                   autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repeat your password"
-                  className="w-full glass-input rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm font-mono focus:outline-none"
+                  placeholder="Re-enter your password"
+                  className="w-full glass-input rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm font-sans placeholder:text-stone-400/50 dark:placeholder:text-stone-600 focus:outline-none transition-all"
                 />
                 <button
                   type="button"
@@ -532,16 +536,16 @@ export const AuthModal: React.FC = () => {
               <label htmlFor="forgot-email" className="text-[11px] uppercase tracking-wider font-bold block text-stone-700 dark:text-slate-300">
                 Email Address
               </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div className="relative group">
+                <Mail className="w-4 h-4 text-stone-400 dark:text-slate-500 group-focus-within:text-[#e9762b] transition-colors absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="forgot-email"
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="student@example.com"
-                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm font-mono focus:outline-none"
+                  placeholder="Enter your email"
+                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm font-sans placeholder:text-stone-400/50 dark:placeholder:text-stone-600 focus:outline-none transition-all"
                 />
               </div>
             </div>
@@ -622,16 +626,16 @@ export const AuthModal: React.FC = () => {
               <label htmlFor="reset-token" className="text-[11px] uppercase tracking-wider font-bold block text-stone-700 dark:text-slate-300">
                 Security Token
               </label>
-              <div className="relative">
-                <KeyRound className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div className="relative group">
+                <KeyRound className="w-4 h-4 text-stone-400 dark:text-slate-500 group-focus-within:text-[#e9762b] transition-colors absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="reset-token"
                   type="text"
                   required
                   value={resetTokenInput}
                   onChange={(e) => setResetTokenInput(e.target.value)}
-                  placeholder="rst_abc123..."
-                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm font-mono focus:outline-none"
+                  placeholder="Paste your recovery token"
+                  className="w-full glass-input rounded-xl pl-10 pr-4 py-2.5 text-xs sm:text-sm font-sans placeholder:text-stone-400/50 dark:placeholder:text-stone-600 focus:outline-none transition-all"
                 />
               </div>
             </div>
@@ -641,8 +645,8 @@ export const AuthModal: React.FC = () => {
               <label htmlFor="new-pass" className="text-[11px] uppercase tracking-wider font-bold block text-stone-700 dark:text-slate-300">
                 New Password
               </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div className="relative group">
+                <Lock className="w-4 h-4 text-stone-400 dark:text-slate-500 group-focus-within:text-[#e9762b] transition-colors absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="new-pass"
                   type={showPassword ? 'text' : 'password'}
@@ -650,13 +654,13 @@ export const AuthModal: React.FC = () => {
                   autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full glass-input rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm font-mono focus:outline-none"
+                  placeholder="Enter new password (min 8 chars)"
+                  className="w-full glass-input rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm font-sans placeholder:text-stone-400/50 dark:placeholder:text-stone-600 focus:outline-none transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="p-1.5 text-stone-400 hover:text-black dark:text-slate-400 dark:hover:text-white absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer"
+                  className="p-1.5 text-stone-400 hover:text-black dark:text-slate-400 dark:hover:text-white absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer transition-colors"
                   title={showPassword ? 'Hide password' : 'Show password'}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
@@ -693,8 +697,8 @@ export const AuthModal: React.FC = () => {
               <label htmlFor="confirm-new-pass" className="text-[11px] uppercase tracking-wider font-bold block text-stone-700 dark:text-slate-300">
                 Confirm New Password
               </label>
-              <div className="relative">
-                <Lock className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <div className="relative group">
+                <Lock className="w-4 h-4 text-stone-400 dark:text-slate-500 group-focus-within:text-[#e9762b] transition-colors absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="confirm-new-pass"
                   type={showConfirmPassword ? 'text' : 'password'}
@@ -702,13 +706,13 @@ export const AuthModal: React.FC = () => {
                   autoComplete="new-password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repeat new password"
-                  className="w-full glass-input rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm font-mono focus:outline-none"
+                  placeholder="Re-enter new password"
+                  className="w-full glass-input rounded-xl pl-10 pr-10 py-2.5 text-xs sm:text-sm font-sans placeholder:text-stone-400/50 dark:placeholder:text-stone-600 focus:outline-none transition-all"
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="p-1.5 text-stone-400 hover:text-black dark:text-slate-400 dark:hover:text-white absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer"
+                  className="p-1.5 text-stone-400 hover:text-black dark:text-slate-400 dark:hover:text-white absolute right-2.5 top-1/2 -translate-y-1/2 cursor-pointer transition-colors"
                   title={showConfirmPassword ? 'Hide password' : 'Show password'}
                   aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                 >
@@ -746,6 +750,7 @@ export const AuthModal: React.FC = () => {
             </div>
           </form>
         )}
+        </div>
       </div>
     </div>
   );

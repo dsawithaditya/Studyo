@@ -66,7 +66,7 @@ export const ProfileDropdown: React.FC = () => {
     dailyLogs,
     tasks,
     sessions,
-    loadDemoData,
+    clearUserData,
     setTimerDuration,
     updateProfileMetricSlot,
     setCustomWordmarkText,
@@ -1302,15 +1302,15 @@ export const ProfileDropdown: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => {
-                          if (window.confirm('Reset demo data?')) {
-                            loadDemoData();
+                          if (window.confirm('Clear all local study data?')) {
+                            clearUserData();
                             setShowSettingsModal(false);
                           }
                         }}
                         className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 text-xs font-bold uppercase transition border border-red-500/20 cursor-pointer"
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
-                        <span>RESET DEMO</span>
+                        <span>CLEAR DATA</span>
                       </button>
                     </div>
                   </div>

@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   useStudyStore, 
-  INITIAL_DAILY_LOGS, 
   getLocalTodayDateString, 
   ensureDailyLogsDateWise 
 } from '../store/useStudyStore';
@@ -63,7 +62,7 @@ export const DailyStudyLog: React.FC = () => {
   const yesterdayStr = `${yesterdayYear}-${yesterdayMonth}-${yesterdayDay}`;
 
   const dailyLogs = useMemo(
-    () => ensureDailyLogsDateWise(Array.isArray(rawLogs) && rawLogs.length > 0 ? rawLogs : INITIAL_DAILY_LOGS),
+    () => ensureDailyLogsDateWise(Array.isArray(rawLogs) ? rawLogs : []),
     [rawLogs]
   );
 

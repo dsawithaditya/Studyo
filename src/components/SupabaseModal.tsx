@@ -26,7 +26,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
     supabaseAnonKey, 
     isCloudSynced, 
     setSupabaseConfig, 
-    resetToDefaults 
+    clearUserData 
   } = useStudyStore();
 
   const [urlInput, setUrlInput] = useState(supabaseUrl);
@@ -50,8 +50,8 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
   };
 
   const handleResetData = () => {
-    if (window.confirm('Reset all sample subjects, tasks, and 365-day heatmap history to clean demo defaults?')) {
-      resetToDefaults();
+    if (window.confirm('Clear all local study sessions, subjects, and tasks?')) {
+      clearUserData();
       onClose();
     }
   };
@@ -210,7 +210,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
             className="flex items-center gap-1.5 text-xs text-rose-600 dark:text-rose-400 hover:text-rose-500 dark:hover:text-rose-300 font-semibold transition cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>Reset to Default Sample Data</span>
+            <span>Clear Local Study Data</span>
           </button>
 
           <button

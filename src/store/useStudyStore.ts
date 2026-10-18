@@ -24,6 +24,27 @@ import {
   ThemeMode
 } from '../types';
 import { SoundType, soundSynth } from '../services/soundSynth';
+import { useAuthStore } from './useAuthStore';
+import {
+  fetchUserDataFromSupabase,
+  dbSaveSubject,
+  dbDeleteSubject,
+  dbSaveStudySession,
+  dbSaveTask,
+  dbDeleteTask,
+  dbSaveDailyLog,
+  dbDeleteDailyLog,
+  dbSaveExamCountdown,
+  dbDeleteExamCountdown,
+  dbUpdateProfile,
+  resetSupabaseClient,
+  DEFAULT_SUPABASE_URL,
+  DEFAULT_SUPABASE_ANON_KEY
+} from '../services/supabaseClient';
+
+const getCurrentUserId = () => {
+  return useAuthStore.getState().currentUser?.id || null;
+};
 
 interface TimerState {
   mode: TimerMode;
@@ -147,6 +168,8 @@ interface StudyState {
 
   // Cloud Config
   setSupabaseConfig: (url: string, key: string) => void;
+  loadUserData: (userId: string) => Promise<void>;
+  clearUserData: () => void;
   resetToDefaults: () => void;
   loadDemoData: () => void;
 
@@ -164,369 +187,18 @@ interface StudyState {
   setCustomWordmarkText: (text: string) => void;
 }
 
-// Generate realistic 365-day seed history
+export const DEMO_SUBJECT_IDS = new Set(['sub-math', 'sub-phys', 'sub-chem', 'sub-cs']);
+export const DEMO_TASK_IDS = new Set(['task-1', 'task-2', 'task-3', 'task-4', 'task-5', 'task-6', 'task-7']);
+export const DEMO_FRIEND_CODES = new Set(['D4M8X', 'E7K92', 'S3W5Y', 'R8P2T']);
+
 function generateSeedSessions(): StudySession[] {
-  const sessions: StudySession[] = [];
-  const subjectIds = ['sub-math', 'sub-phys', 'sub-chem', 'sub-cs'];
-  const subjectNames: Record<string, string> = {
-    'sub-math': 'Mathematics',
-    'sub-phys': 'Physics',
-    'sub-chem': 'Organic Chemistry',
-    'sub-cs': 'Computer Science',
-  };
-
-  const today = new Date();
-  
-  // Generate active sessions for today (~210 mins = 3.5 hrs)
-  const todayStr = today.toISOString().split('T')[0];
-  sessions.push(
-    {
-      id: 'sess-today-1',
-      subjectId: 'sub-phys',
-      subjectName: 'Physics',
-      chapterId: 'ch-phys-1',
-      chapterTitle: 'Electromagnetism',
-      durationMinutes: 90,
-      timestamp: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 30).toISOString(),
-      dateString: todayStr,
-      hour: 9,
-      focusRating: 5,
-      notes: 'Solved Gauss law numericals and flux integration',
-      mode: 'pomodoro',
-    },
-    {
-      id: 'sess-today-2',
-      subjectId: 'sub-chem',
-      subjectName: 'Organic Chemistry',
-      chapterId: 'ch-chem-1',
-      chapterTitle: 'Reaction Mechanisms',
-      durationMinutes: 75,
-      timestamp: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 14, 15).toISOString(),
-      dateString: todayStr,
-      hour: 14,
-      focusRating: 4,
-      notes: 'SN1 vs SN2 nucleophilic substitutions',
-      mode: 'pomodoro',
-    },
-    {
-      id: 'sess-today-3',
-      subjectId: 'sub-cs',
-      subjectName: 'Computer Science',
-      chapterId: 'ch-cs-1',
-      chapterTitle: 'Data Structures & Trees',
-      durationMinutes: 45,
-      timestamp: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 17, 0).toISOString(),
-      dateString: todayStr,
-      hour: 17,
-      focusRating: 5,
-      notes: 'Implemented AVL balancing rotation in TS',
-      mode: 'stopwatch',
-    }
-  );
-
-  // Generate historical data over past 300 days
-  // Ensure 'sub-math' was NOT studied for the last 4 days (to trigger neglected alert!)
-  for (let i = 1; i <= 180; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split('T')[0];
-
-    // Skip some days randomly (e.g. 20% rest days)
-    if (i % 6 === 0) continue;
-
-    // Pick 1-3 study sessions for this day
-    const sessionCount = (i % 3) + 1;
-    for (let s = 0; s < sessionCount; s++) {
-      let subjId = subjectIds[(i + s) % subjectIds.length];
-      
-      // If within last 4 days, do not pick math
-      if (i <= 4 && subjId === 'sub-math') {
-        subjId = 'sub-phys';
-      }
-
-      const hours = [8, 10, 14, 16, 20, 22];
-      const hr = hours[(i + s) % hours.length];
-      const durations = [25, 45, 50, 60, 90];
-      const dur = durations[(i * 3 + s) % durations.length];
-
-      sessions.push({
-        id: `sess-hist-${i}-${s}`,
-        subjectId: subjId,
-        subjectName: subjectNames[subjId],
-        durationMinutes: dur,
-        timestamp: new Date(d.getFullYear(), d.getMonth(), d.getDate(), hr, 0).toISOString(),
-        dateString: dateStr,
-        hour: hr,
-        focusRating: ((i + s) % 3) + 3,
-        notes: `Focus review session on ${subjectNames[subjId]}`,
-        mode: s % 2 === 0 ? 'pomodoro' : 'stopwatch',
-      });
-    }
-  }
-
-  return sessions;
+  return [];
 }
 
-const INITIAL_SUBJECTS: Subject[] = [
-  {
-    id: 'sub-math',
-    name: 'Mathematics',
-    icon: 'Sigma',
-    color: '#6366f1', // Indigo
-    examDate: new Date(Date.now() + 18 * 86400000).toISOString().split('T')[0],
-    chapters: [
-      {
-        id: 'ch-math-1',
-        subjectId: 'sub-math',
-        title: 'Integral & Differential Calculus',
-        notes: 'Integration by parts: ∫u dv = uv - ∫v du. LIATE rule for choosing u.',
-        formulas: 'd/dx[sin x] = cos x | ∫sec²x dx = tan x + C',
-        topics: [
-          { id: 'top-m1', name: 'Limits and Continuity', status: 'completed', confidence: 'strong' },
-          { id: 'top-m2', name: 'Definite Integrals & Properties', status: 'in_progress', confidence: 'medium' },
-          { id: 'top-m3', name: 'Differential Equations', status: 'pending', confidence: 'weak' },
-        ],
-      },
-      {
-        id: 'ch-math-2',
-        subjectId: 'sub-math',
-        title: 'Linear Algebra & Matrices',
-        notes: 'Matrix eigenvalues: det(A - λI) = 0. Cayley-Hamilton theorem.',
-        formulas: 'Rank-Nullity: dim(V) = rank(T) + nullity(T)',
-        topics: [
-          { id: 'top-m4', name: 'Determinants and Inverses', status: 'completed', confidence: 'strong' },
-          { id: 'top-m5', name: 'Eigenvalues & Diagonalization', status: 'pending', confidence: 'weak' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'sub-phys',
-    name: 'Physics',
-    icon: 'Zap',
-    color: '#06b6d4', // Cyan
-    examDate: new Date(Date.now() + 24 * 86400000).toISOString().split('T')[0],
-    chapters: [
-      {
-        id: 'ch-phys-1',
-        subjectId: 'sub-phys',
-        title: 'Electromagnetism & Optics',
-        notes: 'Gauss Law: ∮E·dA = Q_enclosed / ε₀. Faraday law: emf = -dΦ/dt.',
-        formulas: 'Maxwell: ∇·B = 0, ∇×E = -∂B/∂t',
-        topics: [
-          { id: 'top-p1', name: 'Electric Field & Gauss Theorem', status: 'completed', confidence: 'strong' },
-          { id: 'top-p2', name: 'Electromagnetic Induction', status: 'completed', confidence: 'strong' },
-          { id: 'top-p3', name: 'Wave Optics & Interference', status: 'in_progress', confidence: 'medium' },
-        ],
-      },
-      {
-        id: 'ch-phys-2',
-        subjectId: 'sub-phys',
-        title: 'Quantum & Modern Physics',
-        notes: 'De Broglie wavelength: λ = h / p. Photoelectric: E = hν - Φ.',
-        formulas: 'Δx·Δp ≥ ℏ/2 (Heisenberg Uncertainty)',
-        topics: [
-          { id: 'top-p4', name: 'Photoelectric Effect', status: 'completed', confidence: 'strong' },
-          { id: 'top-p5', name: 'Atomic Spectra & Bohr Model', status: 'pending', confidence: 'medium' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'sub-chem',
-    name: 'Organic Chemistry',
-    icon: 'FlaskConical',
-    color: '#10b981', // Emerald
-    examDate: new Date(Date.now() + 12 * 86400000).toISOString().split('T')[0],
-    chapters: [
-      {
-        id: 'ch-chem-1',
-        subjectId: 'sub-chem',
-        title: 'Reaction Mechanisms',
-        notes: 'Carbocation stability: 3° > 2° > 1°. Anti-Markovnikov with peroxides.',
-        formulas: 'Rate = k[substrate][nucleophile] for SN2',
-        topics: [
-          { id: 'top-c1', name: 'Nucleophilic Substitution (SN1 vs SN2)', status: 'completed', confidence: 'strong' },
-          { id: 'top-c2', name: 'Electrophilic Aromatic Substitution', status: 'in_progress', confidence: 'medium' },
-          { id: 'top-c3', name: 'Aldol Condensation & Cannizzaro', status: 'pending', confidence: 'weak' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'sub-cs',
-    name: 'Computer Science',
-    icon: 'Code2',
-    color: '#8b5cf6', // Violet
-    examDate: new Date(Date.now() + 32 * 86400000).toISOString().split('T')[0],
-    chapters: [
-      {
-        id: 'ch-cs-1',
-        subjectId: 'sub-cs',
-        title: 'Data Structures & Algorithms',
-        notes: 'Time complexity: QuickSort average O(N log N), worst O(N²). Dijkstra for shortest path.',
-        formulas: 'Master Theorem: T(n) = aT(n/b) + f(n)',
-        topics: [
-          { id: 'top-cs1', name: 'Binary Trees & Balanced AVL', status: 'completed', confidence: 'strong' },
-          { id: 'top-cs2', name: 'Graph Traversals (BFS & DFS)', status: 'completed', confidence: 'strong' },
-          { id: 'top-cs3', name: 'Dynamic Programming (Knapsack & LCS)', status: 'in_progress', confidence: 'medium' },
-        ],
-      },
-    ],
-  },
-];
-
-export const INITIAL_CUSTOM_COLUMNS: CustomColumn[] = [
-  {
-    id: 'col-water',
-    name: 'Water (L)',
-    type: 'number',
-  },
-  {
-    id: 'col-energy',
-    name: 'Energy Level',
-    type: 'select',
-    options: ['High', 'Normal', 'Low'],
-  },
-  {
-    id: 'col-workout',
-    name: 'Workout',
-    type: 'boolean',
-  },
-];
-
-export const INITIAL_CUSTOM_TABLES: CustomStudyTable[] = [
-  {
-    id: 'tbl-mock-tests',
-    title: 'Mock Tests & Practice Papers',
-    description: 'Track exam practice papers, scores, accuracy percentage, and analysis notes.',
-    createdAt: '2026-10-01',
-    columns: [
-      { id: 'col-paper', name: 'PAPER', type: 'text' },
-      { id: 'col-score', name: 'SCORE', type: 'number' },
-      { id: 'col-total', name: 'TOTAL', type: 'number' },
-      { id: 'col-accuracy', name: 'ACCURACY', type: 'number', unit: '%' },
-      { id: 'col-difficulty', name: 'DIFFICULTY', type: 'select', options: ['High', 'Normal', 'Low'] },
-      { id: 'col-analyzed', name: 'ANALYZED', type: 'boolean' },
-    ],
-    rows: [
-      {
-        id: 'row-1',
-        date: '2026-10-16',
-        values: {
-          'col-paper': 'Full Mock #04',
-          'col-score': 248,
-          'col-total': 300,
-          'col-accuracy': 88,
-          'col-difficulty': 'Normal',
-          'col-analyzed': true,
-        },
-        notes: 'Made 3 silly calculation errors in section B. Revise thermodynamics formulas.',
-        createdAt: '2026-10-16T18:00:00Z',
-      },
-      {
-        id: 'row-2',
-        date: '2026-10-14',
-        values: {
-          'col-paper': 'Adv Physics Drill',
-          'col-score': 82,
-          'col-total': 100,
-          'col-accuracy': 84,
-          'col-difficulty': 'High',
-          'col-analyzed': true,
-        },
-        notes: 'Rotational dynamics problems took longer than expected.',
-        createdAt: '2026-10-14T19:30:00Z',
-      },
-      {
-        id: 'row-3',
-        date: '2026-10-11',
-        values: {
-          'col-paper': 'Calculus Finals',
-          'col-score': 94,
-          'col-total': 100,
-          'col-accuracy': 96,
-          'col-difficulty': 'Low',
-          'col-analyzed': true,
-        },
-        notes: 'Great pacing, finished 15 mins ahead of time.',
-        createdAt: '2026-10-11T17:00:00Z',
-      },
-    ],
-  },
-];
-
-const INITIAL_TASKS: Task[] = [
-  {
-    id: 'task-1',
-    title: 'Solve 15 integration problem sets (LIATE rule practice)',
-    subjectId: 'sub-math',
-    priority: 'high',
-    dueDate: '2026-10-14',
-    completed: false,
-    estimatedPomodoros: 2,
-    notes: 'Focus on trigonometric substitution and partial fractions',
-  },
-  {
-    id: 'task-2',
-    title: 'Revise Gauss Law & Lenz Law formula sheet',
-    subjectId: 'sub-phys',
-    priority: 'high',
-    dueDate: '2026-10-14',
-    completed: false,
-    estimatedPomodoros: 1,
-    notes: 'Draw diagrams for induced currents',
-  },
-  {
-    id: 'task-3',
-    title: 'Code Dijkstra and Topological Sort implementations',
-    subjectId: 'sub-cs',
-    priority: 'med',
-    dueDate: '2026-10-14',
-    completed: false,
-    estimatedPomodoros: 2,
-    notes: 'Verify edge cases with disconnected graphs',
-  },
-  {
-    id: 'task-4',
-    title: 'Complete Aldol condensation reaction chart',
-    subjectId: 'sub-chem',
-    priority: 'high',
-    dueDate: '2026-10-15',
-    completed: false,
-    estimatedPomodoros: 2,
-    notes: 'Cross-aldol products and dehydration step mechanisms',
-  },
-  {
-    id: 'task-5',
-    title: 'Review Organic Isomerism & Stereochemistry',
-    subjectId: 'sub-chem',
-    priority: 'med',
-    dueDate: '2026-10-16',
-    completed: false,
-    estimatedPomodoros: 2,
-  },
-  {
-    id: 'task-6',
-    title: 'Past 5-year paper solving: Electromagnetism',
-    subjectId: 'sub-phys',
-    priority: 'low',
-    dueDate: '2026-10-14',
-    completed: true,
-    completedAt: '2026-10-14T15:30:00.000Z',
-    estimatedPomodoros: 3,
-  },
-  {
-    id: 'task-7',
-    title: 'Calculus limits & continuity practice test',
-    subjectId: 'sub-math',
-    priority: 'med',
-    dueDate: '2026-10-13',
-    completed: true,
-    completedAt: '2026-10-13T17:45:00.000Z',
-    estimatedPomodoros: 2,
-  },
-];
+export const INITIAL_SUBJECTS: Subject[] = [];
+export const INITIAL_CUSTOM_COLUMNS: CustomColumn[] = [];
+export const INITIAL_CUSTOM_TABLES: CustomStudyTable[] = [];
+export const INITIAL_TASKS: Task[] = [];
 
 export const getLocalTodayDateString = (): string => {
   const now = new Date();
@@ -590,176 +262,7 @@ export const ensureDailyLogsDateWise = (logs: DailyLogEntry[]): DailyLogEntry[] 
   return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
 };
 
-export const INITIAL_DAILY_LOGS: DailyLogEntry[] = [
-  {
-    date: '2026-10-14',
-    studyHours: 6.5,
-    attendedClass: true,
-    pyqsSolved: 25,
-    revisionDone: true,
-    mockTestTaken: false,
-    sleepHours: 7.0,
-    focusRating: 5,
-    notes: 'Deep focus on electromagnetic induction & organic synthesis pathways. Solved 25 PYQs with zero distractions.',
-    customData: { 'col-water': 3.2, 'col-energy': 'High', 'col-workout': true },
-  },
-  {
-    date: '2026-10-13',
-    studyHours: 5.0,
-    attendedClass: true,
-    pyqsSolved: 18,
-    revisionDone: true,
-    mockTestTaken: false,
-    sleepHours: 6.5,
-    focusRating: 4,
-    notes: 'Gauss Law numericals and mechanics problem sets completed. Fast review of rotational motion formulas.',
-    customData: { 'col-water': 2.8, 'col-energy': 'High', 'col-workout': true },
-  },
-  {
-    date: '2026-10-12',
-    studyHours: 3.5,
-    attendedClass: true,
-    pyqsSolved: 8,
-    revisionDone: false,
-    mockTestTaken: false,
-    sleepHours: 7.5,
-    focusRating: 3,
-    notes: 'Attended college lectures on thermodynamics & heat transfer. Heavy college schedule left limited self-study time.',
-    customData: { 'col-water': 2.2, 'col-energy': 'Normal', 'col-workout': false },
-  },
-  {
-    date: '2026-10-11',
-    studyHours: 7.0,
-    attendedClass: false,
-    pyqsSolved: 35,
-    revisionDone: true,
-    mockTestTaken: true,
-    sleepHours: 6.5,
-    focusRating: 5,
-    notes: 'Sunday mock test 1 completed (Score: 168/200). Analyzed mistakes in coordinate geometry and optics.',
-    customData: { 'col-water': 3.5, 'col-energy': 'High', 'col-workout': true },
-  },
-  {
-    date: '2026-10-10',
-    studyHours: 2.5,
-    attendedClass: true,
-    pyqsSolved: 0,
-    revisionDone: false,
-    mockTestTaken: false,
-    sleepHours: 8.5,
-    focusRating: 2,
-    notes: 'Felt fatigued, light reading and formula sheets review only. Took proper rest in the evening.',
-    customData: { 'col-water': 2.0, 'col-energy': 'Low', 'col-workout': false },
-  },
-  {
-    date: '2026-10-09',
-    studyHours: 5.5,
-    attendedClass: true,
-    pyqsSolved: 22,
-    revisionDone: true,
-    mockTestTaken: false,
-    sleepHours: 7.0,
-    focusRating: 4,
-    notes: 'Reaction mechanism flashcards revised. Solved aromatic substitution problems and carbonyl reactions.',
-    customData: { 'col-water': 2.5, 'col-energy': 'High', 'col-workout': true },
-  },
-  {
-    date: '2026-10-08',
-    studyHours: 6.0,
-    attendedClass: true,
-    pyqsSolved: 30,
-    revisionDone: true,
-    mockTestTaken: false,
-    sleepHours: 7.0,
-    focusRating: 5,
-    notes: 'Calculus integration by parts & differential equations drill. Solved 30 tough past-year questions.',
-    customData: { 'col-water': 3.0, 'col-energy': 'High', 'col-workout': false },
-  },
-  {
-    date: '2026-10-07',
-    studyHours: 4.0,
-    attendedClass: true,
-    pyqsSolved: 14,
-    revisionDone: true,
-    mockTestTaken: false,
-    sleepHours: 6.5,
-    focusRating: 4,
-    notes: 'Mid-week review: Capacitors, dielectrics, and Kirchhoff loop rules. Cleared backlog notes.',
-    customData: { 'col-water': 2.6, 'col-energy': 'Normal', 'col-workout': true },
-  },
-  {
-    date: '2026-10-06',
-    studyHours: 5.5,
-    attendedClass: false,
-    pyqsSolved: 28,
-    revisionDone: true,
-    mockTestTaken: false,
-    sleepHours: 7.5,
-    focusRating: 4,
-    notes: 'Binary search trees, AVL rotations and graph traversal algorithms implemented and tested.',
-    customData: { 'col-water': 2.9, 'col-energy': 'High', 'col-workout': true },
-  },
-  {
-    date: '2026-10-05',
-    studyHours: 4.5,
-    attendedClass: true,
-    pyqsSolved: 15,
-    revisionDone: false,
-    mockTestTaken: false,
-    sleepHours: 6.0,
-    focusRating: 3,
-    notes: 'College lab practicals + 3 hours evening study on organic isomerism and IUPAC nomenclature.',
-    customData: { 'col-water': 2.1, 'col-energy': 'Normal', 'col-workout': false },
-  },
-  {
-    date: '2026-10-04',
-    studyHours: 7.5,
-    attendedClass: false,
-    pyqsSolved: 40,
-    revisionDone: true,
-    mockTestTaken: true,
-    sleepHours: 7.0,
-    focusRating: 5,
-    notes: 'Full subject mini-mock test on Mechanics & Algebra. Great timing, finished 15 mins before time.',
-    customData: { 'col-water': 3.4, 'col-energy': 'High', 'col-workout': true },
-  },
-  {
-    date: '2026-10-03',
-    studyHours: 3.0,
-    attendedClass: true,
-    pyqsSolved: 6,
-    revisionDone: false,
-    mockTestTaken: false,
-    sleepHours: 8.0,
-    focusRating: 3,
-    notes: 'Quick study sprint before weekend. Covered electrostatics electric potential and field lines.',
-    customData: { 'col-water': 2.0, 'col-energy': 'Normal', 'col-workout': false },
-  },
-  {
-    date: '2026-10-02',
-    studyHours: 6.0,
-    attendedClass: false,
-    pyqsSolved: 20,
-    revisionDone: true,
-    mockTestTaken: false,
-    sleepHours: 7.5,
-    focusRating: 4,
-    notes: 'Holiday study marathon! Comprehensive revision of chemical equilibrium and Le Chatelier principle.',
-    customData: { 'col-water': 3.0, 'col-energy': 'High', 'col-workout': true },
-  },
-  {
-    date: '2026-10-01',
-    studyHours: 5.0,
-    attendedClass: true,
-    pyqsSolved: 16,
-    revisionDone: true,
-    mockTestTaken: false,
-    sleepHours: 6.5,
-    focusRating: 4,
-    notes: 'October goal kickoff: Planned study targets for the month. Covered limits, continuity, and differentiability.',
-    customData: { 'col-water': 2.7, 'col-energy': 'High', 'col-workout': true },
-  },
-];
+export const INITIAL_DAILY_LOGS: DailyLogEntry[] = [];
 
 // Module-level persistent timer ticker engine
 let timerInterval: number | null = null;
@@ -797,214 +300,7 @@ export function generateStudentCode(): string {
   return result;
 }
 
-const INITIAL_FRIENDS: FriendProfile[] = [
-  {
-    code: 'D4M8X',
-    name: 'Dev Patel',
-    avatar: 'D',
-    bio: '',
-    streakDays: 24,
-    dailyTargetMinutes: 240,
-    todayStudyMinutes: 210,
-    lastActive: '20m ago',
-    status: 'accepted',
-    studyLogs: [
-      {
-        date: '2026-10-16',
-        studyHours: 4.5,
-        attendedClass: true,
-        pyqsSolved: 25,
-        revisionDone: true,
-        mockTestTaken: false,
-        sleepHours: 7.5,
-        focusRating: 5,
-        notes: 'Binary search tree rebalancing, red-black tree insertion proofs, and graph DFS.',
-      },
-      {
-        date: '2026-10-15',
-        studyHours: 4.0,
-        attendedClass: true,
-        pyqsSolved: 18,
-        revisionDone: true,
-        mockTestTaken: true,
-        sleepHours: 7.0,
-        focusRating: 4,
-        notes: 'Mock exam on Operating Systems (Memory Management & Virtual Paging). Scored 92%.',
-      },
-      {
-        date: '2026-10-14',
-        studyHours: 3.5,
-        attendedClass: false,
-        pyqsSolved: 30,
-        revisionDone: false,
-        mockTestTaken: false,
-        sleepHours: 8.0,
-        focusRating: 4,
-        notes: 'Dynamic programming marathon: Knapsack variations and longest common subsequence.',
-      },
-      {
-        date: '2026-10-13',
-        studyHours: 5.0,
-        attendedClass: true,
-        pyqsSolved: 20,
-        revisionDone: true,
-        mockTestTaken: false,
-        sleepHours: 7.2,
-        focusRating: 5,
-        notes: 'System design fundamentals: Load balancing, caching patterns, and database indexing.',
-      },
-      {
-        date: '2026-10-12',
-        studyHours: 3.0,
-        attendedClass: true,
-        pyqsSolved: 15,
-        revisionDone: true,
-        mockTestTaken: false,
-        sleepHours: 6.8,
-        focusRating: 3,
-        notes: 'Computer networks: TCP 3-way handshake and congestion control window.',
-      },
-    ],
-    comments: [
-      {
-        id: 'comm-1',
-        authorCode: 'A9X4K',
-        authorName: 'Alex',
-        text: 'Insane consistency on dynamic programming yesterday! 🔥',
-        timestamp: new Date(Date.now() - 3600000 * 3).toISOString(),
-        reactions: ['🔥', '💪'],
-      },
-      {
-        id: 'comm-2',
-        authorCode: 'D4M8X',
-        authorName: 'Dev Patel',
-        text: 'Thanks Alex! Graph theory finals coming up next week, pushing hard.',
-        timestamp: new Date(Date.now() - 3600000 * 1.5).toISOString(),
-        reactions: ['⚡'],
-      },
-    ],
-  },
-  {
-    code: 'E7K92',
-    name: 'Elena Rostova',
-    avatar: 'E',
-    bio: '',
-    streakDays: 18,
-    dailyTargetMinutes: 330,
-    todayStudyMinutes: 270,
-    lastActive: '1h ago',
-    status: 'incoming_request',
-    requestedAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-    studyLogs: [
-      {
-        date: '2026-10-16',
-        studyHours: 5.5,
-        attendedClass: true,
-        pyqsSolved: 35,
-        revisionDone: true,
-        mockTestTaken: false,
-        sleepHours: 7.0,
-        focusRating: 5,
-        notes: 'Electrodynamics Maxwell equations, wave propagation in dielectric media.',
-      },
-      {
-        date: '2026-10-15',
-        studyHours: 5.0,
-        attendedClass: false,
-        pyqsSolved: 40,
-        revisionDone: true,
-        mockTestTaken: true,
-        sleepHours: 7.5,
-        focusRating: 5,
-        notes: 'Full length Physics mock exam. Rotational dynamics & angular momentum conservation.',
-      },
-      {
-        date: '2026-10-14',
-        studyHours: 4.5,
-        attendedClass: true,
-        pyqsSolved: 25,
-        revisionDone: true,
-        mockTestTaken: false,
-        sleepHours: 6.5,
-        focusRating: 4,
-        notes: 'Thermodynamics Carnot cycle, entropy integration problems.',
-      },
-    ],
-    comments: [],
-  },
-  {
-    code: 'S3W5Y',
-    name: 'Sara Chen',
-    avatar: 'S',
-    bio: '',
-    streakDays: 15,
-    dailyTargetMinutes: 360,
-    todayStudyMinutes: 310,
-    lastActive: '40m ago',
-    status: 'none',
-    studyLogs: [
-      {
-        date: '2026-10-16',
-        studyHours: 6.0,
-        attendedClass: true,
-        pyqsSolved: 30,
-        revisionDone: true,
-        mockTestTaken: false,
-        sleepHours: 8.0,
-        focusRating: 5,
-        notes: 'Aldol condensation, Cannizzaro reaction, and carboxylic acid derivatives.',
-      },
-      {
-        date: '2026-10-15',
-        studyHours: 5.5,
-        attendedClass: true,
-        pyqsSolved: 28,
-        revisionDone: true,
-        mockTestTaken: false,
-        sleepHours: 7.5,
-        focusRating: 4,
-        notes: 'Biomolecules: Peptide bond resonance, amino acid zwitterion titration curves.',
-      },
-    ],
-    comments: [],
-  },
-  {
-    code: 'R8P2T',
-    name: 'Rohan Sharma',
-    avatar: 'R',
-    bio: '',
-    streakDays: 12,
-    dailyTargetMinutes: 300,
-    todayStudyMinutes: 200,
-    lastActive: '2h ago',
-    status: 'none',
-    studyLogs: [
-      {
-        date: '2026-10-16',
-        studyHours: 4.0,
-        attendedClass: true,
-        pyqsSolved: 22,
-        revisionDone: true,
-        mockTestTaken: false,
-        sleepHours: 7.0,
-        focusRating: 4,
-        notes: 'Differential equations: Integrating factor methods and orthogonal trajectories.',
-      },
-      {
-        date: '2026-10-15',
-        studyHours: 4.5,
-        attendedClass: true,
-        pyqsSolved: 30,
-        revisionDone: false,
-        mockTestTaken: true,
-        sleepHours: 6.5,
-        focusRating: 3,
-        notes: 'Coordinate geometry conic sections: Parabola tangents and normal equations.',
-      },
-    ],
-    comments: [],
-  },
-];
+export const INITIAL_FRIENDS: FriendProfile[] = [];
 
 export const applyTheme = (theme: ThemeMode) => {
   if (typeof document === 'undefined') return;
@@ -1030,22 +326,22 @@ export const useStudyStore = create<StudyState>()(
       theme: 'dark',
       language: 'en',
       user: {
-        name: 'Alex',
-        streakDays: 14,
-        longestStreak: 21,
-        lastStudiedDate: new Date().toISOString().split('T')[0],
-        lastActiveSubjectId: 'sub-phys',
-        friendCode: 'A9X4K',
+        name: 'Student',
+        streakDays: 0,
+        longestStreak: 0,
+        lastStudiedDate: '',
+        lastActiveSubjectId: '',
+        friendCode: generateStudentCode(),
         profileMetricSlots: ['currentStreak', 'bestStreak', 'daysLogged'],
         customWordmarkText: 'studyo',
       },
-      friends: INITIAL_FRIENDS,
-      subjects: INITIAL_SUBJECTS,
-      sessions: generateSeedSessions(),
-      tasks: INITIAL_TASKS,
-      dailyLogs: ensureDailyLogsDateWise(INITIAL_DAILY_LOGS),
-      customColumns: INITIAL_CUSTOM_COLUMNS,
-      customTables: INITIAL_CUSTOM_TABLES,
+      friends: [],
+      subjects: [],
+      sessions: [],
+      tasks: [],
+      dailyLogs: ensureDailyLogsDateWise([]),
+      customColumns: [],
+      customTables: [],
       activeTableId: 'main',
       autoStartNextRound: false,
       soundAlertOnFinish: true,
@@ -1054,50 +350,22 @@ export const useStudyStore = create<StudyState>()(
       stopwatchTime: 0,
       stopwatchRunning: false,
       stopwatchLaps: [],
-      examCountdowns: [
-        {
-          id: 'exam-1',
-          title: 'Chemistry Board Exam',
-          subjectId: 'sub-chem',
-          examDate: new Date(Date.now() + 12 * 86400000).toISOString().split('T')[0],
-          targetScore: '95%',
-        },
-        {
-          id: 'exam-2',
-          title: 'Math Calculus Finals',
-          subjectId: 'sub-math',
-          examDate: new Date(Date.now() + 18 * 86400000).toISOString().split('T')[0],
-          targetScore: '100%',
-        },
-        {
-          id: 'exam-3',
-          title: 'Physics Competitive Mock',
-          subjectId: 'sub-phys',
-          examDate: new Date(Date.now() + 24 * 86400000).toISOString().split('T')[0],
-          targetScore: 'Top 5%',
-        },
-      ],
-      distractionNotes: [
-        {
-          id: 'dist-1',
-          text: 'Check if hackathon registration deadline is next Monday',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-      ],
+      examCountdowns: [],
+      distractionNotes: [],
       timer: {
         mode: 'pomodoro',
         timeLeft: 25 * 60,
         initialDuration: 25 * 60,
         isRunning: false,
-        activeSubjectId: 'sub-phys',
-        activeChapterId: 'ch-phys-1',
+        activeSubjectId: '',
+        activeChapterId: undefined,
       },
       zenMode: false,
       ambientSound: 'off',
       ambientVolume: 0.5,
-      supabaseUrl: '',
-      supabaseAnonKey: '',
-      isCloudSynced: false,
+      supabaseUrl: DEFAULT_SUPABASE_URL,
+      supabaseAnonKey: DEFAULT_SUPABASE_ANON_KEY,
+      isCloudSynced: true,
 
       // Daily Study Log Actions
       ensureTodayDailyLog: () => {
@@ -1108,7 +376,7 @@ export const useStudyStore = create<StudyState>()(
 
       addOrUpdateDailyLog: (entry) => {
         set((state) => {
-          const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : INITIAL_DAILY_LOGS;
+          const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : [];
           const existingIndex = logs.findIndex((l) => l.date === entry.date);
           let updated: DailyLogEntry[];
           if (existingIndex >= 0) {
@@ -1119,11 +387,13 @@ export const useStudyStore = create<StudyState>()(
           }
           return { dailyLogs: ensureDailyLogsDateWise(updated) };
         });
+        const uid = getCurrentUserId();
+        if (uid) dbSaveDailyLog(uid, entry);
       },
 
       updateDailyLogField: (date, field, value) => {
         set((state) => {
-          const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : INITIAL_DAILY_LOGS;
+          const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : [];
           const updated = logs.map((l) => {
             if (l.date === date) {
               return { ...l, [field]: value };
@@ -1132,13 +402,18 @@ export const useStudyStore = create<StudyState>()(
           });
           return { dailyLogs: updated };
         });
+        const uid = getCurrentUserId();
+        const updated = get().dailyLogs.find((l) => l.date === date);
+        if (uid && updated) dbSaveDailyLog(uid, updated);
       },
 
       deleteDailyLog: (date) => {
         set((state) => {
-          const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : INITIAL_DAILY_LOGS;
+          const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : [];
           return { dailyLogs: logs.filter((l) => l.date !== date) };
         });
+        const uid = getCurrentUserId();
+        if (uid) dbDeleteDailyLog(uid, date);
       },
 
       // Custom Columns Actions
@@ -1182,7 +457,7 @@ export const useStudyStore = create<StudyState>()(
       },
       updateDailyLogCustomField: (date, columnId, value) => {
         set((state) => {
-          const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : INITIAL_DAILY_LOGS;
+          const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : [];
           const updated = logs.map((l) => {
             if (l.date === date) {
               return {
@@ -1437,8 +712,16 @@ export const useStudyStore = create<StudyState>()(
       },
 
       setLanguage: (lang) => set({ language: lang }),
-      setUserTarget: (minutes) => set((state) => ({ user: { ...state.user, dailyTargetMinutes: minutes } })),
-      updateUserProfile: (updates) => set((state) => ({ user: { ...state.user, ...updates } })),
+      setUserTarget: (minutes) => {
+        set((state) => ({ user: { ...state.user, dailyTargetMinutes: minutes } }));
+        const uid = getCurrentUserId();
+        if (uid) dbUpdateProfile(uid, { dailyTargetMinutes: minutes });
+      },
+      updateUserProfile: (updates) => {
+        set((state) => ({ user: { ...state.user, ...updates } }));
+        const uid = getCurrentUserId();
+        if (uid) dbUpdateProfile(uid, updates);
+      },
       setZenMode: (zen) => set({ zenMode: zen }),
       
       setAmbientSound: (sound) => {
@@ -1725,6 +1008,18 @@ export const useStudyStore = create<StudyState>()(
           },
         });
 
+        // Background Supabase Persistence
+        const uid = getCurrentUserId();
+        if (uid) {
+          dbSaveStudySession(uid, newSession);
+          dbUpdateProfile(uid, {
+            streakDays: streak,
+            longestStreak: Math.max(streak, user.longestStreak),
+            lastStudiedDate: todayStr,
+            lastActiveSubjectId: activeSub?.id,
+          });
+        }
+
         // Trigger victory confetti
         confetti({
           particleCount: 100,
@@ -1740,6 +1035,8 @@ export const useStudyStore = create<StudyState>()(
           completed: false,
         };
         set((state) => ({ tasks: [newTask, ...state.tasks] }));
+        const uid = getCurrentUserId();
+        if (uid) dbSaveTask(uid, newTask);
       },
 
       toggleTask: (taskId) => {
@@ -1755,21 +1052,26 @@ export const useStudyStore = create<StudyState>()(
           });
         }
 
-        set({
-          tasks: tasks.map((t) =>
-            t.id === taskId
-              ? {
-                  ...t,
-                  completed: !t.completed,
-                  completedAt: !t.completed ? new Date().toISOString() : undefined,
-                }
-              : t
-          ),
-        });
+        const updatedTasks = tasks.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                completed: !t.completed,
+                completedAt: !t.completed ? new Date().toISOString() : undefined,
+              }
+            : t
+        );
+
+        set({ tasks: updatedTasks });
+        const uid = getCurrentUserId();
+        const updatedTask = updatedTasks.find((t) => t.id === taskId);
+        if (uid && updatedTask) dbSaveTask(uid, updatedTask);
       },
 
       deleteTask: (taskId) => {
         set((state) => ({ tasks: state.tasks.filter((t) => t.id !== taskId) }));
+        const uid = getCurrentUserId();
+        if (uid) dbDeleteTask(uid, taskId);
       },
 
       addSubject: (name, color, icon, examDate) => {
@@ -1782,6 +1084,8 @@ export const useStudyStore = create<StudyState>()(
           chapters: [],
         };
         set((state) => ({ subjects: [...state.subjects, newSubject] }));
+        const uid = getCurrentUserId();
+        if (uid) dbSaveSubject(uid, newSubject);
       },
 
       addChapter: (subjectId, title) => {
@@ -1796,6 +1100,9 @@ export const useStudyStore = create<StudyState>()(
             s.id === subjectId ? { ...s, chapters: [...s.chapters, newChapter] } : s
           ),
         }));
+        const uid = getCurrentUserId();
+        const updated = get().subjects.find((s) => s.id === subjectId);
+        if (uid && updated) dbSaveSubject(uid, updated);
       },
 
       addTopic: (subjectId, chapterId, name) => {
@@ -1817,6 +1124,9 @@ export const useStudyStore = create<StudyState>()(
             };
           }),
         }));
+        const uid = getCurrentUserId();
+        const updated = get().subjects.find((s) => s.id === subjectId);
+        if (uid && updated) dbSaveSubject(uid, updated);
       },
 
       toggleTopicStatus: (subjectId, chapterId, topicId) => {
@@ -1844,6 +1154,9 @@ export const useStudyStore = create<StudyState>()(
             };
           }),
         }));
+        const uid = getCurrentUserId();
+        const updated = get().subjects.find((s) => s.id === subjectId);
+        if (uid && updated) dbSaveSubject(uid, updated);
       },
 
       setTopicConfidence: (subjectId, chapterId, topicId, confidence) => {
@@ -1862,6 +1175,9 @@ export const useStudyStore = create<StudyState>()(
             };
           }),
         }));
+        const uid = getCurrentUserId();
+        const updated = get().subjects.find((s) => s.id === subjectId);
+        if (uid && updated) dbSaveSubject(uid, updated);
       },
 
       updateChapterNotes: (subjectId, chapterId, notes, formulas) => {
@@ -1877,6 +1193,9 @@ export const useStudyStore = create<StudyState>()(
             };
           }),
         }));
+        const uid = getCurrentUserId();
+        const updated = get().subjects.find((s) => s.id === subjectId);
+        if (uid && updated) dbSaveSubject(uid, updated);
       },
 
       addDistraction: (text) => {
@@ -1918,17 +1237,59 @@ export const useStudyStore = create<StudyState>()(
           examDate,
         };
         set((state) => ({ examCountdowns: [...state.examCountdowns, newExam] }));
+        const uid = getCurrentUserId();
+        if (uid) dbSaveExamCountdown(uid, newExam);
       },
 
       deleteExamCountdown: (id) => {
         set((state) => ({ examCountdowns: state.examCountdowns.filter((e) => e.id !== id) }));
+        const uid = getCurrentUserId();
+        if (uid) dbDeleteExamCountdown(uid, id);
       },
 
       setSupabaseConfig: (url, key) => {
+        resetSupabaseClient(url, key);
         set({
           supabaseUrl: url,
           supabaseAnonKey: key,
           isCloudSynced: Boolean(url && key),
+        });
+      },
+
+      loadUserData: async (userId: string) => {
+        const data = await fetchUserDataFromSupabase(userId);
+        if (!data) return;
+
+        set((state) => ({
+          isCloudSynced: true,
+          subjects: data.subjects || [],
+          sessions: data.sessions || [],
+          tasks: data.tasks || [],
+          dailyLogs: ensureDailyLogsDateWise(data.dailyLogs || []),
+          examCountdowns: data.examCountdowns || [],
+          user: {
+            ...state.user,
+            ...(data.profile?.name ? { name: data.profile.name } : {}),
+            ...(data.profile?.email ? { email: data.profile.email } : {}),
+            ...(data.profile?.dailyTargetMinutes ? { dailyTargetMinutes: data.profile.dailyTargetMinutes } : {}),
+            ...(data.profile?.streakDays != null ? { streakDays: data.profile.streakDays } : {}),
+            ...(data.profile?.longestStreak != null ? { longestStreak: data.profile.longestStreak } : {}),
+            ...(data.profile?.lastStudiedDate ? { lastStudiedDate: data.profile.lastStudiedDate } : {}),
+            ...(data.profile?.lastActiveSubjectId ? { lastActiveSubjectId: data.profile.lastActiveSubjectId } : {}),
+            ...(data.profile?.friendCode ? { friendCode: data.profile.friendCode } : {}),
+            ...(data.profile?.customWordmarkText ? { customWordmarkText: data.profile.customWordmarkText } : {}),
+          },
+        }));
+      },
+
+      clearUserData: () => {
+        set({
+          subjects: [],
+          sessions: [],
+          tasks: [],
+          dailyLogs: ensureDailyLogsDateWise([]),
+          examCountdowns: [],
+          isCloudSynced: false,
         });
       },
 
@@ -2138,34 +1499,47 @@ export const useStudyStore = create<StudyState>()(
 
       resetToDefaults: () => {
         set({
-          subjects: INITIAL_SUBJECTS,
-          sessions: generateSeedSessions(),
-          tasks: INITIAL_TASKS,
-          dailyLogs: ensureDailyLogsDateWise(INITIAL_DAILY_LOGS),
-          customColumns: INITIAL_CUSTOM_COLUMNS,
-          customTables: INITIAL_CUSTOM_TABLES,
+          subjects: [],
+          sessions: [],
+          tasks: [],
+          dailyLogs: ensureDailyLogsDateWise([]),
+          customColumns: [],
+          customTables: [],
           activeTableId: 'main',
-          friends: INITIAL_FRIENDS,
-          stopwatchLaps: [
-            { id: 'lap-1', lapNumber: 1, timestampSeconds: 1500, lapDurationSeconds: 1500 },
-            { id: 'lap-2', lapNumber: 2, timestampSeconds: 3300, lapDurationSeconds: 1800 },
-          ],
+          friends: [],
+          stopwatchLaps: [],
+          examCountdowns: [],
+          distractionNotes: [],
+          user: {
+            ...get().user,
+            streakDays: 0,
+            longestStreak: 0,
+            lastStudiedDate: '',
+            lastActiveSubjectId: '',
+          },
         });
       },
 
       loadDemoData: () => {
         set({
-          dailyLogs: ensureDailyLogsDateWise(INITIAL_DAILY_LOGS),
-          customColumns: INITIAL_CUSTOM_COLUMNS,
-          customTables: INITIAL_CUSTOM_TABLES,
+          subjects: [],
+          sessions: [],
+          tasks: [],
+          dailyLogs: ensureDailyLogsDateWise([]),
+          customColumns: [],
+          customTables: [],
           activeTableId: 'main',
-          tasks: INITIAL_TASKS,
-          sessions: generateSeedSessions(),
-          friends: INITIAL_FRIENDS,
-          stopwatchLaps: [
-            { id: 'lap-1', lapNumber: 1, timestampSeconds: 1500, lapDurationSeconds: 1500 },
-            { id: 'lap-2', lapNumber: 2, timestampSeconds: 3300, lapDurationSeconds: 1800 },
-          ],
+          friends: [],
+          stopwatchLaps: [],
+          examCountdowns: [],
+          distractionNotes: [],
+          user: {
+            ...get().user,
+            streakDays: 0,
+            longestStreak: 0,
+            lastStudiedDate: '',
+            lastActiveSubjectId: '',
+          },
         });
       },
     }),
@@ -2197,31 +1571,66 @@ export const useStudyStore = create<StudyState>()(
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<StudyState>) || {};
         const persistedLogs = Array.isArray(persisted.dailyLogs) ? persisted.dailyLogs : [];
+
+        // Purge legacy demo data from rehydration
+        const cleanSubjects = (persisted.subjects || []).filter((s) => !DEMO_SUBJECT_IDS.has(s.id));
+        const cleanSessions = (persisted.sessions || []).filter(
+          (s) => !s.id.startsWith('sess-today-') && !s.id.startsWith('sess-hist-') && !DEMO_SUBJECT_IDS.has(s.subjectId)
+        );
+        const cleanTasks = (persisted.tasks || []).filter(
+          (t) => !DEMO_TASK_IDS.has(t.id) && !DEMO_SUBJECT_IDS.has(t.subjectId)
+        );
+        const cleanFriends = (persisted.friends || []).filter(
+          (f) => !DEMO_FRIEND_CODES.has(f.code.toUpperCase())
+        );
+        const cleanTables = (persisted.customTables || []).filter(
+          (tbl) => tbl.id !== 'tbl-mock-tests'
+        );
+
         const mergedMap = new Map<string, DailyLogEntry>();
-        INITIAL_DAILY_LOGS.forEach(log => mergedMap.set(log.date, log));
-        persistedLogs.forEach(log => mergedMap.set(log.date, log));
+        persistedLogs.forEach((log) => {
+          const isDemoLog =
+            log.notes &&
+            (log.notes.includes('Gauss') ||
+              log.notes.includes('electromagnetic') ||
+              log.notes.includes('thermodynamics') ||
+              log.notes.includes('PYQs with zero distractions') ||
+              log.notes.includes('Sunday mock') ||
+              log.notes.includes('Calculus integration') ||
+              log.notes.includes('October goal kickoff'));
+          if (!isDemoLog) {
+            mergedMap.set(log.date, log);
+          }
+        });
         const mergedLogs = ensureDailyLogsDateWise(Array.from(mergedMap.values()));
 
-        // Ensure user has friendCode, profileMetricSlots and customWordmarkText
+        const isDemoUser =
+          persisted.user?.name === 'Alex' &&
+          persisted.user?.streakDays === 14 &&
+          persisted.user?.longestStreak === 21;
+
         const mergedUser = {
           ...currentState.user,
           ...(persisted.user || {}),
-          friendCode: persisted.user?.friendCode || currentState.user.friendCode || 'A9X4K',
-          profileMetricSlots: persisted.user?.profileMetricSlots || currentState.user.profileMetricSlots || ['currentStreak', 'bestStreak', 'daysLogged'],
-          customWordmarkText: persisted.user?.customWordmarkText || currentState.user.customWordmarkText || 'studyo',
+          ...(isDemoUser
+            ? {
+                name: 'Student',
+                streakDays: 0,
+                longestStreak: 0,
+                lastStudiedDate: '',
+                lastActiveSubjectId: '',
+              }
+            : {}),
+          friendCode: persisted.user?.friendCode || currentState.user.friendCode || generateStudentCode(),
+          profileMetricSlots:
+            persisted.user?.profileMetricSlots ||
+            currentState.user.profileMetricSlots ||
+            ['currentStreak', 'bestStreak', 'daysLogged'],
+          customWordmarkText:
+            persisted.user?.customWordmarkText ||
+            currentState.user.customWordmarkText ||
+            'studyo',
         };
-
-        // Merge friends: preserve user state, ensure seed friends are present
-        const persistedFriends = Array.isArray(persisted.friends) ? persisted.friends : [];
-        const friendsMap = new Map<string, FriendProfile>();
-        INITIAL_FRIENDS.forEach(f => friendsMap.set(f.code.toUpperCase(), f));
-        persistedFriends.forEach(f => friendsMap.set(f.code.toUpperCase(), f));
-        const mergedFriends = Array.from(friendsMap.values()).map(f => {
-          if (f.code.toUpperCase() === 'E7K92' && f.bio && f.bio.includes('Physics Olympiad')) {
-            return { ...f, bio: '' };
-          }
-          return f;
-        });
 
         const resolvedTheme: ThemeMode = persisted.theme === 'light' ? 'light' : 'dark';
         applyTheme(resolvedTheme);
@@ -2231,16 +1640,15 @@ export const useStudyStore = create<StudyState>()(
           ...persisted,
           theme: resolvedTheme,
           user: mergedUser,
-          friends: mergedFriends,
+          subjects: cleanSubjects,
+          sessions: cleanSessions,
+          tasks: cleanTasks,
+          friends: cleanFriends,
+          customTables: cleanTables,
           enableQuickScratchpad: persisted.enableQuickScratchpad ?? false,
           showFinishButton: persisted.showFinishButton ?? true,
           dailyLogs: mergedLogs,
-          customColumns: Array.isArray(persisted.customColumns) && persisted.customColumns.length > 0
-            ? persisted.customColumns
-            : INITIAL_CUSTOM_COLUMNS,
-          customTables: Array.isArray(persisted.customTables) && persisted.customTables.length > 0
-            ? persisted.customTables
-            : INITIAL_CUSTOM_TABLES,
+          customColumns: Array.isArray(persisted.customColumns) ? persisted.customColumns : [],
           activeTableId: persisted.activeTableId || 'main',
         };
       },
@@ -2248,14 +1656,52 @@ export const useStudyStore = create<StudyState>()(
   )
 );
 
-// Initial browser rehydration sync
+// Initial browser rehydration sync & automatic demo data cleanup
 if (typeof window !== 'undefined') {
   try {
     const raw = localStorage.getItem('studypulse_storage_v2');
     if (raw) {
       const data = JSON.parse(raw);
-      if (data?.state?.theme) {
-        applyTheme(data.state.theme);
+      if (data?.state) {
+        if (data.state.theme) {
+          applyTheme(data.state.theme);
+        }
+        let modified = false;
+        if (data.state.subjects?.some((s: any) => DEMO_SUBJECT_IDS.has(s.id))) {
+          data.state.subjects = data.state.subjects.filter((s: any) => !DEMO_SUBJECT_IDS.has(s.id));
+          modified = true;
+        }
+        if (data.state.sessions?.some((s: any) => s.id?.startsWith('sess-today-') || s.id?.startsWith('sess-hist-') || DEMO_SUBJECT_IDS.has(s.subjectId))) {
+          data.state.sessions = data.state.sessions.filter(
+            (s: any) => !s.id?.startsWith('sess-today-') && !s.id?.startsWith('sess-hist-') && !DEMO_SUBJECT_IDS.has(s.subjectId)
+          );
+          modified = true;
+        }
+        if (data.state.tasks?.some((t: any) => DEMO_TASK_IDS.has(t.id) || DEMO_SUBJECT_IDS.has(t.subjectId))) {
+          data.state.tasks = data.state.tasks.filter((t: any) => !DEMO_TASK_IDS.has(t.id) && !DEMO_SUBJECT_IDS.has(t.subjectId));
+          modified = true;
+        }
+        if (data.state.friends?.some((f: any) => DEMO_FRIEND_CODES.has(f.code?.toUpperCase()))) {
+          data.state.friends = data.state.friends.filter(
+            (f: any) => !DEMO_FRIEND_CODES.has(f.code?.toUpperCase())
+          );
+          modified = true;
+        }
+        if (data.state.customTables?.some((t: any) => t.id === 'tbl-mock-tests')) {
+          data.state.customTables = data.state.customTables.filter((t: any) => t.id !== 'tbl-mock-tests');
+          modified = true;
+        }
+        if (data.state.user?.name === 'Alex' && data.state.user?.streakDays === 14) {
+          data.state.user.name = 'Student';
+          data.state.user.streakDays = 0;
+          data.state.user.longestStreak = 0;
+          data.state.user.lastStudiedDate = '';
+          data.state.user.lastActiveSubjectId = '';
+          modified = true;
+        }
+        if (modified) {
+          localStorage.setItem('studypulse_storage_v2', JSON.stringify(data));
+        }
       }
     }
   } catch {

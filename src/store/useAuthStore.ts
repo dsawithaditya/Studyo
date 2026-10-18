@@ -10,18 +10,19 @@ import {
   FlashType,
 } from '../types/auth';
 import {
-  hashPassword,
-  verifyPassword,
   generateSecureRandomHex,
   validateEmail,
   validatePasswordStrength,
 } from '../services/authCrypto';
+import { 
+  getSupabaseClient, 
+  dbUpdateProfile 
+} from '../services/supabaseClient';
+import { useStudyStore } from './useStudyStore';
 
 // Constants
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
-const RESET_TOKEN_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes
-const SESSION_EXPIRY_DAYS = 30; // 30 days if rememberMe, 24 hours otherwise
 
 interface AuthState {
   users: AuthUser[];
@@ -124,42 +125,77 @@ export const useAuthStore = create<AuthState>()(
           };
         }
 
-        const existing = get().users.find((u) => u.email.toLowerCase() === cleanEmail);
-        if (existing) {
-          // Generic secure message to prevent user enumeration
-          return { success: false, error: 'An account with this email already exists or is unavailable.' };
+        const sb = getSupabaseClient();
+        if (!sb) {
+          return { success: false, error: 'Supabase client is not configured.' };
         }
 
-        const { hash, salt } = await hashPassword(password);
-        const newUser: AuthUser = {
-          id: `usr_${generateSecureRandomHex(10)}`,
-          name: cleanName,
-          email: cleanEmail,
-          passwordHash: hash,
-          salt,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          lastLoginAt: new Date().toISOString(),
-        };
+        try {
+          const { data, error } = await sb.auth.signUp({
+            email: cleanEmail,
+            password,
+            options: {
+              data: { name: cleanName },
+            },
+          });
 
-        const sessionToken = generateSecureRandomHex(24);
-        const expiresAt = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000).toISOString();
-        const newSession: AuthSession = {
-          token: sessionToken,
-          userId: newUser.id,
-          expiresAt,
-          rememberMe: true,
-        };
+          if (error) {
+            return { success: false, error: error.message };
+          }
 
-        set((state) => ({
-          users: [...state.users, newUser],
-          currentUser: newUser,
-          session: newSession,
-          authModalView: 'closed',
-        }));
+          if (data.user) {
+            // Upsert profile in public.profiles table
+            try {
+              await sb.from('profiles').upsert({
+                id: data.user.id,
+                name: cleanName,
+                email: cleanEmail,
+                daily_target_minutes: 360,
+                updated_at: new Date().toISOString(),
+              });
+            } catch (err) {
+              console.warn('Profile upsert warning:', err);
+            }
 
-        get().setFlashMessage('success', `Welcome to Studyo, ${cleanName}! Your account was created successfully.`);
-        return { success: true };
+            const authUser: AuthUser = {
+              id: data.user.id,
+              name: cleanName,
+              email: cleanEmail,
+              createdAt: data.user.created_at,
+              updatedAt: data.user.updated_at || data.user.created_at,
+              lastLoginAt: new Date().toISOString(),
+            };
+
+            if (data.session) {
+              set({
+                currentUser: authUser,
+                session: {
+                  token: data.session.access_token,
+                  userId: data.user.id,
+                  expiresAt: new Date(Date.now() + (data.session.expires_in || 3600 * 24 * 30) * 1000).toISOString(),
+                  rememberMe: true,
+                },
+                authModalView: 'closed',
+              });
+
+              // Load user's data from Supabase into study store
+              await useStudyStore.getState().loadUserData(data.user.id);
+              get().setFlashMessage('success', `Welcome to Studyo, ${cleanName}! Connected to Supabase.`);
+            } else {
+              set({ authModalView: 'closed' });
+              get().setFlashMessage(
+                'info',
+                `Account registered! If confirmation is enabled, please verify your email (${cleanEmail}).`
+              );
+            }
+
+            return { success: true };
+          }
+
+          return { success: false, error: 'Failed to create user account.' };
+        } catch (err: any) {
+          return { success: false, error: err?.message || 'Registration failed unexpectedly.' };
+        }
       },
 
       login: async (email: string, password: string, rememberMe = true) => {
@@ -177,78 +213,113 @@ export const useAuthStore = create<AuthState>()(
           };
         }
 
-        const user = get().users.find((u) => u.email.toLowerCase() === cleanEmail);
-        let isValid = false;
-
-        if (user) {
-          isValid = await verifyPassword(password, user.passwordHash, user.salt);
+        const sb = getSupabaseClient();
+        if (!sb) {
+          return { success: false, error: 'Supabase client is not configured.' };
         }
 
-        if (!isValid) {
-          // Record failed attempt
-          const currentAttempts = (get().loginAttempts[cleanEmail]?.attempts || 0) + 1;
-          const isNowLocked = currentAttempts >= MAX_LOGIN_ATTEMPTS;
-          const lockedUntil = isNowLocked ? new Date(Date.now() + LOCKOUT_DURATION_MS).toISOString() : undefined;
+        try {
+          const { data, error } = await sb.auth.signInWithPassword({
+            email: cleanEmail,
+            password,
+          });
 
-          set((state) => ({
-            loginAttempts: {
-              ...state.loginAttempts,
-              [cleanEmail]: {
-                email: cleanEmail,
-                attempts: currentAttempts,
-                lockedUntil,
+          if (error) {
+            // Record failed attempt
+            const currentAttempts = (get().loginAttempts[cleanEmail]?.attempts || 0) + 1;
+            const isNowLocked = currentAttempts >= MAX_LOGIN_ATTEMPTS;
+            const lockedUntil = isNowLocked ? new Date(Date.now() + LOCKOUT_DURATION_MS).toISOString() : undefined;
+
+            set((state) => ({
+              loginAttempts: {
+                ...state.loginAttempts,
+                [cleanEmail]: {
+                  email: cleanEmail,
+                  attempts: currentAttempts,
+                  lockedUntil,
+                },
               },
-            },
-          }));
+            }));
 
-          if (isNowLocked) {
+            if (isNowLocked) {
+              return {
+                success: false,
+                error: `Maximum login attempts exceeded. Account is locked for 15 minutes for your security.`,
+              };
+            }
+
+            const remainingAttempts = MAX_LOGIN_ATTEMPTS - currentAttempts;
             return {
               success: false,
-              error: `Maximum login attempts exceeded. Account is locked for 15 minutes for your security.`,
+              error: `${error.message} (${remainingAttempts} attempt(s) remaining)`,
             };
           }
 
-          const remainingAttempts = MAX_LOGIN_ATTEMPTS - currentAttempts;
-          return {
-            success: false,
-            error: `Invalid credentials. Please verify your email and password. (${remainingAttempts} attempt(s) remaining)`,
-          };
+          if (data.user && data.session) {
+            // Reset failed login attempts
+            const nextAttempts = { ...get().loginAttempts };
+            delete nextAttempts[cleanEmail];
+
+            // Fetch student profile name
+            let studentName = data.user.user_metadata?.name || cleanEmail.split('@')[0];
+            try {
+              const { data: profile } = await sb
+                .from('profiles')
+                .select('*')
+                .eq('id', data.user.id)
+                .maybeSingle();
+
+              if (profile?.name) {
+                studentName = profile.name;
+              }
+            } catch (pErr) {
+              console.warn('Profile fetch warning:', pErr);
+            }
+
+            const authUser: AuthUser = {
+              id: data.user.id,
+              name: studentName,
+              email: cleanEmail,
+              createdAt: data.user.created_at,
+              updatedAt: data.user.updated_at || data.user.created_at,
+              lastLoginAt: new Date().toISOString(),
+            };
+
+            set({
+              currentUser: authUser,
+              session: {
+                token: data.session.access_token,
+                userId: data.user.id,
+                expiresAt: new Date(Date.now() + (data.session.expires_in || 3600 * 24 * 30) * 1000).toISOString(),
+                rememberMe,
+              },
+              loginAttempts: nextAttempts,
+              authModalView: 'closed',
+            });
+
+            // Load real user data from Supabase
+            await useStudyStore.getState().loadUserData(data.user.id);
+            get().setFlashMessage('success', `Welcome back, ${studentName}! Synced with Supabase.`);
+            return { success: true };
+          }
+
+          return { success: false, error: 'Authentication failed.' };
+        } catch (err: any) {
+          return { success: false, error: err?.message || 'Login failed unexpectedly.' };
         }
-
-        // Successful authentication: Reset failed attempts for this email
-        const token = generateSecureRandomHex(24);
-        const days = rememberMe ? SESSION_EXPIRY_DAYS : 1;
-        const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-
-        const updatedUser: AuthUser = {
-          ...user!,
-          lastLoginAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-
-        set((state) => {
-          const nextAttempts = { ...state.loginAttempts };
-          delete nextAttempts[cleanEmail];
-          return {
-            currentUser: updatedUser,
-            session: {
-              token,
-              userId: updatedUser.id,
-              expiresAt,
-              rememberMe,
-            },
-            users: state.users.map((u) => (u.id === updatedUser.id ? updatedUser : u)),
-            loginAttempts: nextAttempts,
-            authModalView: 'closed',
-          };
-        });
-
-        get().setFlashMessage('success', `Welcome back, ${updatedUser.name}!`);
-        return { success: true };
       },
 
-      logout: (options?: { logoutAllDevices?: boolean; customMessage?: string } | string) => {
+      logout: async (options?: { logoutAllDevices?: boolean; customMessage?: string } | string) => {
         const customMessage = typeof options === 'string' ? options : options?.customMessage;
+        const sb = getSupabaseClient();
+        if (sb) {
+          try {
+            await sb.auth.signOut();
+          } catch (e) {
+            console.warn('Supabase signOut warning:', e);
+          }
+        }
+
         set({
           currentUser: null,
           session: null,
@@ -256,6 +327,9 @@ export const useAuthStore = create<AuthState>()(
           redirectAfterLogin: null,
           isLogoutModalOpen: false,
         });
+
+        // Clear study store data
+        useStudyStore.getState().clearUserData();
 
         try {
           if (typeof window !== 'undefined' && window.sessionStorage) {
@@ -275,38 +349,32 @@ export const useAuthStore = create<AuthState>()(
           return { success: false, error: 'Please enter a valid email address.' };
         }
 
-        // Create secure single-use token
-        const token = `rst_${generateSecureRandomHex(16)}`;
-        const expiresAt = new Date(Date.now() + RESET_TOKEN_EXPIRY_MS).toISOString();
+        const sb = getSupabaseClient();
+        if (!sb) {
+          return { success: false, error: 'Supabase client is not configured.' };
+        }
 
-        set((state) => ({
-          resetTokens: [
-            ...state.resetTokens.filter((t) => t.email !== cleanEmail), // Remove old tokens
-            { token, email: cleanEmail, expiresAt, used: false },
-          ],
-        }));
+        try {
+          const { error } = await sb.auth.resetPasswordForEmail(cleanEmail, {
+            redirectTo: window.location.origin,
+          });
 
-        // Generic response to prevent email discovery, while returning token for simulation UI
-        get().setFlashMessage(
-          'info',
-          `Password reset instructions generated. Please check your inbox or use the token code.`
-        );
+          if (error) {
+            return { success: false, error: error.message };
+          }
 
-        return { success: true, token };
+          get().setFlashMessage(
+            'info',
+            `Password reset instructions sent to ${cleanEmail}. Please check your inbox.`
+          );
+
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err?.message || 'Failed to request password reset.' };
+        }
       },
 
-      resetPassword: async (token: string, newPassword: string) => {
-        const cleanToken = token.trim();
-        const record = get().resetTokens.find((t) => t.token === cleanToken && !t.used);
-
-        if (!record) {
-          return { success: false, error: 'Invalid or expired password reset link. Please request a new one.' };
-        }
-
-        if (new Date(record.expiresAt).getTime() < Date.now()) {
-          return { success: false, error: 'This password reset link has expired. Please request a new one.' };
-        }
-
+      resetPassword: async (_token: string, newPassword: string) => {
         const passwordCheck = validatePasswordStrength(newPassword);
         if (!passwordCheck.isValid) {
           return {
@@ -315,28 +383,30 @@ export const useAuthStore = create<AuthState>()(
           };
         }
 
-        const user = get().users.find((u) => u.email.toLowerCase() === record.email.toLowerCase());
-        if (!user) {
-          return { success: false, error: 'Account associated with reset token was not found.' };
+        const sb = getSupabaseClient();
+        if (!sb) {
+          return { success: false, error: 'Supabase client is not configured.' };
         }
 
-        const { hash, salt } = await hashPassword(newPassword);
-        const updatedUser: AuthUser = {
-          ...user,
-          passwordHash: hash,
-          salt,
-          updatedAt: new Date().toISOString(),
-        };
+        try {
+          const { error } = await sb.auth.updateUser({
+            password: newPassword,
+          });
 
-        set((state) => ({
-          users: state.users.map((u) => (u.id === user.id ? updatedUser : u)),
-          resetTokens: state.resetTokens.map((t) => (t.token === cleanToken ? { ...t, used: true } : t)),
-          authModalView: 'login',
-          pendingResetToken: null,
-        }));
+          if (error) {
+            return { success: false, error: error.message };
+          }
 
-        get().setFlashMessage('success', 'Your password was successfully reset. You can now log in.');
-        return { success: true };
+          set({
+            authModalView: 'login',
+            pendingResetToken: null,
+          });
+
+          get().setFlashMessage('success', 'Your password was successfully reset. You can now log in.');
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err?.message || 'Password reset failed.' };
+        }
       },
 
       updateProfile: async (name: string, email: string) => {
@@ -355,11 +425,16 @@ export const useAuthStore = create<AuthState>()(
           return { success: false, error: 'Please enter a valid email address.' };
         }
 
-        // If email changed, check if taken
-        if (cleanEmail !== currentUser.email.toLowerCase()) {
-          const taken = get().users.some((u) => u.id !== currentUser.id && u.email.toLowerCase() === cleanEmail);
-          if (taken) {
-            return { success: false, error: 'This email is already in use by another account.' };
+        const sb = getSupabaseClient();
+        if (sb) {
+          try {
+            await sb.auth.updateUser({
+              email: cleanEmail,
+              data: { name: cleanName },
+            });
+            await dbUpdateProfile(currentUser.id, { name: cleanName, email: cleanEmail });
+          } catch (err) {
+            console.warn('Supabase profile update warning:', err);
           }
         }
 
@@ -370,24 +445,15 @@ export const useAuthStore = create<AuthState>()(
           updatedAt: new Date().toISOString(),
         };
 
-        set((state) => ({
-          currentUser: updatedUser,
-          users: state.users.map((u) => (u.id === currentUser.id ? updatedUser : u)),
-        }));
-
+        set({ currentUser: updatedUser });
         get().setFlashMessage('success', 'Account profile updated successfully.');
         return { success: true };
       },
 
-      changePassword: async (currentPassword: string, newPassword: string) => {
+      changePassword: async (_currentPassword: string, newPassword: string) => {
         const currentUser = get().currentUser;
         if (!currentUser) {
           return { success: false, error: 'You must be logged in to change your password.' };
-        }
-
-        const validCurrent = await verifyPassword(currentPassword, currentUser.passwordHash, currentUser.salt);
-        if (!validCurrent) {
-          return { success: false, error: 'Incorrect current password.' };
         }
 
         const strength = validatePasswordStrength(newPassword);
@@ -395,32 +461,119 @@ export const useAuthStore = create<AuthState>()(
           return { success: false, error: strength.feedback[0] || 'New password does not meet security requirements.' };
         }
 
-        const { hash, salt } = await hashPassword(newPassword);
-        const updatedUser: AuthUser = {
-          ...currentUser,
-          passwordHash: hash,
-          salt,
-          updatedAt: new Date().toISOString(),
-        };
+        const sb = getSupabaseClient();
+        if (!sb) {
+          return { success: false, error: 'Supabase client is not configured.' };
+        }
 
-        set((state) => ({
-          currentUser: updatedUser,
-          users: state.users.map((u) => (u.id === currentUser.id ? updatedUser : u)),
-        }));
+        try {
+          const { error } = await sb.auth.updateUser({
+            password: newPassword,
+          });
 
-        get().setFlashMessage('success', 'Password changed successfully.');
-        return { success: true };
+          if (error) {
+            return { success: false, error: error.message };
+          }
+
+          get().setFlashMessage('success', 'Password changed successfully in Supabase.');
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err?.message || 'Failed to update password.' };
+        }
       },
     }),
     {
       name: 'studyo_auth_state_v1',
       partialize: (state) => ({
-        users: state.users,
         currentUser: state.currentUser,
         session: state.session,
-        resetTokens: state.resetTokens,
         loginAttempts: state.loginAttempts,
       }),
     }
   )
 );
+
+// ==========================================================
+// SUPABASE REALTIME AUTH LISTENER & SESSION RESTORATION
+// ==========================================================
+if (typeof window !== 'undefined') {
+  const sb = getSupabaseClient();
+  if (sb) {
+    // Check initial active session
+    sb.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const u = session.user;
+        let studentName = u.user_metadata?.name || u.email?.split('@')[0] || 'Student';
+        try {
+          const { data: profile } = await sb.from('profiles').select('*').eq('id', u.id).maybeSingle();
+          if (profile?.name) studentName = profile.name;
+        } catch {
+          // ignore
+        }
+
+        const authUser: AuthUser = {
+          id: u.id,
+          name: studentName,
+          email: u.email || '',
+          createdAt: u.created_at,
+          updatedAt: u.updated_at || u.created_at,
+          lastLoginAt: new Date().toISOString(),
+        };
+
+        useAuthStore.setState({
+          currentUser: authUser,
+          session: {
+            token: session.access_token,
+            userId: u.id,
+            expiresAt: new Date(Date.now() + (session.expires_in || 3600 * 24 * 30) * 1000).toISOString(),
+            rememberMe: true,
+          },
+        });
+
+        // Load user data from Supabase
+        useStudyStore.getState().loadUserData(u.id);
+      }
+    });
+
+    // Listen to Auth State Changes
+    sb.auth.onAuthStateChange(async (event, session) => {
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+        const u = session.user;
+        let studentName = u.user_metadata?.name || u.email?.split('@')[0] || 'Student';
+        try {
+          const { data: profile } = await sb.from('profiles').select('*').eq('id', u.id).maybeSingle();
+          if (profile?.name) studentName = profile.name;
+        } catch {
+          // ignore
+        }
+
+        const authUser: AuthUser = {
+          id: u.id,
+          name: studentName,
+          email: u.email || '',
+          createdAt: u.created_at,
+          updatedAt: u.updated_at || u.created_at,
+          lastLoginAt: new Date().toISOString(),
+        };
+
+        useAuthStore.setState({
+          currentUser: authUser,
+          session: {
+            token: session.access_token,
+            userId: u.id,
+            expiresAt: new Date(Date.now() + (session.expires_in || 3600 * 24 * 30) * 1000).toISOString(),
+            rememberMe: true,
+          },
+        });
+
+        useStudyStore.getState().loadUserData(u.id);
+      } else if (event === 'SIGNED_OUT') {
+        useAuthStore.setState({
+          currentUser: null,
+          session: null,
+        });
+        useStudyStore.getState().clearUserData();
+      }
+    });
+  }
+}

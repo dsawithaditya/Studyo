@@ -170,7 +170,18 @@ export const SyllabusMapScreen: React.FC = () => {
       {/* 2. SUBJECTS LIST & CHAPTER HIERARCHY                     */}
       {/* ======================================================== */}
       <div className="space-y-6">
-        {filteredSubjects.map((subj) => {
+        {filteredSubjects.length === 0 ? (
+          <div className="p-12 text-center rounded-3xl glass-panel border border-stone-200 dark:border-white/10 space-y-3">
+            <BookOpen className="w-10 h-10 text-stone-400 dark:text-slate-600 mx-auto" />
+            <p className="text-sm font-semibold text-stone-700 dark:text-slate-300">
+              No subjects in syllabus yet
+            </p>
+            <p className="text-xs text-stone-500 dark:text-slate-500 max-w-sm mx-auto">
+              Click "+ Add Subject" above to create your courses, chapters, and topics.
+            </p>
+          </div>
+        ) : (
+          filteredSubjects.map((subj) => {
           // Calculate subject stats
           let subjTopicsTotal = 0;
           let subjTopicsCompleted = 0;
@@ -384,7 +395,7 @@ export const SyllabusMapScreen: React.FC = () => {
               </div>
             </div>
           );
-        })}
+        }))}
       </div>
 
       {/* ======================================================== */}

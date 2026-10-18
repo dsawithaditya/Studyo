@@ -174,11 +174,15 @@ export const StudyRoomScreen: React.FC = () => {
               onChange={(e) => setActiveSubject(e.target.value)}
               className="bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-stone-900 dark:text-white focus:outline-none focus:border-indigo-500 shadow-inner"
             >
-              {subjects.map((subj) => (
-                <option key={subj.id} value={subj.id}>
-                  {subj.name}
-                </option>
-              ))}
+              {subjects.length === 0 ? (
+                <option value="">No subjects yet (create in Syllabus)</option>
+              ) : (
+                subjects.map((subj) => (
+                  <option key={subj.id} value={subj.id}>
+                    {subj.name}
+                  </option>
+                ))
+              )}
             </select>
           </div>
 

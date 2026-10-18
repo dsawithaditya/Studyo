@@ -4,8 +4,8 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
-  passwordHash: string;
-  salt: string;
+  passwordHash?: string;
+  salt?: string;
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string;

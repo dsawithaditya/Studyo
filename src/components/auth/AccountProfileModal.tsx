@@ -116,7 +116,7 @@ export const AccountProfileModal: React.FC = () => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="account-modal-title"
-      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto font-mono"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-black/45 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto font-mono"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           handleBackClick();
