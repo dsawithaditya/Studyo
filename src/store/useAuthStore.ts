@@ -180,7 +180,6 @@ export const useAuthStore = create<AuthState>()(
 
               // Load user's data from Supabase into study store
               await useStudyStore.getState().loadUserData(data.user.id);
-              get().setFlashMessage('success', `Welcome to Studyo, ${cleanName}! Connected to Supabase.`);
             } else {
               set({ authModalView: 'closed' });
               get().setFlashMessage(
@@ -299,7 +298,6 @@ export const useAuthStore = create<AuthState>()(
 
             // Load real user data from Supabase
             await useStudyStore.getState().loadUserData(data.user.id);
-            get().setFlashMessage('success', `Welcome back, ${studentName}! Synced with Supabase.`);
             return { success: true };
           }
 
