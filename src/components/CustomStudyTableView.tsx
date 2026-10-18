@@ -273,6 +273,12 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
     e.preventDefault();
     if (!formDate) return;
     addCustomTableRow(table.id, formDate, formValues, formNotes.trim());
+    if (selectedMonthYear !== 'all') {
+      const entryMonth = formDate.substring(0, 7);
+      if (selectedMonthYear !== entryMonth && selectedMonthYear !== 'last30') {
+        setSelectedMonthYear('all');
+      }
+    }
     setShowAddRowModal(false);
   };
 
@@ -652,9 +658,20 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                   <tr>
                     <td
                       colSpan={table.columns.length + 2}
-                      className="py-12 text-center text-slate-500 font-mono text-xs"
+                      className="py-12 text-center text-stone-500 dark:text-slate-400 font-mono text-xs"
                     >
-                      NO ROWS RECORDED FOR THIS PERIOD.
+                      <div className="flex flex-col items-center justify-center space-y-3">
+                        <Calendar className="w-8 h-8 text-[#e9762b] opacity-60" />
+                        <p>No rows recorded for this period.</p>
+                        <button
+                          type="button"
+                          onClick={handleOpenAddRowModal}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#e9762b] text-black text-xs font-bold uppercase tracking-wider hover:brightness-110 transition shadow-md shadow-orange-500/20 cursor-pointer active:scale-95"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Date Row</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ) : (
@@ -1021,7 +1038,7 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
               {/* Date Selector */}
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  DATE
+                  SELECT DATE (TODAY OR ANY PAST DATE)
                 </label>
                 <div className="flex items-center gap-2">
                   <button

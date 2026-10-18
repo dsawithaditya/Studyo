@@ -133,6 +133,19 @@ export const DailyStudyLog: React.FC = () => {
   const [selectedMonthYear, setSelectedMonthYear] = useState<string>('all');
   const [visibleLimit, setVisibleLimit] = useState<number>(20);
 
+  // Add Row Modal State (for adding date rows - today or any past date)
+  const [showAddRowModal, setShowAddRowModal] = useState(false);
+  const [addRowDate, setAddRowDate] = useState(todayStr);
+  const [addRowStudyHours, setAddRowStudyHours] = useState<number | ''>('');
+  const [addRowAttendedClass, setAddRowAttendedClass] = useState<boolean>(false);
+  const [addRowPyqs, setAddRowPyqs] = useState<number | ''>('');
+  const [addRowRevisionDone, setAddRowRevisionDone] = useState<boolean>(false);
+  const [addRowMockTest, setAddRowMockTest] = useState<boolean>(false);
+  const [addRowSleepHours, setAddRowSleepHours] = useState<number | ''>('');
+  const [addRowRating, setAddRowRating] = useState<number | null>(null);
+  const [addRowNotes, setAddRowNotes] = useState<string>('');
+  const [addRowCustomData, setAddRowCustomData] = useState<Record<string, any>>({});
+
   // Custom Tables Create Modal state
   const [showCreateTableModal, setShowCreateTableModal] = useState(false);
   const [newTableTitle, setNewTableTitle] = useState('');
@@ -398,6 +411,87 @@ export const DailyStudyLog: React.FC = () => {
     };
     addOrUpdateDailyLog(newEntry);
     setShowForm(false);
+  };
+
+  // Quick Open Add Row Modal for Today or Any Past Date
+  const handleOpenAddRowModal = (targetDate?: string) => {
+    const d = targetDate || todayStr;
+    setAddRowDate(d);
+    const existing = dailyLogs.find((l) => l.date === d);
+    if (existing) {
+      setAddRowStudyHours(existing.studyHours != null && existing.studyHours > 0 ? existing.studyHours : '');
+      setAddRowAttendedClass(existing.attendedClass ?? false);
+      setAddRowPyqs(existing.pyqsSolved != null && existing.pyqsSolved > 0 ? existing.pyqsSolved : '');
+      setAddRowRevisionDone(existing.revisionDone ?? false);
+      setAddRowMockTest(existing.mockTestTaken ?? false);
+      setAddRowSleepHours(existing.sleepHours != null && existing.sleepHours > 0 ? existing.sleepHours : '');
+      setAddRowRating(existing.focusRating && existing.focusRating > 0 ? existing.focusRating : null);
+      setAddRowNotes(existing.notes || '');
+      setAddRowCustomData({ ...(existing.customData || {}) });
+    } else {
+      setAddRowStudyHours('');
+      setAddRowAttendedClass(false);
+      setAddRowPyqs('');
+      setAddRowRevisionDone(false);
+      setAddRowMockTest(false);
+      setAddRowSleepHours('');
+      setAddRowRating(null);
+      setAddRowNotes('');
+      const initCustom: Record<string, any> = {};
+      customColumns.forEach((col) => {
+        if (col.type === 'boolean') initCustom[col.id] = false;
+        else if (col.type === 'select' && col.options && col.options.length > 0) initCustom[col.id] = col.options[0];
+        else initCustom[col.id] = '';
+      });
+      setAddRowCustomData(initCustom);
+    }
+    setShowAddRowModal(true);
+  };
+
+  // Handle changing the date inside the Add Row modal
+  const handleAddRowDateChange = (newDate: string) => {
+    setAddRowDate(newDate);
+    const existing = dailyLogs.find((l) => l.date === newDate);
+    if (existing) {
+      setAddRowStudyHours(existing.studyHours != null && existing.studyHours > 0 ? existing.studyHours : '');
+      setAddRowAttendedClass(existing.attendedClass ?? false);
+      setAddRowPyqs(existing.pyqsSolved != null && existing.pyqsSolved > 0 ? existing.pyqsSolved : '');
+      setAddRowRevisionDone(existing.revisionDone ?? false);
+      setAddRowMockTest(existing.mockTestTaken ?? false);
+      setAddRowSleepHours(existing.sleepHours != null && existing.sleepHours > 0 ? existing.sleepHours : '');
+      setAddRowRating(existing.focusRating && existing.focusRating > 0 ? existing.focusRating : null);
+      setAddRowNotes(existing.notes || '');
+      setAddRowCustomData({ ...(existing.customData || {}) });
+    }
+  };
+
+  // Submit Add Row from Modal
+  const handleSubmitAddRowModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addRowDate) return;
+    const newEntry: DailyLogEntry = {
+      date: addRowDate,
+      studyHours: addRowStudyHours === '' ? null : Math.max(0, Number(addRowStudyHours)),
+      attendedClass: addRowAttendedClass,
+      pyqsSolved: addRowPyqs === '' ? null : Math.max(0, Number(addRowPyqs)),
+      revisionDone: addRowRevisionDone,
+      mockTestTaken: addRowMockTest,
+      sleepHours: addRowSleepHours === '' ? null : Math.max(0, Number(addRowSleepHours)),
+      focusRating: addRowRating ?? null,
+      notes: addRowNotes.trim(),
+      customData: addRowCustomData,
+    };
+    addOrUpdateDailyLog(newEntry);
+
+    // If current month filter would hide this new date, switch to 'all' so user sees it right away
+    if (selectedMonthYear !== 'all') {
+      const entryMonth = addRowDate.substring(0, 7);
+      if (selectedMonthYear !== entryMonth && selectedMonthYear !== 'last30') {
+        setSelectedMonthYear('all');
+      }
+    }
+
+    setShowAddRowModal(false);
   };
 
   // Save accordion full day edits
@@ -941,6 +1035,17 @@ export const DailyStudyLog: React.FC = () => {
               </select>
             </div>
 
+            {/* + ROW Button */}
+            <button
+              type="button"
+              onClick={() => handleOpenAddRowModal(todayStr)}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full glass-pill hover:bg-[#e9762b] text-stone-700 dark:text-slate-200 hover:text-black text-xs font-bold uppercase tracking-wider transition border border-orange-950/15 dark:border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm font-mono active:scale-95"
+              title="Add a date row (today or any past date)"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>ROW</span>
+            </button>
+
             {/* + COLUMN Button at top right */}
             <button
               type="button"
@@ -1010,7 +1115,28 @@ export const DailyStudyLog: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5">
-                {visibleLogs.map((entry, idx) => {
+                {visibleLogs.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={9 + customColumns.length}
+                      className="py-12 text-center text-stone-500 dark:text-slate-400 font-mono text-xs"
+                    >
+                      <div className="flex flex-col items-center justify-center space-y-3">
+                        <Calendar className="w-8 h-8 text-[#e9762b] opacity-60" />
+                        <p>No log entries found for this period.</p>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAddRowModal(todayStr)}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#e9762b] text-black text-xs font-bold uppercase tracking-wider hover:brightness-110 transition shadow-md shadow-orange-500/20 cursor-pointer active:scale-95"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Add Date Row</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  visibleLogs.map((entry, idx) => {
                   const isExpanded = expandedDate === entry.date;
                   const hasNote = Boolean(entry.notes && entry.notes.trim().length > 0);
                   return (
@@ -1602,7 +1728,8 @@ export const DailyStudyLog: React.FC = () => {
                       )}
                     </React.Fragment>
                   );
-                })}
+                  })
+                )}
               </tbody>
             </table>
           </div>
@@ -1640,6 +1767,306 @@ export const DailyStudyLog: React.FC = () => {
         </div>
       </div>
         </>
+      )}
+
+      {/* Modal: Add Log Row for Any Date (Today or Past Date) */}
+      {showAddRowModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-lg glass-modal rounded-2xl p-6 sm:p-7 space-y-5 border border-white/20 shadow-2xl font-mono max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-[#e9762b]" />
+                <h3 className="text-base sm:text-lg font-bold text-stone-900 dark:text-white uppercase tracking-wider">
+                  Add Study Log Row
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddRowModal(false)}
+                className="p-1 rounded-full hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitAddRowModal} className="space-y-5">
+              {/* Date Selector with quick pills (Today, Yesterday) & Date Picker */}
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                  SELECT DATE (TODAY OR ANY PAST DATE)
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAddRowDateChange(todayStr)}
+                    className={`px-3 py-1.5 rounded-lg text-xs uppercase font-bold transition cursor-pointer ${
+                      addRowDate === todayStr
+                        ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/20'
+                        : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
+                    }`}
+                  >
+                    Today
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAddRowDateChange(yesterdayStr)}
+                    className={`px-3 py-1.5 rounded-lg text-xs uppercase font-bold transition cursor-pointer ${
+                      addRowDate === yesterdayStr
+                        ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/20'
+                        : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
+                    }`}
+                  >
+                    Yesterday
+                  </button>
+                  <input
+                    type="date"
+                    max={todayStr}
+                    value={addRowDate}
+                    onChange={(e) => handleAddRowDateChange(e.target.value)}
+                    className="glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none flex-1 min-w-[140px] font-mono cursor-pointer"
+                    required
+                  />
+                </div>
+                {dailyLogs.some((l) => l.date === addRowDate && ((l.studyHours != null && l.studyHours > 0) || l.attendedClass || (l.pyqsSolved != null && l.pyqsSolved > 0) || l.notes)) && (
+                  <p className="text-[11px] text-[#e9762b] font-medium flex items-center gap-1 pt-1">
+                    <span>*</span> Existing log found for {formatDateDisplay(addRowDate)}. Saving will update this row.
+                  </p>
+                )}
+              </div>
+
+              {/* Numerical Fields: Study Hours, PYQs, Sleep Hours */}
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                {/* Study Hours */}
+                <div className="glass-panel p-3 rounded-xl space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
+                    STUDY HOURS
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="24"
+                      placeholder="0"
+                      value={addRowStudyHours}
+                      onChange={(e) => setAddRowStudyHours(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)))}
+                      className="w-full glass-input rounded-lg px-2 py-1 text-center font-bold text-stone-900 dark:text-white text-xs focus:outline-none"
+                    />
+                    <span className="text-[10px] text-stone-500 dark:text-slate-400">h</span>
+                  </div>
+                </div>
+
+                {/* PYQs */}
+                <div className="glass-panel p-3 rounded-xl space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
+                    PYQS
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      placeholder="0"
+                      value={addRowPyqs}
+                      onChange={(e) => setAddRowPyqs(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value)))}
+                      className="w-full glass-input rounded-lg px-2 py-1 text-center font-bold text-stone-900 dark:text-white text-xs focus:outline-none"
+                    />
+                    <span className="text-[10px] text-stone-500 dark:text-slate-400">q</span>
+                  </div>
+                </div>
+
+                {/* Sleep */}
+                <div className="glass-panel p-3 rounded-xl space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
+                    SLEEP
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      step="0.5"
+                      min="0"
+                      max="24"
+                      placeholder="0"
+                      value={addRowSleepHours}
+                      onChange={(e) => setAddRowSleepHours(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)))}
+                      className="w-full glass-input rounded-lg px-2 py-1 text-center font-bold text-stone-900 dark:text-white text-xs focus:outline-none"
+                    />
+                    <span className="text-[10px] text-stone-500 dark:text-slate-400">h</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Habit Toggles: Class, Revision, Mock */}
+              <div className="grid grid-cols-3 gap-3 text-xs">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
+                    CLASS ATTENDED?
+                  </label>
+                  <YesNoToggle
+                    size="sm"
+                    value={addRowAttendedClass}
+                    onChange={(val) => setAddRowAttendedClass(val)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
+                    REVISION DONE?
+                  </label>
+                  <YesNoToggle
+                    size="sm"
+                    value={addRowRevisionDone}
+                    onChange={(val) => setAddRowRevisionDone(val)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
+                    MOCK TEST?
+                  </label>
+                  <YesNoToggle
+                    size="sm"
+                    value={addRowMockTest}
+                    onChange={(val) => setAddRowMockTest(val)}
+                  />
+                </div>
+              </div>
+
+              {/* Focus Rating (1-5) */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                    FOCUS RATING ({addRowRating ? `${addRowRating}/5` : 'Not Rated'})
+                  </label>
+                  {addRowRating && (
+                    <button
+                      type="button"
+                      onClick={() => setAddRowRating(null)}
+                      className="text-[10px] text-stone-500 hover:text-stone-700 dark:hover:text-slate-300 underline cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {[1, 2, 3, 4, 5].map((val) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setAddRowRating(addRowRating === val ? null : val)}
+                      className={`h-8 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center ${
+                        addRowRating === val
+                          ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/20'
+                          : 'glass-pill text-stone-700 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {val}★
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom Trackers (if any exist) */}
+              {customColumns.length > 0 && (
+                <div className="space-y-3 pt-2 border-t border-orange-950/10 dark:border-white/10">
+                  <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
+                    CUSTOM COLUMNS
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {customColumns.map((col) => (
+                      <div key={col.id} className="space-y-1.5 glass-panel p-2.5 rounded-xl">
+                        <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
+                          {col.name}
+                        </label>
+                        {col.type === 'boolean' && (
+                          <YesNoToggle
+                            size="sm"
+                            value={Boolean(addRowCustomData[col.id])}
+                            onChange={(val) => setAddRowCustomData({ ...addRowCustomData, [col.id]: val })}
+                          />
+                        )}
+                        {col.type === 'number' && (
+                          <input
+                            type="number"
+                            step="any"
+                            value={addRowCustomData[col.id] ?? ''}
+                            onChange={(e) =>
+                              setAddRowCustomData({
+                                ...addRowCustomData,
+                                [col.id]: e.target.value === '' ? '' : Number(e.target.value),
+                              })
+                            }
+                            placeholder="0"
+                            className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none"
+                          />
+                        )}
+                        {col.type === 'text' && (
+                          <input
+                            type="text"
+                            value={addRowCustomData[col.id] ?? ''}
+                            onChange={(e) =>
+                              setAddRowCustomData({ ...addRowCustomData, [col.id]: e.target.value })
+                            }
+                            placeholder="Enter text..."
+                            className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none"
+                          />
+                        )}
+                        {col.type === 'select' && (
+                          <select
+                            value={addRowCustomData[col.id] ?? ''}
+                            onChange={(e) =>
+                              setAddRowCustomData({ ...addRowCustomData, [col.id]: e.target.value })
+                            }
+                            className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
+                          >
+                            <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
+                              -- Select --
+                            </option>
+                            {(col.options || []).map((opt) => (
+                              <option key={opt} value={opt} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Notes */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                  NOTES (OPTIONAL)
+                </label>
+                <textarea
+                  rows={2}
+                  value={addRowNotes}
+                  onChange={(e) => setAddRowNotes(e.target.value)}
+                  placeholder="Topics studied, key achievements, or notes for this date..."
+                  className="w-full glass-input rounded-xl px-3 py-2 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none resize-none"
+                />
+              </div>
+
+              {/* Modal Buttons */}
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-orange-950/10 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowAddRowModal(false)}
+                  className="px-4 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white uppercase font-bold text-xs transition cursor-pointer border border-stone-300/80 dark:border-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 rounded-lg bg-[#e9762b] text-black font-extrabold uppercase text-xs tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-md shadow-orange-500/20"
+                >
+                  Save Row
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Modal: Add Custom Column */}
