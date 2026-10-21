@@ -280,12 +280,78 @@ export function resetSupabaseClient(url: string, key: string): SupabaseClient | 
 export const supabase = getSupabaseClient();
 
 // ==========================================================
+// AUTHENTICATION GUARD & SESSION VALIDATOR
+// ==========================================================
+
+/**
+ * Ensures the Supabase client has an active, authenticated session for the given user.
+ * Awaits internal Supabase session recovery and restores from localStorage if necessary.
+ */
+export async function ensureSupabaseAuth(userId?: string): Promise<boolean> {
+  const sb = getSupabaseClient();
+  if (!sb) return false;
+
+  try {
+    // 1. Await getSession() which ensures GoTrueClient initialization has completed
+    const { data: { session } } = await sb.auth.getSession();
+    if (session?.user && (!userId || session.user.id === userId)) {
+      return true;
+    }
+
+    // 2. If no active session or mismatch, attempt restoration from studyo_auth_state_v1 in localStorage
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const raw = window.localStorage.getItem('studyo_auth_state_v1');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const storedState = parsed?.state;
+          const storedSession = storedState?.session;
+          const storedUser = storedState?.currentUser;
+
+          if (storedSession?.token && (!userId || storedUser?.id === userId)) {
+            if (storedSession.refreshToken) {
+              const { data: setRes, error: setErr } = await sb.auth.setSession({
+                access_token: storedSession.token,
+                refresh_token: storedSession.refreshToken,
+              });
+              if (setRes?.session?.user && (!userId || setRes.session.user.id === userId)) {
+                return true;
+              }
+              if (setErr) {
+                console.warn('[SupabaseAuth] setSession notice:', setErr.message);
+              }
+            }
+          }
+        }
+      } catch (storageErr) {
+        console.warn('[SupabaseAuth] Error reading auth from localStorage:', storageErr);
+      }
+    }
+
+    if (userId) {
+      console.warn(`[SupabaseAuth] Session unauthenticated or user mismatch for: ${userId}`);
+      return false;
+    }
+    return false;
+  } catch (err) {
+    console.error('[SupabaseAuth] Error in ensureSupabaseAuth:', err);
+    return false;
+  }
+}
+
+// ==========================================================
 // DATABASE QUERY & MUTATION SERVICES
 // ==========================================================
 
 export async function fetchUserDataFromSupabase(userId: string) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return null;
+
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) {
+    console.warn('[Supabase] Aborting fetch: authenticated session not ready for user:', userId);
+    return null;
+  }
 
   try {
     const [
@@ -305,9 +371,25 @@ export async function fetchUserDataFromSupabase(userId: string) {
       sb.from('daily_logs').select('*').eq('user_id', userId).order('date', { ascending: false }),
       sb.from('exam_countdowns').select('*').eq('user_id', userId).order('exam_date', { ascending: true }),
       // Gracefully attempt querying dedicated tables, returning null if table does not exist
-      Promise.resolve(sb.from('custom_tables').select('*').eq('user_id', userId).order('created_at', { ascending: true })).catch(() => ({ data: null })),
-      Promise.resolve(sb.from('custom_columns').select('*').eq('user_id', userId).order('col_order', { ascending: true })).catch(() => ({ data: null })),
+      Promise.resolve(sb.from('custom_tables').select('*').eq('user_id', userId).order('created_at', { ascending: true })).catch(() => ({ data: null, error: null })),
+      Promise.resolve(sb.from('custom_columns').select('*').eq('user_id', userId).order('col_order', { ascending: true })).catch(() => ({ data: null, error: null })),
     ]);
+
+    if (dailyLogsRes?.error) {
+      console.error('[Supabase fetchUserData] daily_logs query error:', dailyLogsRes.error);
+    }
+    if (subjectsRes?.error) {
+      console.error('[Supabase fetchUserData] subjects query error:', subjectsRes.error);
+    }
+    if (sessionsRes?.error) {
+      console.error('[Supabase fetchUserData] study_sessions query error:', sessionsRes.error);
+    }
+    if (tasksRes?.error) {
+      console.error('[Supabase fetchUserData] tasks query error:', tasksRes.error);
+    }
+    if (examsRes?.error) {
+      console.error('[Supabase fetchUserData] exam_countdowns query error:', examsRes.error);
+    }
 
     const subjects: Subject[] = ((subjectsRes?.data as any[]) || []).map((row: any) => ({
       id: row.id,
@@ -427,8 +509,11 @@ export async function fetchUserDataFromSupabase(userId: string) {
 export async function dbSaveSubject(userId: string, subject: Subject) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
   try {
-    await sb.from('subjects').upsert({
+    const { error } = await sb.from('subjects').upsert({
       id: subject.id,
       user_id: userId,
       name: subject.name,
@@ -437,6 +522,9 @@ export async function dbSaveSubject(userId: string, subject: Subject) {
       exam_date: subject.examDate || null,
       chapters: subject.chapters || [],
     });
+    if (error) {
+      console.error('[Supabase dbSaveSubject Error]:', error.message, error);
+    }
   } catch (err) {
     console.error('Failed to save subject to Supabase:', err);
   }
@@ -445,8 +533,14 @@ export async function dbSaveSubject(userId: string, subject: Subject) {
 export async function dbDeleteSubject(userId: string, subjectId: string) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
   try {
-    await sb.from('subjects').delete().eq('id', subjectId).eq('user_id', userId);
+    const { error } = await sb.from('subjects').delete().eq('id', subjectId).eq('user_id', userId);
+    if (error) {
+      console.error('[Supabase dbDeleteSubject Error]:', error.message, error);
+    }
   } catch (err) {
     console.error('Failed to delete subject from Supabase:', err);
   }
@@ -455,8 +549,11 @@ export async function dbDeleteSubject(userId: string, subjectId: string) {
 export async function dbSaveStudySession(userId: string, session: StudySession) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
   try {
-    await sb.from('study_sessions').upsert({
+    const { error } = await sb.from('study_sessions').upsert({
       id: session.id,
       user_id: userId,
       subject_id: session.subjectId,
@@ -471,6 +568,9 @@ export async function dbSaveStudySession(userId: string, session: StudySession) 
       date_string: session.dateString,
       hour: session.hour,
     });
+    if (error) {
+      console.error('[Supabase dbSaveStudySession Error]:', error.message, error);
+    }
   } catch (err) {
     console.error('Failed to save session to Supabase:', err);
   }
@@ -479,8 +579,11 @@ export async function dbSaveStudySession(userId: string, session: StudySession) 
 export async function dbSaveTask(userId: string, task: Task) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
   try {
-    await sb.from('tasks').upsert({
+    const { error } = await sb.from('tasks').upsert({
       id: task.id,
       user_id: userId,
       subject_id: task.subjectId || null,
@@ -492,6 +595,9 @@ export async function dbSaveTask(userId: string, task: Task) {
       estimated_pomodoros: task.estimatedPomodoros,
       notes: task.notes || null,
     });
+    if (error) {
+      console.error('[Supabase dbSaveTask Error]:', error.message, error);
+    }
   } catch (err) {
     console.error('Failed to save task to Supabase:', err);
   }
@@ -500,8 +606,14 @@ export async function dbSaveTask(userId: string, task: Task) {
 export async function dbDeleteTask(userId: string, taskId: string) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
   try {
-    await sb.from('tasks').delete().eq('id', taskId).eq('user_id', userId);
+    const { error } = await sb.from('tasks').delete().eq('id', taskId).eq('user_id', userId);
+    if (error) {
+      console.error('[Supabase dbDeleteTask Error]:', error.message, error);
+    }
   } catch (err) {
     console.error('Failed to delete task from Supabase:', err);
   }
@@ -510,8 +622,11 @@ export async function dbDeleteTask(userId: string, taskId: string) {
 export async function dbSaveDailyLog(userId: string, entry: DailyLogEntry) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
   try {
-    await sb.from('daily_logs').upsert(
+    const { error } = await sb.from('daily_logs').upsert(
       {
         user_id: userId,
         date: entry.date,
@@ -527,16 +642,60 @@ export async function dbSaveDailyLog(userId: string, entry: DailyLogEntry) {
       },
       { onConflict: 'user_id,date' }
     );
+    if (error) {
+      console.error('[Supabase dbSaveDailyLog Error]:', error.message, error);
+    }
   } catch (err) {
     console.error('Failed to save daily log to Supabase:', err);
+  }
+}
+
+export async function dbSaveDailyLogsBatch(userId: string, entries: DailyLogEntry[]) {
+  const sb = getSupabaseClient();
+  if (!sb || !userId || entries.length === 0) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
+  try {
+    const payload = entries.map((entry) => ({
+      user_id: userId,
+      date: entry.date,
+      study_hours: entry.studyHours,
+      attended_class: entry.attendedClass,
+      pyqs_solved: entry.pyqsSolved,
+      revision_done: entry.revisionDone,
+      mock_test_taken: entry.mockTestTaken,
+      sleep_hours: entry.sleepHours,
+      focus_rating: entry.focusRating,
+      notes: entry.notes || null,
+      custom_data: entry.customData || {},
+    }));
+
+    // In chunks of 50 to prevent oversized HTTP payloads
+    const chunkSize = 50;
+    for (let i = 0; i < payload.length; i += chunkSize) {
+      const chunk = payload.slice(i, i + chunkSize);
+      const { error } = await sb.from('daily_logs').upsert(chunk, { onConflict: 'user_id,date' });
+      if (error) {
+        console.error('[Supabase dbSaveDailyLogsBatch Chunk Error]:', error.message, error);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to batch save daily logs to Supabase:', err);
   }
 }
 
 export async function dbDeleteDailyLog(userId: string, date: string) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
   try {
-    await sb.from('daily_logs').delete().eq('date', date).eq('user_id', userId);
+    const { error } = await sb.from('daily_logs').delete().eq('date', date).eq('user_id', userId);
+    if (error) {
+      console.error('[Supabase dbDeleteDailyLog Error]:', error.message, error);
+    }
   } catch (err) {
     console.error('Failed to delete daily log from Supabase:', err);
   }
@@ -545,9 +704,14 @@ export async function dbDeleteDailyLog(userId: string, date: string) {
 export async function dbClearAllDailyLogs(userId: string) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
   try {
-    // Delete non-metadata rows from daily_logs
-    await sb.from('daily_logs').delete().eq('user_id', userId).not('date', 'like', '__meta_%');
+    const { error } = await sb.from('daily_logs').delete().eq('user_id', userId).not('date', 'like', '__meta_%');
+    if (error) {
+      console.error('[Supabase dbClearAllDailyLogs Error]:', error.message, error);
+    }
   } catch (err) {
     console.error('Failed to clear daily logs from Supabase:', err);
   }
@@ -556,8 +720,11 @@ export async function dbClearAllDailyLogs(userId: string) {
 export async function dbSaveTableConfig(userId: string, config: { deletedDefaultColumns: string[]; isDefaultTableDeleted: boolean }) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
   try {
-    await sb.from('daily_logs').upsert(
+    const { error } = await sb.from('daily_logs').upsert(
       {
         user_id: userId,
         date: '__meta_table_config__',
@@ -565,6 +732,9 @@ export async function dbSaveTableConfig(userId: string, config: { deletedDefault
       },
       { onConflict: 'user_id,date' }
     );
+    if (error) {
+      console.error('[Supabase dbSaveTableConfig Error]:', error.message, error);
+    }
   } catch (err) {
     console.error('Failed to save table config to Supabase:', err);
   }
@@ -573,8 +743,11 @@ export async function dbSaveTableConfig(userId: string, config: { deletedDefault
 export async function dbSaveExamCountdown(userId: string, exam: ExamCountdown) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
   try {
-    await sb.from('exam_countdowns').upsert({
+    const { error } = await sb.from('exam_countdowns').upsert({
       id: exam.id,
       user_id: userId,
       subject_id: exam.subjectId || null,
@@ -582,6 +755,9 @@ export async function dbSaveExamCountdown(userId: string, exam: ExamCountdown) {
       exam_date: exam.examDate,
       target_score: exam.targetScore || null,
     });
+    if (error) {
+      console.error('[Supabase dbSaveExamCountdown Error]:', error.message, error);
+    }
   } catch (err) {
     console.error('Failed to save exam countdown to Supabase:', err);
   }
@@ -590,8 +766,14 @@ export async function dbSaveExamCountdown(userId: string, exam: ExamCountdown) {
 export async function dbDeleteExamCountdown(userId: string, examId: string) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
   try {
-    await sb.from('exam_countdowns').delete().eq('id', examId).eq('user_id', userId);
+    const { error } = await sb.from('exam_countdowns').delete().eq('id', examId).eq('user_id', userId);
+    if (error) {
+      console.error('[Supabase dbDeleteExamCountdown Error]:', error.message, error);
+    }
   } catch (err) {
     console.error('Failed to delete exam countdown from Supabase:', err);
   }
@@ -600,6 +782,9 @@ export async function dbDeleteExamCountdown(userId: string, examId: string) {
 export async function dbUpdateProfile(userId: string, updates: Partial<UserProfile>) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
+
   try {
     const payload: Record<string, any> = {
       id: userId,
@@ -615,7 +800,10 @@ export async function dbUpdateProfile(userId: string, updates: Partial<UserProfi
     if (updates.friendCode !== undefined) payload.friend_code = updates.friendCode;
     if (updates.customWordmarkText !== undefined) payload.custom_wordmark_text = updates.customWordmarkText;
 
-    await sb.from('profiles').upsert(payload);
+    const { error } = await sb.from('profiles').upsert(payload);
+    if (error) {
+      console.error('[Supabase dbUpdateProfile Error]:', error.message, error);
+    }
   } catch (err) {
     console.error('Failed to update profile in Supabase:', err);
   }
@@ -632,10 +820,12 @@ export async function dbSaveCustomTable(
 ) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
 
   // 1. Try dedicated public.custom_tables
   try {
-    await sb.from('custom_tables').upsert({
+    const { error: tblErr } = await sb.from('custom_tables').upsert({
       id: table.id,
       user_id: userId,
       title: table.title,
@@ -644,6 +834,9 @@ export async function dbSaveCustomTable(
       rows: table.rows || [],
       updated_at: new Date().toISOString(),
     });
+    if (tblErr) {
+      // Dedicate table might not be present in public schema; fallback will handle it
+    }
   } catch {
     // Graceful fallback if table does not exist
   }
@@ -651,7 +844,7 @@ export async function dbSaveCustomTable(
   // 2. Resilient backup to daily_logs under '__meta_custom_tables__'
   try {
     const tablesList = allTables || [table];
-    await sb.from('daily_logs').upsert(
+    const { error: metaErr } = await sb.from('daily_logs').upsert(
       {
         user_id: userId,
         date: '__meta_custom_tables__',
@@ -660,6 +853,9 @@ export async function dbSaveCustomTable(
       },
       { onConflict: 'user_id,date' }
     );
+    if (metaErr) {
+      console.error('[Supabase dbSaveCustomTable meta backup Error]:', metaErr.message, metaErr);
+    }
   } catch (err) {
     console.warn('Backup custom table sync notice:', err);
   }
@@ -672,6 +868,8 @@ export async function dbDeleteCustomTable(
 ) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
 
   try {
     await sb.from('custom_tables').delete().eq('id', tableId).eq('user_id', userId);
@@ -681,7 +879,7 @@ export async function dbDeleteCustomTable(
 
   if (remainingTables) {
     try {
-      await sb.from('daily_logs').upsert(
+      const { error: metaErr } = await sb.from('daily_logs').upsert(
         {
           user_id: userId,
           date: '__meta_custom_tables__',
@@ -690,6 +888,9 @@ export async function dbDeleteCustomTable(
         },
         { onConflict: 'user_id,date' }
       );
+      if (metaErr) {
+        console.error('[Supabase dbDeleteCustomTable meta Error]:', metaErr.message, metaErr);
+      }
     } catch (err) {
       console.warn('Backup custom table delete notice:', err);
     }
@@ -699,6 +900,8 @@ export async function dbDeleteCustomTable(
 export async function dbSaveAllCustomTables(userId: string, tables: CustomStudyTable[]) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
 
   try {
     for (const table of tables) {
@@ -717,7 +920,7 @@ export async function dbSaveAllCustomTables(userId: string, tables: CustomStudyT
   }
 
   try {
-    await sb.from('daily_logs').upsert(
+    const { error: metaErr } = await sb.from('daily_logs').upsert(
       {
         user_id: userId,
         date: '__meta_custom_tables__',
@@ -726,6 +929,9 @@ export async function dbSaveAllCustomTables(userId: string, tables: CustomStudyT
       },
       { onConflict: 'user_id,date' }
     );
+    if (metaErr) {
+      console.error('[Supabase dbSaveAllCustomTables meta Error]:', metaErr.message, metaErr);
+    }
   } catch (err) {
     console.warn('Backup all custom tables notice:', err);
   }
@@ -734,6 +940,8 @@ export async function dbSaveAllCustomTables(userId: string, tables: CustomStudyT
 export async function dbSaveCustomColumns(userId: string, columns: CustomColumn[]) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) return;
 
   try {
     for (let i = 0; i < columns.length; i++) {
@@ -752,7 +960,7 @@ export async function dbSaveCustomColumns(userId: string, columns: CustomColumn[
   }
 
   try {
-    await sb.from('daily_logs').upsert(
+    const { error: metaErr } = await sb.from('daily_logs').upsert(
       {
         user_id: userId,
         date: '__meta_custom_columns__',
@@ -761,6 +969,9 @@ export async function dbSaveCustomColumns(userId: string, columns: CustomColumn[
       },
       { onConflict: 'user_id,date' }
     );
+    if (metaErr) {
+      console.error('[Supabase dbSaveCustomColumns meta Error]:', metaErr.message, metaErr);
+    }
   } catch (err) {
     console.warn('Backup custom columns notice:', err);
   }
@@ -782,6 +993,11 @@ export async function uploadAllUserDataToSupabase(
 ) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
+  const authed = await ensureSupabaseAuth(userId);
+  if (!authed) {
+    console.warn('[Supabase uploadAllUserDataToSupabase] Skipped: session not authenticated for user', userId);
+    return;
+  }
 
   const promises: Promise<any>[] = [];
 
@@ -802,9 +1018,10 @@ export async function uploadAllUserDataToSupabase(
   }
 
   if (data.dailyLogs && data.dailyLogs.length > 0) {
-    // Filter out meta records before saving regular daily logs
     const realLogs = data.dailyLogs.filter((l) => !l.date.startsWith('__meta_'));
-    realLogs.forEach((l) => promises.push(dbSaveDailyLog(userId, l)));
+    if (realLogs.length > 0) {
+      promises.push(dbSaveDailyLogsBatch(userId, realLogs));
+    }
   }
 
   if (data.examCountdowns && data.examCountdowns.length > 0) {

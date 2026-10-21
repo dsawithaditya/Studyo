@@ -1727,13 +1727,13 @@ export const useStudyStore = create<StudyState>()(
       syncUserData: async (forcedUserId?: string) => {
         const uid = forcedUserId || getCurrentUserId();
         if (!uid) return;
+        if (get().isSyncing) return; // Guard against concurrent duplicate sync requests
 
         set({ isSyncing: true });
 
         try {
           const remote = await fetchUserDataFromSupabase(uid);
           if (!remote) {
-            set({ isSyncing: false });
             return;
           }
 
@@ -1868,7 +1868,6 @@ export const useStudyStore = create<StudyState>()(
 
           set((state) => ({
             isCloudSynced: true,
-            isSyncing: false,
             lastSyncedAt: new Date().toISOString(),
             subjects: mergedSubjects,
             sessions: mergedSessions,
@@ -1907,7 +1906,7 @@ export const useStudyStore = create<StudyState>()(
               subjects: subjectsToUpload,
               sessions: sessionsToUpload,
               tasks: tasksToUpload,
-              dailyLogs: logsToUpload.length > 0 ? mergedLogs : undefined,
+              dailyLogs: logsToUpload.length > 0 ? logsToUpload : undefined,
               customTables: tablesNeedUpload ? mergedTables : undefined,
               customColumns: columnsToUpload ? mergedColumns : undefined,
               examCountdowns: examsToUpload,
@@ -1915,6 +1914,7 @@ export const useStudyStore = create<StudyState>()(
           }
         } catch (err) {
           console.error('syncUserData error:', err);
+        } finally {
           set({ isSyncing: false });
         }
       },

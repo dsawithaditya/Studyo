@@ -530,22 +530,22 @@ export const DailyStudyLog: React.FC = () => {
     setShowAddRowModal(false);
   };
 
-  // Save accordion full day edits
+  // Save accordion full day edits atomically
   const handleSaveAccordion = (date: string) => {
     if (!accordionState) return;
-    updateDailyLogField(date, 'studyHours', accordionState.studyHours === '' ? null : Math.max(0, Number(accordionState.studyHours)));
-    updateDailyLogField(date, 'attendedClass', accordionState.attendedClass);
-    updateDailyLogField(date, 'pyqsSolved', accordionState.pyqsSolved === '' ? null : Math.max(0, Number(accordionState.pyqsSolved)));
-    updateDailyLogField(date, 'revisionDone', accordionState.revisionDone);
-    updateDailyLogField(date, 'mockTestTaken', accordionState.mockTestTaken);
-    updateDailyLogField(date, 'sleepHours', accordionState.sleepHours === '' ? null : Math.max(0, Number(accordionState.sleepHours)));
-    updateDailyLogField(date, 'focusRating', accordionState.focusRating ?? null);
-    updateDailyLogField(date, 'notes', accordionState.notes.trim());
-    if (accordionState.customData) {
-      Object.entries(accordionState.customData).forEach(([colId, val]) => {
-        updateDailyLogCustomField(date, colId, val === '' ? null : val);
-      });
-    }
+    const updatedEntry: DailyLogEntry = {
+      date,
+      studyHours: accordionState.studyHours === '' ? null : Math.max(0, Number(accordionState.studyHours)),
+      attendedClass: Boolean(accordionState.attendedClass),
+      pyqsSolved: accordionState.pyqsSolved === '' ? null : Math.max(0, Number(accordionState.pyqsSolved)),
+      revisionDone: Boolean(accordionState.revisionDone),
+      mockTestTaken: Boolean(accordionState.mockTestTaken),
+      sleepHours: accordionState.sleepHours === '' ? null : Math.max(0, Number(accordionState.sleepHours)),
+      focusRating: accordionState.focusRating ?? null,
+      notes: accordionState.notes.trim(),
+      customData: accordionState.customData || {},
+    };
+    addOrUpdateDailyLog(updatedEntry);
     setExpandedDate(null);
     setAccordionState(null);
   };

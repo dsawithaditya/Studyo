@@ -171,6 +171,7 @@ export const useAuthStore = create<AuthState>()(
                 currentUser: authUser,
                 session: {
                   token: data.session.access_token,
+                  refreshToken: data.session.refresh_token,
                   userId: data.user.id,
                   expiresAt: new Date(Date.now() + (data.session.expires_in || 3600 * 24 * 30) * 1000).toISOString(),
                   rememberMe: true,
@@ -288,6 +289,7 @@ export const useAuthStore = create<AuthState>()(
               currentUser: authUser,
               session: {
                 token: data.session.access_token,
+                refreshToken: data.session.refresh_token,
                 userId: data.user.id,
                 expiresAt: new Date(Date.now() + (data.session.expires_in || 3600 * 24 * 30) * 1000).toISOString(),
                 rememberMe,
@@ -497,10 +499,29 @@ export const useAuthStore = create<AuthState>()(
 if (typeof window !== 'undefined') {
   const sb = getSupabaseClient();
   if (sb) {
-    // Check initial active session
+    // Check initial active session or restore from local store
     sb.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        const u = session.user;
+      let activeSession = session;
+      if (!activeSession?.user) {
+        // Try restoring session from useAuthStore stored refreshToken
+        const storedSession = useAuthStore.getState().session;
+        if (storedSession?.token && storedSession?.refreshToken) {
+          try {
+            const { data: restored, error: restoreErr } = await sb.auth.setSession({
+              access_token: storedSession.token,
+              refresh_token: storedSession.refreshToken,
+            });
+            if (restored?.session?.user) {
+              activeSession = restored.session;
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+
+      if (activeSession?.user) {
+        const u = activeSession.user;
         let studentName = u.user_metadata?.name || u.email?.split('@')[0] || 'Student';
         try {
           const { data: profile } = await sb.from('profiles').select('*').eq('id', u.id).maybeSingle();
@@ -521,21 +542,25 @@ if (typeof window !== 'undefined') {
         useAuthStore.setState({
           currentUser: authUser,
           session: {
-            token: session.access_token,
+            token: activeSession.access_token,
+            refreshToken: activeSession.refresh_token,
             userId: u.id,
-            expiresAt: new Date(Date.now() + (session.expires_in || 3600 * 24 * 30) * 1000).toISOString(),
+            expiresAt: new Date(Date.now() + (activeSession.expires_in || 3600 * 24 * 30) * 1000).toISOString(),
             rememberMe: true,
           },
         });
 
-        // Load user data from Supabase
-        useStudyStore.getState().loadUserData(u.id);
+        // Trigger two-way merge and sync
+        useStudyStore.getState().syncUserData(u.id);
       }
     });
 
-    // Listen to Auth State Changes
+    // Listen to Auth State Changes (including INITIAL_SESSION on page reload)
     sb.auth.onAuthStateChange(async (event, session) => {
-      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+      if (
+        (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') &&
+        session?.user
+      ) {
         const u = session.user;
         let studentName = u.user_metadata?.name || u.email?.split('@')[0] || 'Student';
         try {
@@ -558,13 +583,14 @@ if (typeof window !== 'undefined') {
           currentUser: authUser,
           session: {
             token: session.access_token,
+            refreshToken: session.refresh_token,
             userId: u.id,
             expiresAt: new Date(Date.now() + (session.expires_in || 3600 * 24 * 30) * 1000).toISOString(),
             rememberMe: true,
           },
         });
 
-        useStudyStore.getState().loadUserData(u.id);
+        useStudyStore.getState().syncUserData(u.id);
       } else if (event === 'SIGNED_OUT') {
         useAuthStore.setState({
           currentUser: null,

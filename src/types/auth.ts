@@ -13,6 +13,7 @@ export interface AuthUser {
 
 export interface AuthSession {
   token: string;
+  refreshToken?: string;
   userId: string;
   expiresAt: string;
   rememberMe: boolean;
