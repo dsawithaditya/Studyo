@@ -283,11 +283,23 @@ export const supabase = getSupabaseClient();
 // AUTHENTICATION GUARD & SESSION VALIDATOR
 // ==========================================================
 
+let inFlightEnsureAuthPromise: Promise<boolean> | null = null;
+
 /**
  * Ensures the Supabase client has an active, authenticated session for the given user.
- * Awaits internal Supabase session recovery and restores from localStorage if necessary.
+ * Deduplicates concurrent calls via in-flight promise and restores from localStorage/native tokens.
  */
 export async function ensureSupabaseAuth(userId?: string): Promise<boolean> {
+  if (inFlightEnsureAuthPromise) {
+    return inFlightEnsureAuthPromise;
+  }
+  inFlightEnsureAuthPromise = runEnsureSupabaseAuth(userId).finally(() => {
+    inFlightEnsureAuthPromise = null;
+  });
+  return inFlightEnsureAuthPromise;
+}
+
+async function runEnsureSupabaseAuth(userId?: string): Promise<boolean> {
   const sb = getSupabaseClient();
   if (!sb) return false;
 
@@ -295,12 +307,21 @@ export async function ensureSupabaseAuth(userId?: string): Promise<boolean> {
     // 1. Await getSession() which ensures GoTrueClient initialization has completed
     const { data: { session } } = await sb.auth.getSession();
     if (session?.user && (!userId || session.user.id === userId)) {
-      return true;
+      const nowSec = Math.floor(Date.now() / 1000);
+      // If token is valid with at least 30 seconds buffer, session is ready
+      if (!session.expires_at || session.expires_at > nowSec + 30) {
+        return true;
+      }
     }
 
-    // 2. If no active session or mismatch, attempt restoration from studyo_auth_state_v1 in localStorage
+    // 2. If no active session or expired, extract tokens from storage
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
+        let token: string | undefined;
+        let refreshToken: string | undefined;
+        let matchedUserId = false;
+
+        // Try reading from studyo_auth_state_v1
         const raw = window.localStorage.getItem('studyo_auth_state_v1');
         if (raw) {
           const parsed = JSON.parse(raw);
@@ -309,18 +330,53 @@ export async function ensureSupabaseAuth(userId?: string): Promise<boolean> {
           const storedUser = storedState?.currentUser;
 
           if (storedSession?.token && (!userId || storedUser?.id === userId)) {
-            if (storedSession.refreshToken) {
-              const { data: setRes, error: setErr } = await sb.auth.setSession({
-                access_token: storedSession.token,
-                refresh_token: storedSession.refreshToken,
-              });
-              if (setRes?.session?.user && (!userId || setRes.session.user.id === userId)) {
-                return true;
+            token = storedSession.token;
+            refreshToken = storedSession.refreshToken;
+            matchedUserId = true;
+          }
+        }
+
+        // Search Supabase's native storage key (sb-*-auth-token) for fresh refresh token
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const k = window.localStorage.key(i);
+          if (k && k.startsWith('sb-') && k.endsWith('-auth-token')) {
+            try {
+              const item = JSON.parse(window.localStorage.getItem(k) || '{}');
+              if (item?.user?.id && (!userId || item.user.id === userId)) {
+                matchedUserId = true;
+                if (!token || item.access_token) token = item.access_token;
+                if (item.refresh_token) refreshToken = item.refresh_token;
+                break;
               }
-              if (setErr) {
-                console.warn('[SupabaseAuth] setSession notice:', setErr.message);
+            } catch {}
+          }
+        }
+
+        if (token && refreshToken && matchedUserId) {
+          const { data: setRes, error: setErr } = await sb.auth.setSession({
+            access_token: token,
+            refresh_token: refreshToken,
+          });
+
+          if (setRes?.session?.user && (!userId || setRes.session.user.id === userId)) {
+            // Update studyo_auth_state_v1 in localStorage with newly rotated tokens
+            try {
+              const authRaw = window.localStorage.getItem('studyo_auth_state_v1');
+              if (authRaw) {
+                const authData = JSON.parse(authRaw);
+                if (authData.state?.session && setRes.session.access_token) {
+                  authData.state.session.token = setRes.session.access_token;
+                  authData.state.session.refreshToken = setRes.session.refresh_token;
+                  window.localStorage.setItem('studyo_auth_state_v1', JSON.stringify(authData));
+                }
               }
-            }
+            } catch {}
+
+            return true;
+          }
+
+          if (setErr) {
+            console.warn('[SupabaseAuth] setSession notice:', setErr.message);
           }
         }
       } catch (storageErr) {

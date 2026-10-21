@@ -32,8 +32,10 @@ import {
   BookOpen,
   RotateCcw,
   Eye,
-  EyeOff
+  EyeOff,
+  RefreshCw,
 } from 'lucide-react';
+import { useAuthStore } from '../store/useAuthStore';
 
 const DEFAULT_COLUMNS_CONFIG: {
   key: DefaultTableColumnKey;
@@ -78,6 +80,8 @@ export const DailyStudyLog: React.FC = () => {
     isDefaultTableDeleted = false,
     deleteDefaultTable,
     restoreDefaultTable,
+    syncUserData,
+    isSyncing,
   } = useStudyStore();
 
   const todayStr = getLocalTodayDateString();
@@ -95,7 +99,11 @@ export const DailyStudyLog: React.FC = () => {
 
   useEffect(() => {
     ensureTodayDailyLog();
-  }, [ensureTodayDailyLog]);
+    const uid = useAuthStore.getState().currentUser?.id;
+    if (uid) {
+      syncUserData(uid);
+    }
+  }, [ensureTodayDailyLog, syncUserData]);
 
   // UI state
   const [enableTopForm, setEnableTopForm] = useState(false); // By-default disabled per user request!
@@ -683,6 +691,23 @@ export const DailyStudyLog: React.FC = () => {
           >
             <Plus className="w-3.5 h-3.5 text-[#e9762b]" />
             <span>Add Table</span>
+          </button>
+
+          {/* Cloud Sync Button */}
+          <button
+            type="button"
+            onClick={() => {
+              const u = useAuthStore.getState().currentUser;
+              if (u?.id) syncUserData(u.id);
+            }}
+            disabled={isSyncing}
+            className={`px-3.5 py-2 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white text-xs font-mono font-bold uppercase tracking-wider transition border border-stone-300/80 dark:border-white/20 hover:border-[#e9762b] cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95 ${
+              isSyncing ? 'opacity-70 animate-pulse' : ''
+            }`}
+            title="Sync study log with cloud"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-[#e9762b] ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync'}</span>
           </button>
 
         </div>

@@ -13,7 +13,7 @@ export const App: React.FC = () => {
     const handleFocusOrOnline = () => {
       const now = Date.now();
       const user = useAuthStore.getState().currentUser;
-      if (user?.id && now - lastFocusSync > 20000) {
+      if (user?.id && now - lastFocusSync > 2500) {
         lastFocusSync = now;
         syncUserData(user.id);
       }
@@ -28,13 +28,13 @@ export const App: React.FC = () => {
     window.addEventListener('focus', handleFocusOrOnline);
     window.addEventListener('online', handleFocusOrOnline);
 
-    // Periodic background sync every 60 seconds when online
+    // Periodic background sync every 15 seconds when online
     const intervalId = setInterval(() => {
       const u = useAuthStore.getState().currentUser;
       if (u?.id && navigator.onLine) {
         syncUserData(u.id);
       }
-    }, 60000);
+    }, 15000);
 
     return () => {
       window.removeEventListener('focus', handleFocusOrOnline);

@@ -662,6 +662,8 @@ export function mergeCustomTablesList(
 }
 
 
+let pendingSyncUid: string | null = null;
+
 export const useStudyStore = create<StudyState>()(
   persist(
     (set, get) => ({
@@ -1727,7 +1729,10 @@ export const useStudyStore = create<StudyState>()(
       syncUserData: async (forcedUserId?: string) => {
         const uid = forcedUserId || getCurrentUserId();
         if (!uid) return;
-        if (get().isSyncing) return; // Guard against concurrent duplicate sync requests
+        if (get().isSyncing) {
+          pendingSyncUid = uid;
+          return;
+        }
 
         set({ isSyncing: true });
 
@@ -1916,6 +1921,13 @@ export const useStudyStore = create<StudyState>()(
           console.error('syncUserData error:', err);
         } finally {
           set({ isSyncing: false });
+          if (pendingSyncUid) {
+            const nextUid = pendingSyncUid;
+            pendingSyncUid = null;
+            setTimeout(() => {
+              get().syncUserData(nextUid);
+            }, 100);
+          }
         }
       },
 
