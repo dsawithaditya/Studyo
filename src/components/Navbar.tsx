@@ -2,7 +2,7 @@ import React from 'react';
 import { useStudyStore } from '../store/useStudyStore';
 import { translations } from '../i18n/translations';
 import { Language } from '../types';
-import { Flame, Target, Maximize2, Database, Sparkles, BookOpen } from 'lucide-react';
+import { Flame, Target, Maximize2, Database, Sparkles, BookOpen, RefreshCw } from 'lucide-react';
 import { ThemeSwitch } from './ThemeSwitch';
 
 interface NavbarProps {
@@ -18,7 +18,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSupabaseModal, onOpenHalft
     sessions, 
     zenMode, 
     setZenMode, 
-    isCloudSynced 
+    isCloudSynced,
+    isSyncing,
+    syncUserData
   } = useStudyStore();
   const t = translations[language];
 
@@ -139,16 +141,27 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSupabaseModal, onOpenHalft
 
           {/* Supabase Cloud Sync pill */}
           <button
-            onClick={onOpenSupabaseModal}
+            onClick={() => {
+              if (isCloudSynced) {
+                syncUserData();
+              }
+              onOpenSupabaseModal();
+            }}
             className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border transition cursor-pointer ${
-              isCloudSynced
+              isSyncing
+                ? 'bg-indigo-500/10 text-indigo-800 dark:text-indigo-300 border-indigo-500/30'
+                : isCloudSynced
                 ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
                 : 'bg-stone-200/90 dark:bg-slate-800/80 text-stone-700 dark:text-slate-300 border-stone-300 dark:border-white/10 hover:bg-stone-300 dark:hover:bg-slate-700/80'
             }`}
-            title="Supabase PostgreSQL & Cloud Sync Settings"
+            title={isSyncing ? 'Syncing data with cloud...' : isCloudSynced ? 'Cloud Synced - Click to sync or view settings' : 'Offline Mode - Click to connect cloud'}
           >
-            <Database className={`w-3.5 h-3.5 ${isCloudSynced ? 'text-emerald-500 dark:text-emerald-400' : 'text-stone-500 dark:text-slate-400'}`} />
-            <span>{isCloudSynced ? 'Synced' : 'Offline'}</span>
+            {isSyncing ? (
+              <RefreshCw className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
+            ) : (
+              <Database className={`w-3.5 h-3.5 ${isCloudSynced ? 'text-emerald-500 dark:text-emerald-400' : 'text-stone-500 dark:text-slate-400'}`} />
+            )}
+            <span>{isSyncing ? 'Syncing...' : isCloudSynced ? 'Synced' : 'Offline'}</span>
           </button>
         </div>
       </div>

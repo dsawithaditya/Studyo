@@ -114,6 +114,16 @@ export interface FriendProfile {
 
 export type CustomColumnType = 'boolean' | 'number' | 'text' | 'select';
 
+export type DefaultTableColumnKey =
+  | 'studyHours'
+  | 'attendedClass'
+  | 'pyqsSolved'
+  | 'revisionDone'
+  | 'mockTestTaken'
+  | 'sleepHours'
+  | 'notes'
+  | 'focusRating';
+
 export interface CustomColumn {
   id: string;
   name: string;

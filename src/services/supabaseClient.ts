@@ -5,7 +5,9 @@ import {
   Task, 
   DailyLogEntry, 
   ExamCountdown, 
-  UserProfile 
+  UserProfile,
+  CustomStudyTable,
+  CustomColumn
 } from '../types';
 
 export const SUPABASE_SQL_SCHEMA = `-- ==========================================================
@@ -107,8 +109,31 @@ CREATE TABLE IF NOT EXISTS public.exam_countdowns (
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 8. Custom Study Tables (User-defined tables & spreadsheets)
+CREATE TABLE IF NOT EXISTS public.custom_tables (
+    id TEXT PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    columns JSONB DEFAULT '[]'::jsonb,
+    rows JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 9. Custom Daily Study Log Columns
+CREATE TABLE IF NOT EXISTS public.custom_columns (
+    id TEXT PRIMARY KEY,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    options JSONB DEFAULT '[]'::jsonb,
+    col_order INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
 -- ==========================================================
--- 8. PERFORMANCE INDEXES
+-- 10. PERFORMANCE INDEXES
 -- ==========================================================
 CREATE INDEX IF NOT EXISTS idx_subjects_user_id ON public.subjects (user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_date ON public.study_sessions (user_id, date_string DESC);
@@ -116,9 +141,11 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_created ON public.study_sessions (u
 CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON public.tasks (user_id, completed, due_date);
 CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON public.daily_logs (user_id, date DESC);
 CREATE INDEX IF NOT EXISTS idx_exam_user_date ON public.exam_countdowns (user_id, exam_date);
+CREATE INDEX IF NOT EXISTS idx_custom_tables_user ON public.custom_tables (user_id);
+CREATE INDEX IF NOT EXISTS idx_custom_columns_user ON public.custom_columns (user_id);
 
 -- ==========================================================
--- 9. ROW LEVEL SECURITY (RLS) POLICIES
+-- 11. ROW LEVEL SECURITY (RLS) POLICIES
 -- ==========================================================
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subjects ENABLE ROW LEVEL SECURITY;
@@ -126,6 +153,8 @@ ALTER TABLE public.study_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.daily_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.exam_countdowns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.custom_tables ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.custom_columns ENABLE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
@@ -137,6 +166,8 @@ BEGIN
     DROP POLICY IF EXISTS "Users can manage own tasks" ON public.tasks;
     DROP POLICY IF EXISTS "Users can manage own daily logs" ON public.daily_logs;
     DROP POLICY IF EXISTS "Users can manage own exam countdowns" ON public.exam_countdowns;
+    DROP POLICY IF EXISTS "Users can manage own custom tables" ON public.custom_tables;
+    DROP POLICY IF EXISTS "Users can manage own custom columns" ON public.custom_columns;
 EXCEPTION WHEN OTHERS THEN
     NULL;
 END $$;
@@ -165,8 +196,14 @@ ON public.daily_logs FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid()
 CREATE POLICY "Users can manage own exam countdowns" 
 ON public.exam_countdowns FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
+CREATE POLICY "Users can manage own custom tables" 
+ON public.custom_tables FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can manage own custom columns" 
+ON public.custom_columns FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
 -- ==========================================================
--- 10. AUTOMATIC PROFILE TRIGGER ON SIGNUP
+-- 12. AUTOMATIC PROFILE TRIGGER ON SIGNUP
 -- ==========================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
@@ -258,6 +295,8 @@ export async function fetchUserDataFromSupabase(userId: string) {
       tasksRes,
       dailyLogsRes,
       examsRes,
+      customTablesRes,
+      customColumnsRes,
     ] = await Promise.all([
       sb.from('profiles').select('*').eq('id', userId).maybeSingle(),
       sb.from('subjects').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
@@ -265,9 +304,12 @@ export async function fetchUserDataFromSupabase(userId: string) {
       sb.from('tasks').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
       sb.from('daily_logs').select('*').eq('user_id', userId).order('date', { ascending: false }),
       sb.from('exam_countdowns').select('*').eq('user_id', userId).order('exam_date', { ascending: true }),
+      // Gracefully attempt querying dedicated tables, returning null if table does not exist
+      Promise.resolve(sb.from('custom_tables').select('*').eq('user_id', userId).order('created_at', { ascending: true })).catch(() => ({ data: null })),
+      Promise.resolve(sb.from('custom_columns').select('*').eq('user_id', userId).order('col_order', { ascending: true })).catch(() => ({ data: null })),
     ]);
 
-    const subjects: Subject[] = (subjectsRes.data || []).map((row) => ({
+    const subjects: Subject[] = ((subjectsRes?.data as any[]) || []).map((row: any) => ({
       id: row.id,
       name: row.name,
       icon: row.icon || 'BookOpen',
@@ -276,7 +318,7 @@ export async function fetchUserDataFromSupabase(userId: string) {
       chapters: Array.isArray(row.chapters) ? row.chapters : [],
     }));
 
-    const sessions: StudySession[] = (sessionsRes.data || []).map((row) => ({
+    const sessions: StudySession[] = ((sessionsRes?.data as any[]) || []).map((row: any) => ({
       id: row.id,
       subjectId: row.subject_id,
       subjectName: row.subject_name,
@@ -291,7 +333,7 @@ export async function fetchUserDataFromSupabase(userId: string) {
       mode: (row.mode as 'pomodoro' | 'stopwatch') || 'pomodoro',
     }));
 
-    const tasks: Task[] = (tasksRes.data || []).map((row) => ({
+    const tasks: Task[] = ((tasksRes?.data as any[]) || []).map((row: any) => ({
       id: row.id,
       title: row.title,
       subjectId: row.subject_id || '',
@@ -303,7 +345,15 @@ export async function fetchUserDataFromSupabase(userId: string) {
       notes: row.notes || undefined,
     }));
 
-    const dailyLogs: DailyLogEntry[] = (dailyLogsRes.data || []).map((row) => ({
+    // Split real daily logs from internal sync metadata rows
+    const rawLogs = (dailyLogsRes?.data as any[]) || [];
+    const metaTablesRow = rawLogs.find((r: any) => r.date === '__meta_custom_tables__');
+    const metaColumnsRow = rawLogs.find((r: any) => r.date === '__meta_custom_columns__');
+    const metaConfigRow = rawLogs.find((r: any) => r.date === '__meta_table_config__');
+
+    const realLogs = rawLogs.filter((r: any) => !r.date.startsWith('__meta_'));
+
+    const dailyLogs: DailyLogEntry[] = realLogs.map((row: any) => ({
       date: row.date,
       studyHours: row.study_hours != null ? Number(row.study_hours) : null,
       attendedClass: Boolean(row.attended_class),
@@ -316,7 +366,40 @@ export async function fetchUserDataFromSupabase(userId: string) {
       customData: row.custom_data || {},
     }));
 
-    const examCountdowns: ExamCountdown[] = (examsRes.data || []).map((row) => ({
+    // Custom study tables: from dedicated table if available, or from metadata row
+    let customTables: CustomStudyTable[] = [];
+    if (customTablesRes?.data && Array.isArray(customTablesRes.data) && customTablesRes.data.length > 0) {
+      customTables = (customTablesRes.data as any[]).map((row: any) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description || '',
+        createdAt: row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        columns: Array.isArray(row.columns) ? row.columns : [],
+        rows: Array.isArray(row.rows) ? row.rows : [],
+      }));
+    } else if (metaTablesRow?.custom_data?.tables && Array.isArray(metaTablesRow.custom_data.tables)) {
+      customTables = metaTablesRow.custom_data.tables;
+    }
+
+    // Custom columns: from dedicated table if available, or from metadata row
+    let customColumns: CustomColumn[] = [];
+    if (customColumnsRes?.data && Array.isArray(customColumnsRes.data) && customColumnsRes.data.length > 0) {
+      customColumns = (customColumnsRes.data as any[]).map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        type: row.type || 'text',
+        options: Array.isArray(row.options) ? row.options : undefined,
+      }));
+    } else if (metaColumnsRow?.custom_data?.columns && Array.isArray(metaColumnsRow.custom_data.columns)) {
+      customColumns = metaColumnsRow.custom_data.columns;
+    }
+
+    const tableConfig = {
+      deletedDefaultColumns: (metaConfigRow?.custom_data?.deletedDefaultColumns as string[]) || [],
+      isDefaultTableDeleted: Boolean(metaConfigRow?.custom_data?.isDefaultTableDeleted),
+    };
+
+    const examCountdowns: ExamCountdown[] = ((examsRes?.data as any[]) || []).map((row: any) => ({
       id: row.id,
       title: row.title,
       subjectId: row.subject_id || '',
@@ -331,6 +414,9 @@ export async function fetchUserDataFromSupabase(userId: string) {
       tasks,
       dailyLogs,
       examCountdowns,
+      customTables,
+      customColumns,
+      tableConfig,
     };
   } catch (err) {
     console.error('Error fetching Supabase user data:', err);
@@ -456,6 +542,34 @@ export async function dbDeleteDailyLog(userId: string, date: string) {
   }
 }
 
+export async function dbClearAllDailyLogs(userId: string) {
+  const sb = getSupabaseClient();
+  if (!sb || !userId) return;
+  try {
+    // Delete non-metadata rows from daily_logs
+    await sb.from('daily_logs').delete().eq('user_id', userId).not('date', 'like', '__meta_%');
+  } catch (err) {
+    console.error('Failed to clear daily logs from Supabase:', err);
+  }
+}
+
+export async function dbSaveTableConfig(userId: string, config: { deletedDefaultColumns: string[]; isDefaultTableDeleted: boolean }) {
+  const sb = getSupabaseClient();
+  if (!sb || !userId) return;
+  try {
+    await sb.from('daily_logs').upsert(
+      {
+        user_id: userId,
+        date: '__meta_table_config__',
+        custom_data: config,
+      },
+      { onConflict: 'user_id,date' }
+    );
+  } catch (err) {
+    console.error('Failed to save table config to Supabase:', err);
+  }
+}
+
 export async function dbSaveExamCountdown(userId: string, exam: ExamCountdown) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
@@ -504,5 +618,210 @@ export async function dbUpdateProfile(userId: string, updates: Partial<UserProfi
     await sb.from('profiles').upsert(payload);
   } catch (err) {
     console.error('Failed to update profile in Supabase:', err);
+  }
+}
+
+// ==========================================================
+// CUSTOM TABLES & COLUMNS DATABASE SERVICES
+// ==========================================================
+
+export async function dbSaveCustomTable(
+  userId: string, 
+  table: CustomStudyTable, 
+  allTables?: CustomStudyTable[]
+) {
+  const sb = getSupabaseClient();
+  if (!sb || !userId) return;
+
+  // 1. Try dedicated public.custom_tables
+  try {
+    await sb.from('custom_tables').upsert({
+      id: table.id,
+      user_id: userId,
+      title: table.title,
+      description: table.description || '',
+      columns: table.columns || [],
+      rows: table.rows || [],
+      updated_at: new Date().toISOString(),
+    });
+  } catch {
+    // Graceful fallback if table does not exist
+  }
+
+  // 2. Resilient backup to daily_logs under '__meta_custom_tables__'
+  try {
+    const tablesList = allTables || [table];
+    await sb.from('daily_logs').upsert(
+      {
+        user_id: userId,
+        date: '__meta_custom_tables__',
+        notes: 'Studyo Internal Sync Cache',
+        custom_data: { tables: tablesList },
+      },
+      { onConflict: 'user_id,date' }
+    );
+  } catch (err) {
+    console.warn('Backup custom table sync notice:', err);
+  }
+}
+
+export async function dbDeleteCustomTable(
+  userId: string, 
+  tableId: string, 
+  remainingTables?: CustomStudyTable[]
+) {
+  const sb = getSupabaseClient();
+  if (!sb || !userId) return;
+
+  try {
+    await sb.from('custom_tables').delete().eq('id', tableId).eq('user_id', userId);
+  } catch {
+    // Graceful fallback
+  }
+
+  if (remainingTables) {
+    try {
+      await sb.from('daily_logs').upsert(
+        {
+          user_id: userId,
+          date: '__meta_custom_tables__',
+          notes: 'Studyo Internal Sync Cache',
+          custom_data: { tables: remainingTables },
+        },
+        { onConflict: 'user_id,date' }
+      );
+    } catch (err) {
+      console.warn('Backup custom table delete notice:', err);
+    }
+  }
+}
+
+export async function dbSaveAllCustomTables(userId: string, tables: CustomStudyTable[]) {
+  const sb = getSupabaseClient();
+  if (!sb || !userId) return;
+
+  try {
+    for (const table of tables) {
+      await sb.from('custom_tables').upsert({
+        id: table.id,
+        user_id: userId,
+        title: table.title,
+        description: table.description || '',
+        columns: table.columns || [],
+        rows: table.rows || [],
+        updated_at: new Date().toISOString(),
+      });
+    }
+  } catch {
+    // Graceful fallback
+  }
+
+  try {
+    await sb.from('daily_logs').upsert(
+      {
+        user_id: userId,
+        date: '__meta_custom_tables__',
+        notes: 'Studyo Internal Sync Cache',
+        custom_data: { tables },
+      },
+      { onConflict: 'user_id,date' }
+    );
+  } catch (err) {
+    console.warn('Backup all custom tables notice:', err);
+  }
+}
+
+export async function dbSaveCustomColumns(userId: string, columns: CustomColumn[]) {
+  const sb = getSupabaseClient();
+  if (!sb || !userId) return;
+
+  try {
+    for (let i = 0; i < columns.length; i++) {
+      const c = columns[i];
+      await sb.from('custom_columns').upsert({
+        id: c.id,
+        user_id: userId,
+        name: c.name,
+        type: c.type,
+        options: c.options || [],
+        col_order: i,
+      });
+    }
+  } catch {
+    // Graceful fallback
+  }
+
+  try {
+    await sb.from('daily_logs').upsert(
+      {
+        user_id: userId,
+        date: '__meta_custom_columns__',
+        notes: 'Studyo Internal Sync Cache',
+        custom_data: { columns },
+      },
+      { onConflict: 'user_id,date' }
+    );
+  } catch (err) {
+    console.warn('Backup custom columns notice:', err);
+  }
+}
+
+// Mass upload helper for initial sync or cloud push
+export async function uploadAllUserDataToSupabase(
+  userId: string,
+  data: {
+    user?: Partial<UserProfile>;
+    subjects?: Subject[];
+    sessions?: StudySession[];
+    tasks?: Task[];
+    dailyLogs?: DailyLogEntry[];
+    examCountdowns?: ExamCountdown[];
+    customTables?: CustomStudyTable[];
+    customColumns?: CustomColumn[];
+  }
+) {
+  const sb = getSupabaseClient();
+  if (!sb || !userId) return;
+
+  const promises: Promise<any>[] = [];
+
+  if (data.user) {
+    promises.push(dbUpdateProfile(userId, data.user));
+  }
+
+  if (data.subjects && data.subjects.length > 0) {
+    data.subjects.forEach((s) => promises.push(dbSaveSubject(userId, s)));
+  }
+
+  if (data.sessions && data.sessions.length > 0) {
+    data.sessions.forEach((s) => promises.push(dbSaveStudySession(userId, s)));
+  }
+
+  if (data.tasks && data.tasks.length > 0) {
+    data.tasks.forEach((t) => promises.push(dbSaveTask(userId, t)));
+  }
+
+  if (data.dailyLogs && data.dailyLogs.length > 0) {
+    // Filter out meta records before saving regular daily logs
+    const realLogs = data.dailyLogs.filter((l) => !l.date.startsWith('__meta_'));
+    realLogs.forEach((l) => promises.push(dbSaveDailyLog(userId, l)));
+  }
+
+  if (data.examCountdowns && data.examCountdowns.length > 0) {
+    data.examCountdowns.forEach((e) => promises.push(dbSaveExamCountdown(userId, e)));
+  }
+
+  if (data.customTables && data.customTables.length > 0) {
+    promises.push(dbSaveAllCustomTables(userId, data.customTables));
+  }
+
+  if (data.customColumns && data.customColumns.length > 0) {
+    promises.push(dbSaveCustomColumns(userId, data.customColumns));
+  }
+
+  try {
+    await Promise.all(promises);
+  } catch (err) {
+    console.error('Failed to upload all user data to Supabase:', err);
   }
 }

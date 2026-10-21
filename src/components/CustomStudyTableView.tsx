@@ -39,6 +39,7 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
     updateCustomTableColumn,
     deleteCustomTableColumn,
     reorderCustomTableColumns,
+    deleteCustomTable,
   } = useStudyStore();
 
   const todayStr = getLocalTodayDateString();
@@ -512,9 +513,23 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
         {/* Table Top Controls */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 font-mono pb-4 border-b border-white/10">
           <div className="select-none">
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-stone-900 dark:text-white transition tracking-tight uppercase font-mono">
-              {table.title}
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl sm:text-4xl font-extrabold text-stone-900 dark:text-white transition tracking-tight uppercase font-mono">
+                {table.title}
+              </h1>
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm(`Delete table "${table.title}" and all its rows?`)) {
+                    deleteCustomTable(table.id);
+                  }
+                }}
+                className="p-1.5 rounded-lg glass-pill hover:bg-red-500/20 text-stone-400 hover:text-red-400 border border-stone-300/40 dark:border-white/10 transition cursor-pointer"
+                title="Delete this entire table"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
             {table.description && (
               <p className="text-xs text-stone-600 dark:text-slate-400 mt-1 font-mono">
                 {table.description}
@@ -646,9 +661,14 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                     </th>
                   ))}
 
-                  {/* NOTES Column - Rightmost Header with rounded corner */}
-                  <th className="py-3.5 px-3 sm:px-4 font-bold text-center sticky top-0 z-40 min-w-[90px] sm:min-w-[110px] rounded-tr-xl">
+                  {/* NOTES Column - Header */}
+                  <th className="py-3.5 px-3 sm:px-4 font-bold text-center sticky top-0 z-40 min-w-[90px] sm:min-w-[110px]">
                     NOTES
+                  </th>
+
+                  {/* DEL Column - Header */}
+                  <th className="py-3.5 px-2 font-bold text-center sticky top-0 z-40 min-w-[50px] w-[50px] text-stone-500 rounded-tr-xl">
+                    DEL
                   </th>
                 </tr>
               </thead>
@@ -657,7 +677,7 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                 {visibleRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={table.columns.length + 2}
+                      colSpan={table.columns.length + 3}
                       className="py-12 text-center text-stone-500 dark:text-slate-400 font-mono text-xs"
                     >
                       <div className="flex flex-col items-center justify-center space-y-3">
@@ -810,6 +830,21 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                               <span className="text-stone-400 dark:text-slate-600 font-mono text-xs">--</span>
                             )}
                           </td>
+
+                          {/* DEL Column Cell */}
+                          <td className="py-3 sm:py-3.5 px-2 text-center whitespace-nowrap min-w-[50px] w-[50px]">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteRow(entry.id, entry.date);
+                              }}
+                              className="p-1.5 rounded-lg text-stone-400 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
+                              title="Delete row"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
                         </tr>
 
                         {/* Expand in place accordion sub-panel (Exact same design & layout as Study Table) */}
@@ -818,7 +853,7 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                             className="bg-white/[0.02] backdrop-blur-2xl border-b border-white/10"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <td colSpan={table.columns.length + 2} className="p-0 border-b border-white/10">
+                            <td colSpan={table.columns.length + 3} className="p-0 border-b border-white/10">
                               <div
                                 className="sticky left-0 p-3.5 sm:p-5 md:p-6 space-y-4 sm:space-y-5 box-border overflow-hidden"
                                 style={{

@@ -4,7 +4,7 @@ import {
   getLocalTodayDateString, 
   ensureDailyLogsDateWise 
 } from '../store/useStudyStore';
-import { DailyLogEntry, CustomColumn, CustomColumnType, CustomTableColumnType } from '../types';
+import { DailyLogEntry, CustomColumn, CustomColumnType, CustomTableColumnType, DefaultTableColumnKey } from '../types';
 import { ShinyButton } from './ui/shiny-button';
 import { YesNoToggle } from './ui/YesNoToggle';
 import { CustomStudyTableView } from './CustomStudyTableView';
@@ -29,8 +29,28 @@ import {
   ArrowRight,
   Table2,
   Layers,
-  BookOpen
+  BookOpen,
+  RotateCcw,
+  Eye,
+  EyeOff
 } from 'lucide-react';
+
+const DEFAULT_COLUMNS_CONFIG: {
+  key: DefaultTableColumnKey;
+  label: string;
+  minWidth: string;
+  title?: string;
+  description: string;
+}[] = [
+  { key: 'studyHours', label: 'HOURS', minWidth: 'min-w-[78px] sm:min-w-[92px]', description: 'Study duration in hours' },
+  { key: 'attendedClass', label: 'CLASS', minWidth: 'min-w-[72px] sm:min-w-[84px]', description: 'Attended lecture/class' },
+  { key: 'pyqsSolved', label: 'PYQS', minWidth: 'min-w-[74px] sm:min-w-[86px]', description: 'Past year questions solved count' },
+  { key: 'revisionDone', label: 'REV', minWidth: 'min-w-[72px] sm:min-w-[84px]', title: 'Revision Done', description: 'Revision completed status' },
+  { key: 'mockTestTaken', label: 'MOCK', minWidth: 'min-w-[72px] sm:min-w-[84px]', title: 'Mock Test Taken', description: 'Mock exam or test taken' },
+  { key: 'sleepHours', label: 'SLEEP', minWidth: 'min-w-[74px] sm:min-w-[86px]', description: 'Sleep duration in hours' },
+  { key: 'notes', label: 'NOTES', minWidth: 'min-w-[72px] sm:min-w-[84px]', description: 'Daily summary notes' },
+  { key: 'focusRating', label: 'FOCUS', minWidth: 'min-w-[78px] sm:min-w-[92px]', description: 'Focus rating (1-5)' },
+];
 
 export const DailyStudyLog: React.FC = () => {
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -51,6 +71,17 @@ export const DailyStudyLog: React.FC = () => {
     activeTableId,
     setActiveTableId,
     addCustomTable,
+    deletedDefaultColumns = [],
+    deleteDefaultColumn,
+    restoreDefaultColumn,
+    resetDefaultColumns,
+    isDefaultTableDeleted = false,
+    deleteDefaultTable,
+    restoreDefaultTable,
+    isSideBySideView = false,
+    setSideBySideView,
+    secondaryTableId,
+    setSecondaryTableId,
   } = useStudyStore();
 
   const todayStr = getLocalTodayDateString();
@@ -155,6 +186,25 @@ export const DailyStudyLog: React.FC = () => {
   const activeCustomTable = useMemo(() => {
     return (customTables || []).find((t) => t.id === activeTableId);
   }, [customTables, activeTableId]);
+
+  const activeSecondaryTable = useMemo(() => {
+    if (!customTables || customTables.length === 0) return null;
+    if (secondaryTableId) {
+      const found = customTables.find((t) => t.id === secondaryTableId);
+      if (found) return found;
+    }
+    const other = customTables.find((t) => t.id !== activeTableId);
+    return other || customTables[0];
+  }, [customTables, secondaryTableId, activeTableId]);
+
+  // Modal to manage & delete/restore columns
+  const [showColumnsManagerModal, setShowColumnsManagerModal] = useState(false);
+
+  const activeDefaultColsCount = useMemo(() => {
+    return DEFAULT_COLUMNS_CONFIG.filter((c) => !deletedDefaultColumns.includes(c.key)).length;
+  }, [deletedDefaultColumns]);
+
+  const totalDefaultTableCols = 1 + activeDefaultColsCount + customColumns.length + 1; // 1 for DATE, 1 for DEL
 
   const handleCreateTable = (e: React.FormEvent) => {
     e.preventDefault();
@@ -602,6 +652,11 @@ export const DailyStudyLog: React.FC = () => {
           >
             <Calendar className="w-3.5 h-3.5" />
             <span>Study Log</span>
+            {isDefaultTableDeleted && (
+              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-400 font-bold uppercase">
+                Deleted
+              </span>
+            )}
           </button>
 
           {/* User Custom Tables */}
@@ -643,16 +698,79 @@ export const DailyStudyLog: React.FC = () => {
             <Plus className="w-3.5 h-3.5 text-[#e9762b]" />
             <span>Add Table</span>
           </button>
+
+          {/* Side-by-Side Dual View Switch */}
+          {customTables.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setSideBySideView(!isSideBySideView)}
+              className={`px-3.5 py-2 rounded-full text-xs font-mono font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95 ${
+                isSideBySideView
+                  ? 'bg-[#e9762b] text-black font-extrabold shadow-md shadow-orange-500/20'
+                  : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border border-stone-300/80 dark:border-white/10'
+              }`}
+              title="Toggle side-by-side multi-device table view"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Side-by-Side: {isSideBySideView ? 'ON' : 'OFF'}</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Render Active Custom Table OR Main Daily Study Log */}
-      {activeTableId !== 'main' && activeCustomTable ? (
-        <CustomStudyTableView table={activeCustomTable} />
-      ) : (
-        <>
-          {/* 3. Log an Entry (Quick Add / Edit Form) - ONLY SHOWN WHEN ENABLED VIA TOGGLE */}
-          {enableTopForm && showForm && (
+      {/* Side-by-Side Dual Table Container Banner */}
+      {isSideBySideView && customTables.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl glass-panel border border-[#e9762b]/30 bg-orange-500/5 animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#e9762b] animate-pulse" />
+            <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#e9762b]">
+              Side-by-Side Multi-Device Mode Active
+            </span>
+            <span className="text-xs font-mono text-stone-600 dark:text-slate-400 hidden lg:inline">
+              (Both tables synced independently without merged rows)
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-xs font-mono">
+            <span className="text-stone-600 dark:text-slate-400 font-bold uppercase">Compare with:</span>
+            <select
+              value={secondaryTableId || activeSecondaryTable?.id || ''}
+              onChange={(e) => setSecondaryTableId(e.target.value)}
+              className="bg-stone-900 border border-white/20 text-white rounded-lg px-2.5 py-1 text-xs font-mono focus:outline-none focus:border-[#e9762b] cursor-pointer"
+            >
+              {customTables.map((t) => (
+                <option key={t.id} value={t.id} className="bg-stone-900 text-white">
+                  {t.title} ({t.rows.length} rows)
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setSideBySideView(false)}
+              className="p-1 text-stone-400 hover:text-white rounded transition cursor-pointer"
+              title="Close side-by-side view"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Grid container if side-by-side active */}
+      <div className={isSideBySideView && customTables.length > 0 ? "grid grid-cols-1 xl:grid-cols-2 gap-6 items-start" : "w-full space-y-6"}>
+        {/* Left / Primary Column */}
+        <div className="min-w-0 space-y-4">
+          {isSideBySideView && customTables.length > 0 && (
+            <div className="text-[11px] font-mono font-bold text-[#e9762b] uppercase tracking-wider flex items-center gap-1.5 px-1">
+              <span className="w-2 h-2 rounded-full bg-[#e9762b]" />
+              <span>Primary Table: {activeTableId === 'main' ? 'Study Log (Default)' : activeCustomTable?.title}</span>
+            </div>
+          )}
+          {activeTableId !== 'main' && activeCustomTable ? (
+            <CustomStudyTableView table={activeCustomTable} />
+          ) : (
+            <>
+              {/* 3. Log an Entry (Quick Add / Edit Form) - ONLY SHOWN WHEN ENABLED VIA TOGGLE */}
+              {enableTopForm && showForm && (
         <div
           id="log-form-container"
           className="w-full p-6 sm:p-8 rounded-2xl glass-panel-glow shadow-2xl space-y-6 animate-fadeIn"
@@ -961,165 +1079,256 @@ export const DailyStudyLog: React.FC = () => {
 
       {/* 4. Study Log Table Section */}
       <div className="space-y-4">
-        {/* Table Top Controls */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 font-mono pb-4 border-b border-white/10">
-          <div 
-            onClick={scrollToCenterTable}
-            className="cursor-pointer group/title select-none"
-            title="Click to center table on screen"
-          >
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-stone-900 dark:text-white group-hover/title:text-[#e9762b] transition tracking-tight uppercase font-mono">
-              Study Log
-            </h1>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm">
-            {/* Toggle to enable/disable Top Edit Form */}
-            <div className="flex items-center gap-2.5 border-magic-bar px-4 py-2 rounded-full select-none">
-              <span className="text-xs uppercase tracking-wider text-slate-400 font-bold font-mono">
-                EDIT FORM:
-              </span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={enableTopForm}
-                onClick={() => {
-                  const next = !enableTopForm;
-                  setEnableTopForm(next);
-                  if (next) {
-                    setShowForm(true);
-                    handleSelectDayForForm(undefined, formDate || todayStr);
-                  } else {
-                    setShowForm(false);
-                  }
-                }}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
-                  enableTopForm
-                    ? 'bg-[#e9762b] shadow-[0_0_10px_rgba(233,118,43,0.4)]'
-                    : 'bg-[#e0d2c4] dark:bg-[#252524] border border-orange-950/15 dark:border-white/10'
-                }`}
-                title={enableTopForm ? 'Click to disable Top Edit Form' : 'Click to enable Top Edit Form'}
-              >
-                <span
-                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-md transition-transform ${
-                    enableTopForm ? 'translate-x-4' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-              <span className={`text-xs font-mono font-bold uppercase ${enableTopForm ? 'text-[#e9762b]' : 'text-stone-600 dark:text-slate-500'}`}>
-                {enableTopForm ? 'ON' : 'OFF'}
-              </span>
+        {isDefaultTableDeleted ? (
+          <div className="w-full p-8 sm:p-12 rounded-2xl glass-panel text-center space-y-4 border border-dashed border-red-500/40 animate-fadeIn">
+            <div className="w-14 h-14 rounded-2xl bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center mx-auto shadow-inner">
+              <Trash2 className="w-7 h-7" />
             </div>
-
-            {/* Month / Year Filter Dropdown */}
-            <div className="flex items-center gap-2 border-magic-bar px-4 py-2 rounded-full">
-              <span className="text-xs uppercase tracking-wider text-slate-400 font-bold">
-                MONTH:
-              </span>
-              <select
-                value={selectedMonthYear}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedMonthYear(val);
-                  setVisibleLimit(val === 'last30' ? 30 : 20);
-                }}
-                className="bg-transparent text-xs sm:text-sm text-slate-800 dark:text-white focus:outline-none font-bold uppercase cursor-pointer font-mono"
-              >
-                <option value="all" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">ALL MONTHS</option>
-                <option value="last30" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">LAST 30 DAYS</option>
-                {availableMonths.map((m) => (
-                  <option key={m.value} value={m.value} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
-                    {m.label.toUpperCase()}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-1">
+              <h2 className="text-xl sm:text-2xl font-bold font-mono text-stone-900 dark:text-white uppercase tracking-tight">
+                Default Study Log Table Deleted
+              </h2>
+              <p className="text-xs sm:text-sm font-mono text-stone-600 dark:text-slate-400 max-w-md mx-auto">
+                This table is hidden. All your previous logs remain safely saved in your account and can be restored anytime.
+              </p>
             </div>
-
-            {/* + ROW Button */}
             <button
               type="button"
-              onClick={() => handleOpenAddRowModal(todayStr)}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full glass-pill hover:bg-[#e9762b] text-stone-700 dark:text-slate-200 hover:text-black text-xs font-bold uppercase tracking-wider transition border border-orange-950/15 dark:border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm font-mono active:scale-95"
-              title="Add a date row (today or any past date)"
+              onClick={restoreDefaultTable}
+              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#e9762b] text-black font-mono font-bold text-xs uppercase tracking-wider hover:brightness-110 transition shadow-lg shadow-orange-500/20 active:scale-95 cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>ROW</span>
-            </button>
-
-            {/* + COLUMN Button at top right */}
-            <button
-              type="button"
-              onClick={() => setShowAddColumnModal(true)}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full glass-pill hover:bg-[#e9762b] text-slate-200 hover:text-black text-xs font-bold uppercase tracking-wider transition border border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm font-mono active:scale-95"
-              title="Add a custom column"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>COLUMN</span>
+              <RotateCcw className="w-4 h-4" />
+              <span>Restore Study Log Table</span>
             </button>
           </div>
-        </div>
+        ) : (
+          <>
+            {/* Table Top Controls */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 font-mono pb-4 border-b border-white/10">
+              <div className="select-none flex items-center gap-3">
+                <div 
+                  onClick={scrollToCenterTable}
+                  className="cursor-pointer group/title"
+                  title="Click to center table on screen"
+                >
+                  <h1 className="text-3xl sm:text-4xl font-extrabold text-stone-900 dark:text-white group-hover/title:text-[#e9762b] transition tracking-tight uppercase font-mono">
+                    Study Log
+                  </h1>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm('Delete the default Study Log table? (You can restore it anytime)')) {
+                      deleteDefaultTable();
+                    }
+                  }}
+                  className="p-1.5 rounded-lg glass-pill hover:bg-red-500/20 text-stone-400 hover:text-red-400 border border-stone-300/40 dark:border-white/10 transition cursor-pointer"
+                  title="Delete default Study Log table"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
 
-        {/* Table Container with Sticky Horizontal & Vertical Scroll */}
-        <div ref={tableSectionRef} className="w-full rounded-2xl glass-panel overflow-hidden font-mono shadow-2xl scroll-mt-24">
-          <div ref={tableContainerRef} className="overflow-x-auto max-h-[80vh] overflow-y-auto relative scrollbar-thin scrollbar-thumb-white/20">
-            <table className="w-full min-w-full text-left text-xs sm:text-sm border-separate border-spacing-0">
-              {/* Sticky Top Header */}
-              <thead 
-                onClick={scrollToCenterTable}
-                className="sticky top-0 z-40 glass-table-header cursor-pointer select-none"
-                title="Click table bar to center table on screen"
-              >
-                <tr className="text-xs text-stone-800 dark:text-slate-200 uppercase tracking-widest font-bold">
-                  {/* Sticky Date Column Header */}
-                  <th 
-                    onClick={scrollToCenterTable}
-                    className="py-3.5 px-3 sm:px-4 font-bold sticky left-0 top-0 z-50 glass-sticky-th border-r border-white/12 min-w-[110px] w-[110px] sm:min-w-[125px] sm:w-[125px] cursor-pointer"
-                    title="Click date column to center table on screen"
+              <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm">
+                {/* Toggle to enable/disable Top Edit Form */}
+                <div className="flex items-center gap-2.5 border-magic-bar px-4 py-2 rounded-full select-none">
+                  <span className="text-xs uppercase tracking-wider text-slate-400 font-bold font-mono">
+                    EDIT FORM:
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={enableTopForm}
+                    onClick={() => {
+                      const next = !enableTopForm;
+                      setEnableTopForm(next);
+                      if (next) {
+                        setShowForm(true);
+                        handleSelectDayForForm(undefined, formDate || todayStr);
+                      } else {
+                        setShowForm(false);
+                      }
+                    }}
+                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+                      enableTopForm
+                        ? 'bg-[#e9762b] shadow-[0_0_10px_rgba(233,118,43,0.4)]'
+                        : 'bg-[#e0d2c4] dark:bg-[#252524] border border-orange-950/15 dark:border-white/10'
+                    }`}
+                    title={enableTopForm ? 'Click to disable Top Edit Form' : 'Click to enable Top Edit Form'}
                   >
-                    DATE
-                  </th>
-                  <th className="py-3.5 px-3 sm:px-4 font-bold text-center sticky top-0 z-40 min-w-[78px] sm:min-w-[92px]">HOURS</th>
-                  <th className="py-3.5 px-2.5 sm:px-3.5 font-bold text-center sticky top-0 z-40 min-w-[72px] sm:min-w-[84px]">CLASS</th>
-                  <th className="py-3.5 px-2.5 sm:px-3.5 font-bold text-center sticky top-0 z-40 min-w-[74px] sm:min-w-[86px]">PYQS</th>
-                  <th className="py-3.5 px-2.5 sm:px-3.5 font-bold text-center sticky top-0 z-40 min-w-[72px] sm:min-w-[84px]" title="Revision Done">REV</th>
-                  <th className="py-3.5 px-2.5 sm:px-3.5 font-bold text-center sticky top-0 z-40 min-w-[72px] sm:min-w-[84px]" title="Mock Test Taken">MOCK</th>
-                  <th className="py-3.5 px-2.5 sm:px-3.5 font-bold text-center sticky top-0 z-40 min-w-[74px] sm:min-w-[86px]">SLEEP</th>
-                  <th className="py-3.5 px-2.5 sm:px-3.5 font-bold text-center sticky top-0 z-40 min-w-[72px] sm:min-w-[84px]">NOTES</th>
-                  <th className={`py-3.5 px-3 sm:px-4 font-bold text-center sticky top-0 z-40 min-w-[78px] sm:min-w-[92px] ${customColumns.length === 0 ? 'rounded-tr-xl' : ''}`}>FOCUS</th>
+                    <span
+                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-md transition-transform ${
+                        enableTopForm ? 'translate-x-4' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                  <span className={`text-xs font-mono font-bold uppercase ${enableTopForm ? 'text-[#e9762b]' : 'text-stone-600 dark:text-slate-500'}`}>
+                    {enableTopForm ? 'ON' : 'OFF'}
+                  </span>
+                </div>
 
-                  {/* Dynamic Custom Column Headers */}
-                  {customColumns.map((col, idx) => (
-                    <th
-                      key={col.id}
-                      className={`py-3.5 px-3 sm:px-4 font-bold text-center whitespace-nowrap sticky top-0 z-40 min-w-[100px] sm:min-w-[120px] max-w-[160px] ${idx === customColumns.length - 1 ? 'rounded-tr-xl' : ''}`}
-                    >
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingColumn({
-                            id: col.id,
-                            name: col.name,
-                            type: col.type,
-                            options: (col.options || []).join(', '),
-                            index: idx,
-                          });
-                        }}
-                        className="text-xs uppercase tracking-wider font-bold text-stone-800 dark:text-slate-200 hover:text-[#e9762b] truncate max-w-[130px] cursor-pointer transition select-none font-mono"
-                        title={`Click to edit "${col.name}" column`}
+                {/* Month / Year Filter Dropdown */}
+                <div className="flex items-center gap-2 border-magic-bar px-4 py-2 rounded-full">
+                  <span className="text-xs uppercase tracking-wider text-slate-400 font-bold">
+                    MONTH:
+                  </span>
+                  <select
+                    value={selectedMonthYear}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedMonthYear(val);
+                      setVisibleLimit(val === 'last30' ? 30 : 20);
+                    }}
+                    className="bg-transparent text-xs sm:text-sm text-slate-800 dark:text-white focus:outline-none font-bold uppercase cursor-pointer font-mono"
+                  >
+                    <option value="all" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">ALL MONTHS</option>
+                    <option value="last30" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">LAST 30 DAYS</option>
+                    {availableMonths.map((m) => (
+                      <option key={m.value} value={m.value} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
+                        {m.label.toUpperCase()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* + ROW Button */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenAddRowModal(todayStr)}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full glass-pill hover:bg-[#e9762b] text-stone-700 dark:text-slate-200 hover:text-black text-xs font-bold uppercase tracking-wider transition border border-orange-950/15 dark:border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm font-mono active:scale-95"
+                  title="Add a date row (today or any past date)"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>ROW</span>
+                </button>
+
+                {/* + COLUMN Button at top right */}
+                <button
+                  type="button"
+                  onClick={() => setShowAddColumnModal(true)}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full glass-pill hover:bg-[#e9762b] text-slate-200 hover:text-black text-xs font-bold uppercase tracking-wider transition border border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm font-mono active:scale-95"
+                  title="Add a custom column"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>COLUMN</span>
+                </button>
+
+                {/* COLUMNS Manager Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowColumnsManagerModal(true)}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-700 dark:text-slate-200 text-xs font-bold uppercase tracking-wider transition border border-stone-300/80 dark:border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm font-mono active:scale-95"
+                  title="Manage columns (delete/restore default & custom columns)"
+                >
+                  <Settings2 className="w-3.5 h-3.5 text-[#e9762b]" />
+                  <span>COLUMNS</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Table Container with Sticky Horizontal & Vertical Scroll */}
+            <div ref={tableSectionRef} className="w-full rounded-2xl glass-panel overflow-hidden font-mono shadow-2xl scroll-mt-24">
+              <div ref={tableContainerRef} className="overflow-x-auto max-h-[80vh] overflow-y-auto relative scrollbar-thin scrollbar-thumb-white/20">
+                <table className="w-full min-w-full text-left text-xs sm:text-sm border-separate border-spacing-0">
+                  {/* Sticky Top Header */}
+                  <thead 
+                    onClick={scrollToCenterTable}
+                    className="sticky top-0 z-40 glass-table-header cursor-pointer select-none"
+                    title="Click table bar to center table on screen"
+                  >
+                    <tr className="text-xs text-stone-800 dark:text-slate-200 uppercase tracking-widest font-bold">
+                      {/* Sticky Date Column Header */}
+                      <th 
+                        onClick={scrollToCenterTable}
+                        className="py-3.5 px-3 sm:px-4 font-bold sticky left-0 top-0 z-50 glass-sticky-th border-r border-white/12 min-w-[110px] w-[110px] sm:min-w-[125px] sm:w-[125px] cursor-pointer"
+                        title="Click date column to center table on screen"
                       >
-                        {col.name}
-                      </button>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5">
-                {visibleLogs.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={9 + customColumns.length}
-                      className="py-12 text-center text-stone-500 dark:text-slate-400 font-mono text-xs"
+                        DATE
+                      </th>
+
+                      {/* Dynamic Default Columns */}
+                      {DEFAULT_COLUMNS_CONFIG.map((col) => {
+                        if (deletedDefaultColumns.includes(col.key)) return null;
+                        return (
+                          <th
+                            key={col.key}
+                            className={`py-3.5 px-2.5 sm:px-3.5 font-bold text-center sticky top-0 z-40 ${col.minWidth} group/col`}
+                            title={col.title || col.description}
+                          >
+                            <div className="flex items-center justify-center gap-1">
+                              <span>{col.label}</span>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm(`Delete "${col.label}" column from table?`)) {
+                                    deleteDefaultColumn(col.key);
+                                  }
+                                }}
+                                className="opacity-0 group-hover/col:opacity-100 hover:text-red-400 p-0.5 rounded transition cursor-pointer text-stone-400"
+                                title={`Delete ${col.label} column`}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </th>
+                        );
+                      })}
+
+                      {/* Dynamic Custom Column Headers */}
+                      {customColumns.map((col, idx) => (
+                        <th
+                          key={col.id}
+                          className="py-3.5 px-3 sm:px-4 font-bold text-center whitespace-nowrap sticky top-0 z-40 min-w-[100px] sm:min-w-[120px] max-w-[160px] group/customcol"
+                        >
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingColumn({
+                                  id: col.id,
+                                  name: col.name,
+                                  type: col.type,
+                                  options: (col.options || []).join(', '),
+                                  index: idx,
+                                });
+                              }}
+                              className="text-xs uppercase tracking-wider font-bold text-stone-800 dark:text-slate-200 hover:text-[#e9762b] truncate max-w-[110px] cursor-pointer transition select-none font-mono"
+                              title={`Click to edit "${col.name}" column`}
+                            >
+                              {col.name}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`Delete column "${col.name}"?`)) {
+                                  deleteCustomColumn(col.id);
+                                }
+                              }}
+                              className="opacity-0 group-hover/customcol:opacity-100 hover:text-red-400 p-0.5 rounded transition cursor-pointer text-stone-400"
+                              title={`Delete ${col.name} column`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </th>
+                      ))}
+
+                      {/* DEL Column Header */}
+                      <th className="py-3.5 px-2 font-bold text-center sticky top-0 z-40 min-w-[50px] w-[50px] text-stone-500 rounded-tr-xl">
+                        DEL
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {visibleLogs.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={totalDefaultTableCols}
+                          className="py-12 text-center text-stone-500 dark:text-slate-400 font-mono text-xs"
                     >
                       <div className="flex flex-col items-center justify-center space-y-3">
                         <Calendar className="w-8 h-8 text-[#e9762b] opacity-60" />
@@ -1180,139 +1389,155 @@ export const DailyStudyLog: React.FC = () => {
                         </td>
 
                         {/* Study Hours Column */}
-                        <td className="py-3 sm:py-3.5 px-3 sm:px-4 text-center min-w-[78px] sm:min-w-[92px]">
-                          {entry.studyHours != null && Number(entry.studyHours) > 0 ? (
-                            <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">{entry.studyHours}h</span>
-                          ) : (
-                            <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
-                          )}
-                        </td>
+                        {!deletedDefaultColumns.includes('studyHours') && (
+                          <td className="py-3 sm:py-3.5 px-3 sm:px-4 text-center min-w-[78px] sm:min-w-[92px]">
+                            {entry.studyHours != null && Number(entry.studyHours) > 0 ? (
+                              <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">{entry.studyHours}h</span>
+                            ) : (
+                              <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
+                            )}
+                          </td>
+                        )}
 
                         {/* Class Attended Pill */}
-                        <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
-                          <button
-                            type="button"
-                            disabled={!enableTopForm}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!enableTopForm) return;
-                              updateDailyLogField(entry.date, 'attendedClass', !entry.attendedClass);
-                            }}
-                            className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
-                              enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
-                            } ${
-                              entry.attendedClass
-                                ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
-                                : enableTopForm
-                                  ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
-                                  : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
-                            }`}
-                            title={enableTopForm ? "Click to toggle Class Attended" : "Enable 'EDIT FORM' switch or click date button to edit"}
-                          >
-                            {entry.attendedClass ? 'YES' : 'NO'}
-                          </button>
-                        </td>
+                        {!deletedDefaultColumns.includes('attendedClass') && (
+                          <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
+                            <button
+                              type="button"
+                              disabled={!enableTopForm}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!enableTopForm) return;
+                                updateDailyLogField(entry.date, 'attendedClass', !entry.attendedClass);
+                              }}
+                              className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
+                                enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
+                              } ${
+                                entry.attendedClass
+                                  ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
+                                  : enableTopForm
+                                    ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
+                                    : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
+                              }`}
+                              title={enableTopForm ? "Click to toggle Class Attended" : "Enable 'EDIT FORM' switch or click date button to edit"}
+                            >
+                              {entry.attendedClass ? 'YES' : 'NO'}
+                            </button>
+                          </td>
+                        )}
 
                         {/* PYQs Solved */}
-                        <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[74px] sm:min-w-[86px]">
-                          {entry.pyqsSolved != null && Number(entry.pyqsSolved) > 0 ? (
-                            <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">{entry.pyqsSolved}</span>
-                          ) : (
-                            <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
-                          )}
-                        </td>
+                        {!deletedDefaultColumns.includes('pyqsSolved') && (
+                          <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[74px] sm:min-w-[86px]">
+                            {entry.pyqsSolved != null && Number(entry.pyqsSolved) > 0 ? (
+                              <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">{entry.pyqsSolved}</span>
+                            ) : (
+                              <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
+                            )}
+                          </td>
+                        )}
 
                         {/* Revision Done Pill */}
-                        <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
-                          <button
-                            type="button"
-                            disabled={!enableTopForm}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!enableTopForm) return;
-                              updateDailyLogField(entry.date, 'revisionDone', !entry.revisionDone);
-                            }}
-                            className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
-                              enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
-                            } ${
-                              entry.revisionDone
-                                ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
-                                : enableTopForm
-                                  ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
-                                  : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
-                            }`}
-                            title={enableTopForm ? "Click to toggle Revision Done" : "Enable 'EDIT FORM' switch or click date button to edit"}
-                          >
-                            {entry.revisionDone ? 'YES' : 'NO'}
-                          </button>
-                        </td>
+                        {!deletedDefaultColumns.includes('revisionDone') && (
+                          <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
+                            <button
+                              type="button"
+                              disabled={!enableTopForm}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!enableTopForm) return;
+                                updateDailyLogField(entry.date, 'revisionDone', !entry.revisionDone);
+                              }}
+                              className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
+                                enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
+                              } ${
+                                entry.revisionDone
+                                  ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
+                                  : enableTopForm
+                                    ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
+                                    : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
+                              }`}
+                              title={enableTopForm ? "Click to toggle Revision Done" : "Enable 'EDIT FORM' switch or click date button to edit"}
+                            >
+                              {entry.revisionDone ? 'YES' : 'NO'}
+                            </button>
+                          </td>
+                        )}
 
                         {/* Mock Test Taken Pill */}
-                        <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
-                          <button
-                            type="button"
-                            disabled={!enableTopForm}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (!enableTopForm) return;
-                              updateDailyLogField(entry.date, 'mockTestTaken', !entry.mockTestTaken);
-                            }}
-                            className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
-                              enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
-                            } ${
-                              entry.mockTestTaken
-                                ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
-                                : enableTopForm
-                                  ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
-                                  : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
-                            }`}
-                            title={enableTopForm ? "Click to toggle Mock Test Taken" : "Enable 'EDIT FORM' switch or click date button to edit"}
-                          >
-                            {entry.mockTestTaken ? 'YES' : 'NO'}
-                          </button>
-                        </td>
+                        {!deletedDefaultColumns.includes('mockTestTaken') && (
+                          <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
+                            <button
+                              type="button"
+                              disabled={!enableTopForm}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (!enableTopForm) return;
+                                updateDailyLogField(entry.date, 'mockTestTaken', !entry.mockTestTaken);
+                              }}
+                              className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
+                                enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
+                              } ${
+                                entry.mockTestTaken
+                                  ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
+                                  : enableTopForm
+                                    ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
+                                    : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
+                              }`}
+                              title={enableTopForm ? "Click to toggle Mock Test Taken" : "Enable 'EDIT FORM' switch or click date button to edit"}
+                            >
+                              {entry.mockTestTaken ? 'YES' : 'NO'}
+                            </button>
+                          </td>
+                        )}
 
                         {/* Sleep Hours */}
-                        <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[74px] sm:min-w-[86px]">
-                          {entry.sleepHours != null && Number(entry.sleepHours) > 0 ? (
-                            <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">{entry.sleepHours}h</span>
-                          ) : (
-                            <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
-                          )}
-                        </td>
+                        {!deletedDefaultColumns.includes('sleepHours') && (
+                          <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[74px] sm:min-w-[86px]">
+                            {entry.sleepHours != null && Number(entry.sleepHours) > 0 ? (
+                              <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">{entry.sleepHours}h</span>
+                            ) : (
+                              <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
+                            )}
+                          </td>
+                        )}
 
                         {/* Notes Column with Rich Tooltip (no icon) */}
-                        <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
-                          {hasNote ? (
-                            <div className="relative inline-flex items-center justify-center group/note">
-                              <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-bold text-orange-950 dark:text-[#e9762b] bg-orange-500/20 dark:bg-orange-500/15 border border-orange-500/40 dark:border-orange-500/30 select-none">
-                                Note
-                              </span>
-
-                              {/* Hover Tooltip showing the note text */}
-                              <div className="opacity-0 group-hover/note:opacity-100 pointer-events-none transition-opacity duration-200 absolute bottom-full mb-2 z-40 left-1/2 -translate-x-1/2 glass-modal text-xs px-3.5 py-2 rounded-xl shadow-2xl max-w-sm min-w-[200px] text-left whitespace-normal">
-                                <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1">
-                                  {formatDateDisplay(entry.date)} Note:
+                        {!deletedDefaultColumns.includes('notes') && (
+                          <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
+                            {hasNote ? (
+                              <div className="relative inline-flex items-center justify-center group/note">
+                                <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-bold text-orange-950 dark:text-[#e9762b] bg-orange-500/20 dark:bg-orange-500/15 border border-orange-500/40 dark:border-orange-500/30 select-none">
+                                  Note
                                 </span>
-                                <p className="text-stone-900 dark:text-slate-200 text-xs leading-relaxed break-words">
-                                  {entry.notes}
-                                </p>
-                                <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
+
+                                {/* Hover Tooltip showing the note text */}
+                                <div className="opacity-0 group-hover/note:opacity-100 pointer-events-none transition-opacity duration-200 absolute bottom-full mb-2 z-40 left-1/2 -translate-x-1/2 glass-modal text-xs px-3.5 py-2 rounded-xl shadow-2xl max-w-sm min-w-[200px] text-left whitespace-normal">
+                                  <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1">
+                                    {formatDateDisplay(entry.date)} Note:
+                                  </span>
+                                  <p className="text-stone-900 dark:text-slate-200 text-xs leading-relaxed break-words">
+                                    {entry.notes}
+                                  </p>
+                                  <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            <span className="text-stone-400 dark:text-slate-600 font-mono text-xs">--</span>
-                          )}
-                        </td>
+                            ) : (
+                              <span className="text-stone-400 dark:text-slate-600 font-mono text-xs">--</span>
+                            )}
+                          </td>
+                        )}
 
                         {/* Focus Rating */}
-                        <td className="py-3 sm:py-3.5 px-3 sm:px-4 text-center text-stone-900 dark:text-slate-200 font-mono font-bold text-xs sm:text-sm min-w-[78px] sm:min-w-[92px]">
-                          {entry.focusRating != null && Number(entry.focusRating) > 0 ? (
-                            <span>{entry.focusRating}/5</span>
-                          ) : (
-                            <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
-                          )}
-                        </td>
+                        {!deletedDefaultColumns.includes('focusRating') && (
+                          <td className="py-3 sm:py-3.5 px-3 sm:px-4 text-center text-stone-900 dark:text-slate-200 font-mono font-bold text-xs sm:text-sm min-w-[78px] sm:min-w-[92px]">
+                            {entry.focusRating != null && Number(entry.focusRating) > 0 ? (
+                              <span>{entry.focusRating}/5</span>
+                            ) : (
+                              <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
+                            )}
+                          </td>
+                        )}
 
                         {/* Dynamic Custom Column Cells */}
                         {customColumns.map((col) => {
@@ -1374,12 +1599,26 @@ export const DailyStudyLog: React.FC = () => {
                           );
                         })}
 
+                        {/* DEL Column Cell */}
+                        <td className="py-3 sm:py-3.5 px-2 text-center whitespace-nowrap min-w-[50px] w-[50px]">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteEntry(entry.date);
+                            }}
+                            className="p-1.5 rounded-lg text-stone-400 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
+                            title="Delete row"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
                       </tr>
 
                       {/* Expand in place accordion sub-panel */}
                       {isExpanded && accordionState && (
                         <tr className="bg-white/[0.02] backdrop-blur-2xl border-b border-white/10" onClick={(e) => e.stopPropagation()}>
-                          <td colSpan={9 + customColumns.length} className="p-0 border-b border-white/10">
+                          <td colSpan={totalDefaultTableCols} className="p-0 border-b border-white/10">
                             <div 
                               className="sticky left-0 p-3.5 sm:p-5 md:p-6 space-y-4 sm:space-y-5 box-border overflow-hidden"
                               style={{
@@ -1765,9 +2004,30 @@ export const DailyStudyLog: React.FC = () => {
             </div>
           </div>
         </div>
+      </>
+    )}
+  </div>
+</>
+)}
+</div>
+
+        {/* Right / Secondary Column in Side-by-Side Mode */}
+        {isSideBySideView && customTables.length > 0 && (
+          <div className="min-w-0 space-y-4 animate-fadeIn">
+            <div className="text-[11px] font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5 px-1">
+              <span className="w-2 h-2 rounded-full bg-amber-400" />
+              <span>Secondary Table: {activeSecondaryTable ? activeSecondaryTable.title : 'None'}</span>
+            </div>
+            {activeSecondaryTable ? (
+              <CustomStudyTableView table={activeSecondaryTable} />
+            ) : (
+              <div className="p-8 rounded-2xl glass-panel text-center text-xs font-mono text-stone-500">
+                No secondary table available to compare.
+              </div>
+            )}
+          </div>
+        )}
       </div>
-        </>
-      )}
 
       {/* Modal: Add Log Row for Any Date (Today or Past Date) */}
       {showAddRowModal && (
@@ -2449,6 +2709,158 @@ export const DailyStudyLog: React.FC = () => {
                 />
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Columns Manager (Delete / Restore Default & Custom Columns) */}
+      {showColumnsManagerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-lg glass-modal rounded-2xl p-6 sm:p-7 space-y-5 border border-white/20 shadow-2xl font-mono max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Settings2 className="w-5 h-5 text-[#e9762b]" />
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-stone-900 dark:text-white uppercase tracking-wider">
+                    Columns Manager
+                  </h3>
+                  <p className="text-[11px] text-stone-500 dark:text-slate-400">
+                    Delete or restore any column in the default table
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowColumnsManagerModal(false)}
+                className="p-1 rounded-full hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Default Columns List */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
+                  DEFAULT COLUMNS ({activeDefaultColsCount} / {DEFAULT_COLUMNS_CONFIG.length} ACTIVE)
+                </span>
+                {deletedDefaultColumns.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={resetDefaultColumns}
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-[#e9762b] hover:underline cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Restore All</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="divide-y divide-white/5 border border-white/10 rounded-xl overflow-hidden glass-panel">
+                {DEFAULT_COLUMNS_CONFIG.map((col) => {
+                  const isDeleted = deletedDefaultColumns.includes(col.key);
+                  return (
+                    <div
+                      key={col.key}
+                      className="flex items-center justify-between p-3 gap-3 hover:bg-white/[0.02] transition"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-bold uppercase font-mono ${isDeleted ? 'line-through text-stone-400 dark:text-slate-500' : 'text-stone-900 dark:text-white'}`}>
+                            {col.label}
+                          </span>
+                          <span
+                            className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                              isDeleted
+                                ? 'bg-red-500/15 text-red-400 border border-red-500/20'
+                                : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                            }`}
+                          >
+                            {isDeleted ? 'Deleted' : 'Active'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-stone-500 dark:text-slate-400 truncate mt-0.5">
+                          {col.description}
+                        </p>
+                      </div>
+
+                      {isDeleted ? (
+                        <button
+                          type="button"
+                          onClick={() => restoreDefaultColumn(col.key)}
+                          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 text-xs font-bold transition cursor-pointer"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Restore</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete "${col.label}" column from default table?`)) {
+                              deleteDefaultColumn(col.key);
+                            }
+                          }}
+                          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 text-xs font-bold transition cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Delete</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Custom Columns List */}
+            {customColumns.length > 0 && (
+              <div className="space-y-3 pt-2">
+                <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
+                  CUSTOM COLUMNS ({customColumns.length})
+                </span>
+                <div className="divide-y divide-white/5 border border-white/10 rounded-xl overflow-hidden glass-panel">
+                  {customColumns.map((col) => (
+                    <div
+                      key={col.id}
+                      className="flex items-center justify-between p-3 gap-3 hover:bg-white/[0.02] transition"
+                    >
+                      <div className="min-w-0">
+                        <span className="text-xs font-bold uppercase font-mono text-stone-900 dark:text-white">
+                          {col.name}
+                        </span>
+                        <span className="text-[10px] ml-2 px-1.5 py-0.2 rounded bg-white/10 text-slate-400 font-mono">
+                          {col.type}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm(`Delete custom column "${col.name}"?`)) {
+                            deleteCustomColumn(col.id);
+                          }
+                        }}
+                        className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 text-xs font-bold transition cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end pt-4 border-t border-stone-200 dark:border-white/10">
+              <button
+                type="button"
+                onClick={() => setShowColumnsManagerModal(false)}
+                className="px-5 py-2 rounded-full bg-[#e9762b] text-black text-xs font-mono font-bold uppercase tracking-wider hover:brightness-110 transition cursor-pointer active:scale-95 shadow-md shadow-orange-500/20"
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

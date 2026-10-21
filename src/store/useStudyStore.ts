@@ -4,6 +4,8 @@ import confetti from 'canvas-confetti';
 import { 
   Language, 
   Subject, 
+  Chapter,
+  Topic,
   StudySession, 
   Task, 
   ExamCountdown, 
@@ -37,6 +39,12 @@ import {
   dbSaveExamCountdown,
   dbDeleteExamCountdown,
   dbUpdateProfile,
+  dbSaveCustomTable,
+  dbDeleteCustomTable,
+  dbSaveCustomColumns,
+  uploadAllUserDataToSupabase,
+  dbClearAllDailyLogs,
+  dbSaveTableConfig,
   resetSupabaseClient,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY
@@ -72,6 +80,8 @@ interface StudyState {
   supabaseUrl: string;
   supabaseAnonKey: string;
   isCloudSynced: boolean;
+  isSyncing: boolean;
+  lastSyncedAt: string | null;
 
   // Daily Study Log Module
   dailyLogs: DailyLogEntry[];
@@ -79,6 +89,21 @@ interface StudyState {
   addOrUpdateDailyLog: (entry: DailyLogEntry) => void;
   updateDailyLogField: <K extends keyof DailyLogEntry>(date: string, field: K, value: DailyLogEntry[K]) => void;
   deleteDailyLog: (date: string) => void;
+
+  // Default Table Deletion & Column Customization
+  deletedDefaultColumns: string[];
+  isDefaultTableDeleted: boolean;
+  deleteDefaultColumn: (colKey: string) => void;
+  restoreDefaultColumn: (colKey: string) => void;
+  resetDefaultColumns: () => void;
+  deleteDefaultTable: () => void;
+  restoreDefaultTable: () => void;
+
+  // Side-by-Side Dual Table Mode
+  isSideBySideView: boolean;
+  secondaryTableId: string | null;
+  setSideBySideView: (val: boolean) => void;
+  setSecondaryTableId: (id: string | null) => void;
 
   // Custom Columns Module (for main daily study log)
   customColumns: CustomColumn[];
@@ -151,6 +176,7 @@ interface StudyState {
 
   // Syllabus Map Actions
   addSubject: (name: string, color: string, icon: string, examDate?: string) => void;
+  deleteSubject: (subjectId: string) => void;
   addChapter: (subjectId: string, title: string) => void;
   addTopic: (subjectId: string, chapterId: string, name: string) => void;
   toggleTopicStatus: (subjectId: string, chapterId: string, topicId: string) => void;
@@ -168,6 +194,7 @@ interface StudyState {
 
   // Cloud Config
   setSupabaseConfig: (url: string, key: string) => void;
+  syncUserData: (forcedUserId?: string) => Promise<void>;
   loadUserData: (userId: string) => Promise<void>;
   clearUserData: () => void;
   resetToDefaults: () => void;
@@ -320,6 +347,65 @@ export const applyTheme = (theme: ThemeMode) => {
   }
 };
 
+export function convertDailyLogsToCustomTable(
+  logs: DailyLogEntry[],
+  title: string,
+  customColumns: CustomColumn[] = []
+): CustomStudyTable {
+  const baseColumns: CustomTableColumn[] = [
+    { id: 'col_studyHours', name: 'HOURS', type: 'number', unit: 'h' },
+    { id: 'col_attendedClass', name: 'CLASS', type: 'boolean' },
+    { id: 'col_pyqsSolved', name: 'PYQS', type: 'number' },
+    { id: 'col_revisionDone', name: 'REV', type: 'boolean' },
+    { id: 'col_mockTestTaken', name: 'MOCK', type: 'boolean' },
+    { id: 'col_sleepHours', name: 'SLEEP', type: 'number', unit: 'h' },
+    { id: 'col_focusRating', name: 'FOCUS', type: 'rating' },
+  ];
+
+  (customColumns || []).forEach((c) => {
+    baseColumns.push({
+      id: `col_${c.id}`,
+      name: c.name,
+      type: (c.type === 'select' ? 'select' : c.type === 'number' ? 'number' : c.type === 'boolean' ? 'boolean' : 'text') as CustomTableColumnType,
+      options: c.options,
+    });
+  });
+
+  const rows: CustomTableRow[] = (logs || []).map((log, idx) => {
+    const values: Record<string, any> = {
+      col_studyHours: log.studyHours,
+      col_attendedClass: log.attendedClass,
+      col_pyqsSolved: log.pyqsSolved,
+      col_revisionDone: log.revisionDone,
+      col_mockTestTaken: log.mockTestTaken,
+      col_sleepHours: log.sleepHours,
+      col_focusRating: log.focusRating,
+    };
+    if (log.customData) {
+      Object.entries(log.customData).forEach(([k, v]) => {
+        values[`col_${k}`] = v;
+      });
+    }
+
+    return {
+      id: `row_dev2_${log.date}_${idx}`,
+      date: log.date,
+      values,
+      notes: log.notes || '',
+      createdAt: new Date().toISOString(),
+    };
+  });
+
+  return {
+    id: `tbl_device2_${Date.now()}`,
+    title,
+    description: 'Independent table preserved from local device data',
+    createdAt: getLocalTodayDateString(),
+    columns: baseColumns,
+    rows,
+  };
+}
+
 export const useStudyStore = create<StudyState>()(
   persist(
     (set, get) => ({
@@ -340,6 +426,10 @@ export const useStudyStore = create<StudyState>()(
       sessions: [],
       tasks: [],
       dailyLogs: ensureDailyLogsDateWise([]),
+      deletedDefaultColumns: [],
+      isDefaultTableDeleted: false,
+      isSideBySideView: false,
+      secondaryTableId: null,
       customColumns: [],
       customTables: [],
       activeTableId: 'main',
@@ -366,11 +456,89 @@ export const useStudyStore = create<StudyState>()(
       supabaseUrl: DEFAULT_SUPABASE_URL,
       supabaseAnonKey: DEFAULT_SUPABASE_ANON_KEY,
       isCloudSynced: true,
+      isSyncing: false,
+      lastSyncedAt: null,
+
+      // Default Table Column Customization & Table Deletion Actions
+      deleteDefaultColumn: (colKey) => {
+        set((state) => ({
+          deletedDefaultColumns: Array.from(new Set([...(state.deletedDefaultColumns || []), colKey])),
+        }));
+        const uid = getCurrentUserId();
+        if (uid) {
+          dbSaveTableConfig(uid, {
+            deletedDefaultColumns: get().deletedDefaultColumns,
+            isDefaultTableDeleted: get().isDefaultTableDeleted,
+          });
+        }
+      },
+
+      restoreDefaultColumn: (colKey) => {
+        set((state) => ({
+          deletedDefaultColumns: (state.deletedDefaultColumns || []).filter((k) => k !== colKey),
+        }));
+        const uid = getCurrentUserId();
+        if (uid) {
+          dbSaveTableConfig(uid, {
+            deletedDefaultColumns: get().deletedDefaultColumns,
+            isDefaultTableDeleted: get().isDefaultTableDeleted,
+          });
+        }
+      },
+
+      resetDefaultColumns: () => {
+        set({ deletedDefaultColumns: [] });
+        const uid = getCurrentUserId();
+        if (uid) {
+          dbSaveTableConfig(uid, {
+            deletedDefaultColumns: [],
+            isDefaultTableDeleted: get().isDefaultTableDeleted,
+          });
+        }
+      },
+
+      deleteDefaultTable: () => {
+        const { customTables } = get();
+        const nextActive = customTables.length > 0 ? customTables[0].id : 'main';
+        set({
+          isDefaultTableDeleted: true,
+          dailyLogs: [],
+          activeTableId: nextActive,
+        });
+        const uid = getCurrentUserId();
+        if (uid) {
+          dbClearAllDailyLogs(uid);
+          dbSaveTableConfig(uid, {
+            deletedDefaultColumns: get().deletedDefaultColumns,
+            isDefaultTableDeleted: true,
+          });
+        }
+      },
+
+      restoreDefaultTable: () => {
+        const todayStr = getLocalTodayDateString();
+        set({
+          isDefaultTableDeleted: false,
+          dailyLogs: [createDefaultDailyLog(todayStr)],
+          activeTableId: 'main',
+        });
+        const uid = getCurrentUserId();
+        if (uid) {
+          dbSaveDailyLog(uid, createDefaultDailyLog(todayStr));
+          dbSaveTableConfig(uid, {
+            deletedDefaultColumns: get().deletedDefaultColumns,
+            isDefaultTableDeleted: false,
+          });
+        }
+      },
+
+      setSideBySideView: (val) => set({ isSideBySideView: val }),
+      setSecondaryTableId: (id) => set({ secondaryTableId: id }),
 
       // Daily Study Log Actions
       ensureTodayDailyLog: () => {
         set((state) => ({
-          dailyLogs: ensureDailyLogsDateWise(state.dailyLogs),
+          dailyLogs: state.isDefaultTableDeleted ? [] : ensureDailyLogsDateWise(state.dailyLogs),
         }));
       },
 
@@ -425,6 +593,8 @@ export const useStudyStore = create<StudyState>()(
         set((state) => ({
           customColumns: [...(state.customColumns || []), newCol],
         }));
+        const uid = getCurrentUserId();
+        if (uid) dbSaveCustomColumns(uid, get().customColumns);
       },
       updateCustomColumn: (id, updates) => {
         set((state) => ({
@@ -432,6 +602,8 @@ export const useStudyStore = create<StudyState>()(
             c.id === id ? { ...c, ...updates } : c
           ),
         }));
+        const uid = getCurrentUserId();
+        if (uid) dbSaveCustomColumns(uid, get().customColumns);
       },
       deleteCustomColumn: (id) => {
         set((state) => ({
@@ -443,6 +615,8 @@ export const useStudyStore = create<StudyState>()(
             return { ...log, customData: nextData };
           }),
         }));
+        const uid = getCurrentUserId();
+        if (uid) dbSaveCustomColumns(uid, get().customColumns);
       },
       reorderCustomColumns: (fromIndex, toIndex) => {
         set((state) => {
@@ -454,6 +628,8 @@ export const useStudyStore = create<StudyState>()(
           list.splice(toIndex, 0, moved);
           return { customColumns: list };
         });
+        const uid = getCurrentUserId();
+        if (uid) dbSaveCustomColumns(uid, get().customColumns);
       },
       updateDailyLogCustomField: (date, columnId, value) => {
         set((state) => {
@@ -472,6 +648,9 @@ export const useStudyStore = create<StudyState>()(
           });
           return { dailyLogs: updated };
         });
+        const uid = getCurrentUserId();
+        const updated = get().dailyLogs.find((l) => l.date === date);
+        if (uid && updated) dbSaveDailyLog(uid, updated);
       },
 
       // Customizable Study Tables Actions
@@ -511,6 +690,8 @@ export const useStudyStore = create<StudyState>()(
           customTables: [...(state.customTables || []), newTable],
           activeTableId: newId,
         }));
+        const uid = getCurrentUserId();
+        if (uid) dbSaveCustomTable(uid, newTable, get().customTables);
         return newId;
       },
 
@@ -520,6 +701,9 @@ export const useStudyStore = create<StudyState>()(
             t.id === tableId ? { ...t, ...updates } : t
           ),
         }));
+        const uid = getCurrentUserId();
+        const target = get().customTables.find((t) => t.id === tableId);
+        if (uid && target) dbSaveCustomTable(uid, target, get().customTables);
       },
 
       deleteCustomTable: (tableId) => {
@@ -527,6 +711,8 @@ export const useStudyStore = create<StudyState>()(
           customTables: (state.customTables || []).filter((t) => t.id !== tableId),
           activeTableId: state.activeTableId === tableId ? 'main' : state.activeTableId,
         }));
+        const uid = getCurrentUserId();
+        if (uid) dbDeleteCustomTable(uid, tableId, get().customTables);
       },
 
       addCustomTableRow: (tableId, date, values = {}, notes = '') => {
@@ -545,6 +731,9 @@ export const useStudyStore = create<StudyState>()(
             return { ...tbl, rows: nextRows };
           }),
         }));
+        const uid = getCurrentUserId();
+        const target = get().customTables.find((t) => t.id === tableId);
+        if (uid && target) dbSaveCustomTable(uid, target, get().customTables);
       },
 
       updateCustomTableCell: (tableId, rowId, columnId, value) => {
@@ -566,6 +755,9 @@ export const useStudyStore = create<StudyState>()(
             };
           }),
         }));
+        const uid = getCurrentUserId();
+        const target = get().customTables.find((t) => t.id === tableId);
+        if (uid && target) dbSaveCustomTable(uid, target, get().customTables);
       },
 
       updateCustomTableRowNotes: (tableId, rowId, notes) => {
@@ -578,6 +770,9 @@ export const useStudyStore = create<StudyState>()(
             };
           }),
         }));
+        const uid = getCurrentUserId();
+        const target = get().customTables.find((t) => t.id === tableId);
+        if (uid && target) dbSaveCustomTable(uid, target, get().customTables);
       },
 
       deleteCustomTableRow: (tableId, rowId) => {
@@ -590,6 +785,9 @@ export const useStudyStore = create<StudyState>()(
             };
           }),
         }));
+        const uid = getCurrentUserId();
+        const target = get().customTables.find((t) => t.id === tableId);
+        if (uid && target) dbSaveCustomTable(uid, target, get().customTables);
       },
 
       addCustomTableColumn: (tableId, col) => {
@@ -606,6 +804,9 @@ export const useStudyStore = create<StudyState>()(
             };
           }),
         }));
+        const uid = getCurrentUserId();
+        const target = get().customTables.find((t) => t.id === tableId);
+        if (uid && target) dbSaveCustomTable(uid, target, get().customTables);
       },
 
       updateCustomTableColumn: (tableId, columnId, updates) => {
@@ -618,6 +819,9 @@ export const useStudyStore = create<StudyState>()(
             };
           }),
         }));
+        const uid = getCurrentUserId();
+        const target = get().customTables.find((t) => t.id === tableId);
+        if (uid && target) dbSaveCustomTable(uid, target, get().customTables);
       },
 
       deleteCustomTableColumn: (tableId, columnId) => {
@@ -636,6 +840,9 @@ export const useStudyStore = create<StudyState>()(
             };
           }),
         }));
+        const uid = getCurrentUserId();
+        const target = get().customTables.find((t) => t.id === tableId);
+        if (uid && target) dbSaveCustomTable(uid, target, get().customTables);
       },
 
       reorderCustomTableColumns: (tableId, fromIndex, toIndex) => {
@@ -651,6 +858,9 @@ export const useStudyStore = create<StudyState>()(
             return { ...tbl, columns: cols };
           }),
         }));
+        const uid = getCurrentUserId();
+        const target = get().customTables.find((t) => t.id === tableId);
+        if (uid && target) dbSaveCustomTable(uid, target, get().customTables);
       },
 
       // Timer Settings & Stopwatch Actions
@@ -1088,6 +1298,12 @@ export const useStudyStore = create<StudyState>()(
         if (uid) dbSaveSubject(uid, newSubject);
       },
 
+      deleteSubject: (subjectId) => {
+        set((state) => ({ subjects: state.subjects.filter((s) => s.id !== subjectId) }));
+        const uid = getCurrentUserId();
+        if (uid) dbDeleteSubject(uid, subjectId);
+      },
+
       addChapter: (subjectId, title) => {
         const newChapter = {
           id: `ch-${Date.now()}`,
@@ -1256,30 +1472,296 @@ export const useStudyStore = create<StudyState>()(
         });
       },
 
-      loadUserData: async (userId: string) => {
-        const data = await fetchUserDataFromSupabase(userId);
-        if (!data) return;
+      syncUserData: async (forcedUserId?: string) => {
+        const uid = forcedUserId || getCurrentUserId();
+        if (!uid) return;
 
-        set((state) => ({
-          isCloudSynced: true,
-          subjects: data.subjects || [],
-          sessions: data.sessions || [],
-          tasks: data.tasks || [],
-          dailyLogs: ensureDailyLogsDateWise(data.dailyLogs || []),
-          examCountdowns: data.examCountdowns || [],
-          user: {
-            ...state.user,
-            ...(data.profile?.name ? { name: data.profile.name } : {}),
-            ...(data.profile?.email ? { email: data.profile.email } : {}),
-            ...(data.profile?.dailyTargetMinutes ? { dailyTargetMinutes: data.profile.dailyTargetMinutes } : {}),
-            ...(data.profile?.streakDays != null ? { streakDays: data.profile.streakDays } : {}),
-            ...(data.profile?.longestStreak != null ? { longestStreak: data.profile.longestStreak } : {}),
-            ...(data.profile?.lastStudiedDate ? { lastStudiedDate: data.profile.lastStudiedDate } : {}),
-            ...(data.profile?.lastActiveSubjectId ? { lastActiveSubjectId: data.profile.lastActiveSubjectId } : {}),
-            ...(data.profile?.friendCode ? { friendCode: data.profile.friendCode } : {}),
-            ...(data.profile?.customWordmarkText ? { customWordmarkText: data.profile.customWordmarkText } : {}),
-          },
-        }));
+        set({ isSyncing: true });
+
+        try {
+          const remote = await fetchUserDataFromSupabase(uid);
+          if (!remote) {
+            set({ isSyncing: false });
+            return;
+          }
+
+          const current = get();
+
+          // 1. Two-way merge for Subjects (with deep chapter & topic merge)
+          const subjectMap = new Map<string, Subject>();
+          (remote.subjects || []).forEach((s) => subjectMap.set(s.id, s));
+          const subjectsToUpload: Subject[] = [];
+          (current.subjects || []).forEach((s) => {
+            if (!subjectMap.has(s.id)) {
+              subjectMap.set(s.id, s);
+              subjectsToUpload.push(s);
+            } else {
+              const remoteSub = subjectMap.get(s.id)!;
+              const chapMap = new Map<string, Chapter>();
+              (remoteSub.chapters || []).forEach((c) => chapMap.set(c.id, c));
+              let chapsChanged = false;
+
+              (s.chapters || []).forEach((localChap) => {
+                if (!chapMap.has(localChap.id)) {
+                  chapMap.set(localChap.id, localChap);
+                  chapsChanged = true;
+                } else {
+                  const remoteChap = chapMap.get(localChap.id)!;
+                  const topicMap = new Map<string, Topic>();
+                  (remoteChap.topics || []).forEach((t) => topicMap.set(t.id, t));
+                  let topicsChanged = false;
+
+                  (localChap.topics || []).forEach((localTop) => {
+                    if (!topicMap.has(localTop.id)) {
+                      topicMap.set(localTop.id, localTop);
+                      topicsChanged = true;
+                    } else {
+                      const remoteTop = topicMap.get(localTop.id)!;
+                      const isCompleted = remoteTop.status === 'completed' || localTop.status === 'completed';
+                      const mergedStatus: TopicStatus = isCompleted ? 'completed' : (localTop.status || remoteTop.status);
+                      const confidence = localTop.confidence || remoteTop.confidence;
+                      if (mergedStatus !== remoteTop.status || confidence !== remoteTop.confidence) {
+                        topicMap.set(localTop.id, { ...remoteTop, status: mergedStatus, confidence });
+                        topicsChanged = true;
+                      }
+                    }
+                  });
+
+                  if (topicsChanged) {
+                    chapMap.set(localChap.id, {
+                      ...remoteChap,
+                      topics: Array.from(topicMap.values()),
+                      notes: localChap.notes || remoteChap.notes,
+                      formulas: localChap.formulas || remoteChap.formulas,
+                    });
+                    chapsChanged = true;
+                  }
+                }
+              });
+
+              if (chapsChanged) {
+                const mergedSub: Subject = {
+                  ...remoteSub,
+                  chapters: Array.from(chapMap.values()),
+                };
+                subjectMap.set(s.id, mergedSub);
+                subjectsToUpload.push(mergedSub);
+              }
+            }
+          });
+
+          // 2. Two-way merge for Sessions
+          const sessionMap = new Map<string, StudySession>();
+          (remote.sessions || []).forEach((s) => sessionMap.set(s.id, s));
+          const sessionsToUpload: StudySession[] = [];
+          (current.sessions || []).forEach((s) => {
+            if (!sessionMap.has(s.id)) {
+              sessionMap.set(s.id, s);
+              sessionsToUpload.push(s);
+            }
+          });
+
+          // 3. Two-way merge for Tasks
+          const taskMap = new Map<string, Task>();
+          (remote.tasks || []).forEach((t) => taskMap.set(t.id, t));
+          const tasksToUpload: Task[] = [];
+          (current.tasks || []).forEach((t) => {
+            if (!taskMap.has(t.id)) {
+              taskMap.set(t.id, t);
+              tasksToUpload.push(t);
+            }
+          });
+
+          // 4. Default Table Sync (Non-merging multi-device preservation)
+          // If remote already has default table data, AND local also has independent default table data:
+          // Instead of merging internal rows or columns, preserve local as an independent table
+          // titled "Daily Study Log (Device 2)" so both tables exist side by side with zero internal rows/columns merged!
+          const remoteHasLogs = (remote.dailyLogs || []).some(
+            (l) => (l.studyHours || 0) > 0 || l.attendedClass || l.notes || (l.pyqsSolved || 0) > 0 || Object.keys(l.customData || {}).length > 0
+          );
+          const localHasLogs = (current.dailyLogs || []).some(
+            (l) => (l.studyHours || 0) > 0 || l.attendedClass || l.notes || (l.pyqsSolved || 0) > 0 || Object.keys(l.customData || {}).length > 0
+          );
+
+          let finalDailyLogs: DailyLogEntry[] = remote.dailyLogs || [];
+          const logsToUpload: DailyLogEntry[] = [];
+          const preservedLocalTables: CustomStudyTable[] = [];
+
+          if (remoteHasLogs && localHasLogs) {
+            // Check if local has distinct content from remote
+            const isDifferent = JSON.stringify(remote.dailyLogs) !== JSON.stringify(current.dailyLogs);
+            if (isDifferent) {
+              // Convert local default table into an independent CustomStudyTable!
+              // Neither table is merged internally!
+              const preservedTable = convertDailyLogsToCustomTable(
+                current.dailyLogs,
+                'Daily Study Log (Device 2)',
+                current.customColumns
+              );
+              preservedLocalTables.push(preservedTable);
+              finalDailyLogs = remote.dailyLogs;
+            }
+          } else if (!remoteHasLogs && localHasLogs) {
+            // First time device sync (only local has logs)
+            finalDailyLogs = current.dailyLogs;
+            logsToUpload.push(...current.dailyLogs);
+          } else if (remoteHasLogs && !localHasLogs) {
+            finalDailyLogs = remote.dailyLogs;
+          }
+
+          // 5. Two-way merge for Custom Tables
+          const tableMap = new Map<string, CustomStudyTable>();
+          (remote.customTables || []).forEach((t) => tableMap.set(t.id, t));
+          const tablesToUpload: CustomStudyTable[] = [];
+          let tablesNeedUpload = false;
+
+          // If we preserved a local device table, add it directly to tableMap!
+          preservedLocalTables.forEach((pt) => {
+            if (!tableMap.has(pt.id)) {
+              tableMap.set(pt.id, pt);
+              tablesToUpload.push(pt);
+              tablesNeedUpload = true;
+            }
+          });
+
+          (current.customTables || []).forEach((localT) => {
+            if (!tableMap.has(localT.id)) {
+              tableMap.set(localT.id, localT);
+              tablesToUpload.push(localT);
+              tablesNeedUpload = true;
+            } else {
+              const remoteT = tableMap.get(localT.id)!;
+
+              // 5a. Merge table columns
+              const colMap = new Map<string, CustomTableColumn>();
+              (remoteT.columns || []).forEach((c) => colMap.set(c.id, c));
+              let colsChanged = false;
+              (localT.columns || []).forEach((c) => {
+                if (!colMap.has(c.id)) {
+                  colMap.set(c.id, c);
+                  colsChanged = true;
+                }
+              });
+
+              // 5b. Merge table rows
+              const rowMap = new Map<string, CustomTableRow>();
+              (remoteT.rows || []).forEach((r) => rowMap.set(r.id, r));
+              let rowsChanged = false;
+
+              (localT.rows || []).forEach((localR) => {
+                if (!rowMap.has(localR.id)) {
+                  rowMap.set(localR.id, localR);
+                  rowsChanged = true;
+                }
+              });
+
+              if (colsChanged || rowsChanged) {
+                const updatedTable: CustomStudyTable = {
+                  ...remoteT,
+                  columns: Array.from(colMap.values()),
+                  rows: Array.from(rowMap.values()),
+                };
+                tableMap.set(localT.id, updatedTable);
+                tablesToUpload.push(updatedTable);
+                tablesNeedUpload = true;
+              }
+            }
+          });
+
+          // 6. Two-way merge for Custom Columns
+          const colMap = new Map<string, CustomColumn>();
+          (remote.customColumns || []).forEach((c) => colMap.set(c.id, c));
+          let columnsToUpload = false;
+          (current.customColumns || []).forEach((c) => {
+            if (!colMap.has(c.id)) {
+              colMap.set(c.id, c);
+              columnsToUpload = true;
+            }
+          });
+          const mergedColumns = Array.from(colMap.values());
+
+          // 7. Two-way merge for Exam Countdowns
+          const examMap = new Map<string, ExamCountdown>();
+          (remote.examCountdowns || []).forEach((e) => examMap.set(e.id, e));
+          const examsToUpload: ExamCountdown[] = [];
+          (current.examCountdowns || []).forEach((e) => {
+            if (!examMap.has(e.id)) {
+              examMap.set(e.id, e);
+              examsToUpload.push(e);
+            }
+          });
+
+          const mergedSubjects = Array.from(subjectMap.values());
+          const mergedSessions = Array.from(sessionMap.values());
+          const mergedTasks = Array.from(taskMap.values());
+          const isDefDeleted = remote.tableConfig?.isDefaultTableDeleted ?? current.isDefaultTableDeleted;
+          const mergedLogs = isDefDeleted ? [] : ensureDailyLogsDateWise(finalDailyLogs);
+          const mergedTables = Array.from(tableMap.values());
+          const mergedExams = Array.from(examMap.values());
+
+          const shouldEnableSideBySide = preservedLocalTables.length > 0 || current.isSideBySideView;
+          const secondaryId = preservedLocalTables.length > 0
+            ? preservedLocalTables[0].id
+            : (current.secondaryTableId || (mergedTables.length > 0 ? mergedTables[0].id : null));
+
+          set((state) => ({
+            isCloudSynced: true,
+            isSyncing: false,
+            lastSyncedAt: new Date().toISOString(),
+            subjects: mergedSubjects,
+            sessions: mergedSessions,
+            tasks: mergedTasks,
+            dailyLogs: mergedLogs,
+            deletedDefaultColumns: remote.tableConfig?.deletedDefaultColumns || state.deletedDefaultColumns || [],
+            isDefaultTableDeleted: isDefDeleted,
+            isSideBySideView: shouldEnableSideBySide,
+            secondaryTableId: secondaryId,
+            customTables: mergedTables,
+            customColumns: mergedColumns,
+            examCountdowns: mergedExams,
+            user: {
+              ...state.user,
+              ...(remote.profile?.name ? { name: remote.profile.name } : {}),
+              ...(remote.profile?.email ? { email: remote.profile.email } : {}),
+              ...(remote.profile?.dailyTargetMinutes ? { dailyTargetMinutes: remote.profile.dailyTargetMinutes } : {}),
+              ...(remote.profile?.streakDays != null ? { streakDays: Math.max(state.user.streakDays, remote.profile.streakDays) } : {}),
+              ...(remote.profile?.longestStreak != null ? { longestStreak: Math.max(state.user.longestStreak, remote.profile.longestStreak) } : {}),
+              ...(remote.profile?.lastStudiedDate ? { lastStudiedDate: remote.profile.lastStudiedDate } : {}),
+              ...(remote.profile?.lastActiveSubjectId ? { lastActiveSubjectId: remote.profile.lastActiveSubjectId } : {}),
+              ...(remote.profile?.friendCode ? { friendCode: remote.profile.friendCode } : {}),
+              ...(remote.profile?.customWordmarkText ? { customWordmarkText: remote.profile.customWordmarkText } : {}),
+            },
+          }));
+
+          // Upload any local items that didn't exist in Supabase yet
+          if (
+            subjectsToUpload.length > 0 ||
+            sessionsToUpload.length > 0 ||
+            tasksToUpload.length > 0 ||
+            logsToUpload.length > 0 ||
+            tablesToUpload.length > 0 ||
+            tablesNeedUpload ||
+            examsToUpload.length > 0 ||
+            columnsToUpload
+          ) {
+            uploadAllUserDataToSupabase(uid, {
+              subjects: subjectsToUpload,
+              sessions: sessionsToUpload,
+              tasks: tasksToUpload,
+              dailyLogs: logsToUpload,
+              customTables: (tablesToUpload.length > 0 || tablesNeedUpload) ? mergedTables : undefined,
+              customColumns: columnsToUpload ? mergedColumns : undefined,
+              examCountdowns: examsToUpload,
+            }).catch((err) => console.warn('Background sync upload notice:', err));
+          }
+        } catch (err) {
+          console.error('syncUserData error:', err);
+          set({ isSyncing: false });
+        }
+      },
+
+      loadUserData: async (userId: string) => {
+        await get().syncUserData(userId);
       },
 
       clearUserData: () => {
@@ -1288,8 +1770,12 @@ export const useStudyStore = create<StudyState>()(
           sessions: [],
           tasks: [],
           dailyLogs: ensureDailyLogsDateWise([]),
+          customTables: [],
+          customColumns: [],
           examCountdowns: [],
           isCloudSynced: false,
+          isSyncing: false,
+          lastSyncedAt: null,
         });
       },
 
@@ -1470,6 +1956,8 @@ export const useStudyStore = create<StudyState>()(
             friendCode: newCode,
           },
         }));
+        const uid = getCurrentUserId();
+        if (uid) dbUpdateProfile(uid, { friendCode: newCode });
         return newCode;
       },
 
@@ -1489,12 +1977,15 @@ export const useStudyStore = create<StudyState>()(
 
       setCustomWordmarkText: (text: string) => {
         const trimmed = text.trim().slice(0, 12);
+        const nextVal = trimmed ? trimmed : 'studyo';
         set((state) => ({
           user: {
             ...state.user,
-            customWordmarkText: trimmed ? trimmed : 'studyo',
+            customWordmarkText: nextVal,
           },
         }));
+        const uid = getCurrentUserId();
+        if (uid) dbUpdateProfile(uid, { customWordmarkText: nextVal });
       },
 
       resetToDefaults: () => {
@@ -1558,7 +2049,12 @@ export const useStudyStore = create<StudyState>()(
         supabaseUrl: state.supabaseUrl,
         supabaseAnonKey: state.supabaseAnonKey,
         isCloudSynced: state.isCloudSynced,
+        lastSyncedAt: state.lastSyncedAt,
         dailyLogs: state.dailyLogs,
+        deletedDefaultColumns: state.deletedDefaultColumns,
+        isDefaultTableDeleted: state.isDefaultTableDeleted,
+        isSideBySideView: state.isSideBySideView,
+        secondaryTableId: state.secondaryTableId,
         customColumns: state.customColumns,
         customTables: state.customTables,
         activeTableId: state.activeTableId,
@@ -1602,7 +2098,8 @@ export const useStudyStore = create<StudyState>()(
             mergedMap.set(log.date, log);
           }
         });
-        const mergedLogs = ensureDailyLogsDateWise(Array.from(mergedMap.values()));
+        const isDefDeleted = Boolean(persisted.isDefaultTableDeleted);
+        const mergedLogs = isDefDeleted ? [] : ensureDailyLogsDateWise(Array.from(mergedMap.values()));
 
         const isDemoUser =
           persisted.user?.name === 'Alex' &&
@@ -1648,6 +2145,10 @@ export const useStudyStore = create<StudyState>()(
           enableQuickScratchpad: persisted.enableQuickScratchpad ?? false,
           showFinishButton: persisted.showFinishButton ?? true,
           dailyLogs: mergedLogs,
+          deletedDefaultColumns: Array.isArray(persisted.deletedDefaultColumns) ? persisted.deletedDefaultColumns : [],
+          isDefaultTableDeleted: isDefDeleted,
+          isSideBySideView: Boolean(persisted.isSideBySideView),
+          secondaryTableId: persisted.secondaryTableId || null,
           customColumns: Array.isArray(persisted.customColumns) ? persisted.customColumns : [],
           activeTableId: persisted.activeTableId || 'main',
         };

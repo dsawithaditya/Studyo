@@ -25,6 +25,9 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
     supabaseUrl, 
     supabaseAnonKey, 
     isCloudSynced, 
+    isSyncing,
+    lastSyncedAt,
+    syncUserData,
     setSupabaseConfig, 
     clearUserData 
   } = useStudyStore();
@@ -84,20 +87,33 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
           <div className="flex items-center gap-3">
             <div className={`w-3 h-3 rounded-full ${isCloudSynced ? 'bg-emerald-500 animate-ping' : 'bg-amber-500'}`} />
             <div>
-              <p className="text-xs font-bold text-stone-900 dark:text-white">
-                Current Engine Status: {isCloudSynced ? 'Supabase Cloud Connected' : 'Optimistic Offline-First (LocalStorage/IndexedDB)'}
+              <p className="text-xs font-bold text-stone-900 dark:text-white flex items-center gap-2">
+                <span>Current Status: {isCloudSynced ? 'Connected to Cloud' : 'Offline-First Mode'}</span>
+                {lastSyncedAt && (
+                  <span className="text-[10px] text-stone-400 dark:text-slate-500 font-normal">
+                    (Last: {new Date(lastSyncedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
+                  </span>
+                )}
               </p>
               <p className="text-[11px] text-stone-500 dark:text-slate-400">
                 {isCloudSynced 
-                  ? 'All study sessions and syllabus progress sync to PostgreSQL in background.' 
-                  : 'Zero perceived latency (0ms). All data stored securely in browser.'}
+                  ? 'All subjects, sessions, tasks, daily logs & custom tables sync across devices.' 
+                  : 'Zero latency. Data stored locally in browser until account connects.'}
               </p>
             </div>
           </div>
 
-          <span className="text-[11px] font-mono px-2.5 py-1 rounded-xl bg-stone-200/80 dark:bg-white/5 text-indigo-700 dark:text-indigo-300 border border-stone-300 dark:border-white/10 shrink-0 self-start sm:self-auto font-bold">
-            Zero-Lag Mode
-          </span>
+          <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={() => syncUserData()}
+              disabled={isSyncing}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-bold shadow-sm transition cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Architectural Pillars Info from Page 2 */}
