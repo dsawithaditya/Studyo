@@ -97,11 +97,27 @@ export const DailyStudyLog: React.FC = () => {
     [rawLogs]
   );
 
+  const hasMountedSyncRef = useRef(false);
+  const [justSynced, setJustSynced] = useState(false);
+  const prevSyncingRef = useRef(isSyncing);
+
+  useEffect(() => {
+    if (prevSyncingRef.current && !isSyncing) {
+      setJustSynced(true);
+      const timer = setTimeout(() => setJustSynced(false), 2000);
+      return () => clearTimeout(timer);
+    }
+    prevSyncingRef.current = isSyncing;
+  }, [isSyncing]);
+
   useEffect(() => {
     ensureTodayDailyLog();
-    const uid = useAuthStore.getState().currentUser?.id;
-    if (uid) {
-      syncUserData(uid);
+    if (!hasMountedSyncRef.current) {
+      hasMountedSyncRef.current = true;
+      const uid = useAuthStore.getState().currentUser?.id;
+      if (uid) {
+        syncUserData(uid);
+      }
     }
   }, [ensureTodayDailyLog, syncUserData]);
 
@@ -698,16 +714,29 @@ export const DailyStudyLog: React.FC = () => {
             type="button"
             onClick={() => {
               const u = useAuthStore.getState().currentUser;
-              if (u?.id) syncUserData(u.id);
+              if (u?.id) syncUserData(u.id, true);
             }}
             disabled={isSyncing}
-            className={`px-3.5 py-2 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white text-xs font-mono font-bold uppercase tracking-wider transition border border-stone-300/80 dark:border-white/20 hover:border-[#e9762b] cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95 ${
-              isSyncing ? 'opacity-70 animate-pulse' : ''
+            className={`px-3.5 py-2 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-xs font-mono font-bold uppercase tracking-wider transition border cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95 ${
+              isSyncing
+                ? 'opacity-70 animate-pulse text-[#e9762b] border-[#e9762b]/50'
+                : justSynced
+                ? 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10'
+                : 'text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border-stone-300/80 dark:border-white/20 hover:border-[#e9762b]'
             }`}
             title="Sync study log with cloud"
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-[#e9762b] ${isSyncing ? 'animate-spin' : ''}`} />
-            <span>{isSyncing ? 'Syncing...' : 'Sync'}</span>
+            {justSynced ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400">Synced</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className={`w-3.5 h-3.5 text-[#e9762b] ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Syncing...' : 'Sync'}</span>
+              </>
+            )}
           </button>
 
         </div>

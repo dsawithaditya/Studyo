@@ -300,6 +300,11 @@ export async function ensureSupabaseAuth(userId?: string): Promise<boolean> {
 }
 
 async function runEnsureSupabaseAuth(userId?: string): Promise<boolean> {
+  const timeoutPromise = new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 4000));
+  return Promise.race([_internalEnsureSupabaseAuth(userId), timeoutPromise]);
+}
+
+async function _internalEnsureSupabaseAuth(userId?: string): Promise<boolean> {
   const sb = getSupabaseClient();
   if (!sb) return false;
 

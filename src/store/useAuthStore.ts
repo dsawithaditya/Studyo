@@ -555,6 +555,8 @@ if (typeof window !== 'undefined') {
       }
     });
 
+    let lastSyncedUserId: string | null = null;
+
     // Listen to Auth State Changes (including INITIAL_SESSION on page reload)
     sb.auth.onAuthStateChange(async (event, session) => {
       if (
@@ -590,8 +592,13 @@ if (typeof window !== 'undefined') {
           },
         });
 
-        useStudyStore.getState().syncUserData(u.id);
+        // Only trigger store sync on sign in or initial session if not already synced for this user
+        if (event !== 'TOKEN_REFRESHED' && lastSyncedUserId !== u.id) {
+          lastSyncedUserId = u.id;
+          useStudyStore.getState().syncUserData(u.id);
+        }
       } else if (event === 'SIGNED_OUT') {
+        lastSyncedUserId = null;
         useAuthStore.setState({
           currentUser: null,
           session: null,

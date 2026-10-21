@@ -189,7 +189,7 @@ interface StudyState {
 
   // Cloud Config
   setSupabaseConfig: (url: string, key: string) => void;
-  syncUserData: (forcedUserId?: string) => Promise<void>;
+  syncUserData: (forcedUserId?: string, force?: boolean) => Promise<void>;
   loadUserData: (userId: string) => Promise<void>;
   clearUserData: () => void;
   resetToDefaults: () => void;
@@ -662,7 +662,7 @@ export function mergeCustomTablesList(
 }
 
 
-let pendingSyncUid: string | null = null;
+let lastSyncTimestamp = 0;
 
 export const useStudyStore = create<StudyState>()(
   persist(
@@ -1726,15 +1726,23 @@ export const useStudyStore = create<StudyState>()(
         });
       },
 
-      syncUserData: async (forcedUserId?: string) => {
+      syncUserData: async (forcedUserId?: string, force = false) => {
         const uid = forcedUserId || getCurrentUserId();
         if (!uid) return;
-        if (get().isSyncing) {
-          pendingSyncUid = uid;
+        if (get().isSyncing) return;
+
+        const now = Date.now();
+        if (!force && now - lastSyncTimestamp < 2500) {
           return;
         }
 
         set({ isSyncing: true });
+
+        const safetyTimer = setTimeout(() => {
+          if (get().isSyncing) {
+            set({ isSyncing: false });
+          }
+        }, 6000);
 
         try {
           const remote = await fetchUserDataFromSupabase(uid);
@@ -1920,14 +1928,9 @@ export const useStudyStore = create<StudyState>()(
         } catch (err) {
           console.error('syncUserData error:', err);
         } finally {
+          clearTimeout(safetyTimer);
           set({ isSyncing: false });
-          if (pendingSyncUid) {
-            const nextUid = pendingSyncUid;
-            pendingSyncUid = null;
-            setTimeout(() => {
-              get().syncUserData(nextUid);
-            }, 100);
-          }
+          lastSyncTimestamp = Date.now();
         }
       },
 
