@@ -78,10 +78,6 @@ export const DailyStudyLog: React.FC = () => {
     isDefaultTableDeleted = false,
     deleteDefaultTable,
     restoreDefaultTable,
-    isSideBySideView = false,
-    setSideBySideView,
-    secondaryTableId,
-    setSecondaryTableId,
   } = useStudyStore();
 
   const todayStr = getLocalTodayDateString();
@@ -186,16 +182,6 @@ export const DailyStudyLog: React.FC = () => {
   const activeCustomTable = useMemo(() => {
     return (customTables || []).find((t) => t.id === activeTableId);
   }, [customTables, activeTableId]);
-
-  const activeSecondaryTable = useMemo(() => {
-    if (!customTables || customTables.length === 0) return null;
-    if (secondaryTableId) {
-      const found = customTables.find((t) => t.id === secondaryTableId);
-      if (found) return found;
-    }
-    const other = customTables.find((t) => t.id !== activeTableId);
-    return other || customTables[0];
-  }, [customTables, secondaryTableId, activeTableId]);
 
   // Modal to manage & delete/restore columns
   const [showColumnsManagerModal, setShowColumnsManagerModal] = useState(false);
@@ -699,73 +685,10 @@ export const DailyStudyLog: React.FC = () => {
             <span>Add Table</span>
           </button>
 
-          {/* Side-by-Side Dual View Switch */}
-          {customTables.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setSideBySideView(!isSideBySideView)}
-              className={`px-3.5 py-2 rounded-full text-xs font-mono font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95 ${
-                isSideBySideView
-                  ? 'bg-[#e9762b] text-black font-extrabold shadow-md shadow-orange-500/20'
-                  : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border border-stone-300/80 dark:border-white/10'
-              }`}
-              title="Toggle side-by-side multi-device table view"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Side-by-Side: {isSideBySideView ? 'ON' : 'OFF'}</span>
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Side-by-Side Dual Table Container Banner */}
-      {isSideBySideView && customTables.length > 0 && (
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-xl glass-panel border border-[#e9762b]/30 bg-orange-500/5 animate-fadeIn">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#e9762b] animate-pulse" />
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-[#e9762b]">
-              Side-by-Side Multi-Device Mode Active
-            </span>
-            <span className="text-xs font-mono text-stone-600 dark:text-slate-400 hidden lg:inline">
-              (Both tables synced independently without merged rows)
-            </span>
-          </div>
-          <div className="flex items-center gap-2 text-xs font-mono">
-            <span className="text-stone-600 dark:text-slate-400 font-bold uppercase">Compare with:</span>
-            <select
-              value={secondaryTableId || activeSecondaryTable?.id || ''}
-              onChange={(e) => setSecondaryTableId(e.target.value)}
-              className="bg-stone-900 border border-white/20 text-white rounded-lg px-2.5 py-1 text-xs font-mono focus:outline-none focus:border-[#e9762b] cursor-pointer"
-            >
-              {customTables.map((t) => (
-                <option key={t.id} value={t.id} className="bg-stone-900 text-white">
-                  {t.title} ({t.rows.length} rows)
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => setSideBySideView(false)}
-              className="p-1 text-stone-400 hover:text-white rounded transition cursor-pointer"
-              title="Close side-by-side view"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Grid container if side-by-side active */}
-      <div className={isSideBySideView && customTables.length > 0 ? "grid grid-cols-1 xl:grid-cols-2 gap-6 items-start" : "w-full space-y-6"}>
-        {/* Left / Primary Column */}
-        <div className="min-w-0 space-y-4">
-          {isSideBySideView && customTables.length > 0 && (
-            <div className="text-[11px] font-mono font-bold text-[#e9762b] uppercase tracking-wider flex items-center gap-1.5 px-1">
-              <span className="w-2 h-2 rounded-full bg-[#e9762b]" />
-              <span>Primary Table: {activeTableId === 'main' ? 'Study Log (Default)' : activeCustomTable?.title}</span>
-            </div>
-          )}
-          {activeTableId !== 'main' && activeCustomTable ? (
+      {activeTableId !== 'main' && activeCustomTable ? (
             <CustomStudyTableView table={activeCustomTable} />
           ) : (
             <>
@@ -2009,25 +1932,6 @@ export const DailyStudyLog: React.FC = () => {
   </div>
 </>
 )}
-</div>
-
-        {/* Right / Secondary Column in Side-by-Side Mode */}
-        {isSideBySideView && customTables.length > 0 && (
-          <div className="min-w-0 space-y-4 animate-fadeIn">
-            <div className="text-[11px] font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5 px-1">
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              <span>Secondary Table: {activeSecondaryTable ? activeSecondaryTable.title : 'None'}</span>
-            </div>
-            {activeSecondaryTable ? (
-              <CustomStudyTableView table={activeSecondaryTable} />
-            ) : (
-              <div className="p-8 rounded-2xl glass-panel text-center text-xs font-mono text-stone-500">
-                No secondary table available to compare.
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* Modal: Add Log Row for Any Date (Today or Past Date) */}
       {showAddRowModal && (

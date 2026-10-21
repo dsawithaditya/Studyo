@@ -99,11 +99,6 @@ interface StudyState {
   deleteDefaultTable: () => void;
   restoreDefaultTable: () => void;
 
-  // Side-by-Side Dual Table Mode
-  isSideBySideView: boolean;
-  secondaryTableId: string | null;
-  setSideBySideView: (val: boolean) => void;
-  setSecondaryTableId: (id: string | null) => void;
 
   // Custom Columns Module (for main daily study log)
   customColumns: CustomColumn[];
@@ -347,64 +342,325 @@ export const applyTheme = (theme: ThemeMode) => {
   }
 };
 
-export function convertDailyLogsToCustomTable(
-  logs: DailyLogEntry[],
-  title: string,
-  customColumns: CustomColumn[] = []
-): CustomStudyTable {
-  const baseColumns: CustomTableColumn[] = [
-    { id: 'col_studyHours', name: 'HOURS', type: 'number', unit: 'h' },
-    { id: 'col_attendedClass', name: 'CLASS', type: 'boolean' },
-    { id: 'col_pyqsSolved', name: 'PYQS', type: 'number' },
-    { id: 'col_revisionDone', name: 'REV', type: 'boolean' },
-    { id: 'col_mockTestTaken', name: 'MOCK', type: 'boolean' },
-    { id: 'col_sleepHours', name: 'SLEEP', type: 'number', unit: 'h' },
-    { id: 'col_focusRating', name: 'FOCUS', type: 'rating' },
-  ];
+/**
+ * Intelligent Multi-Device Merge Engine
+ * Strictly follows the rules specified for two-way synchronization:
+ * - Study Hours: Takes higher number (Math.max) or whichever was filled
+ * - Checkboxes (attendedClass, revisionDone, mockTestTaken): OR Logic (true always wins)
+ * - PYQs Solved: Takes higher count (Math.max) or non-null
+ * - Sleep Hours: Non-null / filled value wins (or Math.max if both entered)
+ * - Focus Rating: Takes non-null / higher rating (Math.max)
+ * - Notes: Combines both notes ("Note 1 | Note 2" unless duplicate or empty)
+ * - Custom Columns: Deep object merge with intelligent scalar merging
+ */
+export function mergeDailyLogEntryPair(
+  remote: DailyLogEntry,
+  local: DailyLogEntry
+): DailyLogEntry {
+  // 1. Study Hours (studyHours): Takes higher number (Math.max) or whichever was filled
+  const rStudy = remote.studyHours != null ? Number(remote.studyHours) : null;
+  const lStudy = local.studyHours != null ? Number(local.studyHours) : null;
+  let studyHours: number | null | undefined = null;
+  if (rStudy != null && lStudy != null) {
+    studyHours = Math.max(rStudy, lStudy);
+  } else if (rStudy != null) {
+    studyHours = rStudy;
+  } else if (lStudy != null) {
+    studyHours = lStudy;
+  }
 
-  (customColumns || []).forEach((c) => {
-    baseColumns.push({
-      id: `col_${c.id}`,
-      name: c.name,
-      type: (c.type === 'select' ? 'select' : c.type === 'number' ? 'number' : c.type === 'boolean' ? 'boolean' : 'text') as CustomTableColumnType,
-      options: c.options,
-    });
-  });
+  // 2. Checkboxes (attendedClass, revisionDone, mockTestTaken): OR Logic (true always wins)
+  const attendedClass = Boolean(remote.attendedClass || local.attendedClass);
+  const revisionDone = Boolean(remote.revisionDone || local.revisionDone);
+  const mockTestTaken = Boolean(remote.mockTestTaken || local.mockTestTaken);
 
-  const rows: CustomTableRow[] = (logs || []).map((log, idx) => {
-    const values: Record<string, any> = {
-      col_studyHours: log.studyHours,
-      col_attendedClass: log.attendedClass,
-      col_pyqsSolved: log.pyqsSolved,
-      col_revisionDone: log.revisionDone,
-      col_mockTestTaken: log.mockTestTaken,
-      col_sleepHours: log.sleepHours,
-      col_focusRating: log.focusRating,
-    };
-    if (log.customData) {
-      Object.entries(log.customData).forEach(([k, v]) => {
-        values[`col_${k}`] = v;
-      });
+  // 3. PYQs Solved (pyqsSolved): Takes higher count (Math.max) or non-null
+  const rPyqs = remote.pyqsSolved != null ? Number(remote.pyqsSolved) : null;
+  const lPyqs = local.pyqsSolved != null ? Number(local.pyqsSolved) : null;
+  let pyqsSolved: number | null | undefined = null;
+  if (rPyqs != null && lPyqs != null) {
+    pyqsSolved = Math.max(rPyqs, lPyqs);
+  } else if (rPyqs != null) {
+    pyqsSolved = rPyqs;
+  } else if (lPyqs != null) {
+    pyqsSolved = lPyqs;
+  }
+
+  // 4. Sleep Hours (sleepHours): Non-null / filled value wins
+  const rSleep = remote.sleepHours != null ? Number(remote.sleepHours) : null;
+  const lSleep = local.sleepHours != null ? Number(local.sleepHours) : null;
+  let sleepHours: number | null | undefined = null;
+  if (rSleep != null && lSleep != null) {
+    sleepHours = Math.max(rSleep, lSleep);
+  } else if (rSleep != null) {
+    sleepHours = rSleep;
+  } else if (lSleep != null) {
+    sleepHours = lSleep;
+  }
+
+  // 5. Focus Rating (focusRating 1–5): Takes non-null / higher rating
+  const rFocus = remote.focusRating != null ? Number(remote.focusRating) : null;
+  const lFocus = local.focusRating != null ? Number(local.focusRating) : null;
+  let focusRating: number | null | undefined = null;
+  if (rFocus != null && lFocus != null) {
+    focusRating = Math.max(rFocus, lFocus);
+  } else if (rFocus != null) {
+    focusRating = rFocus;
+  } else if (lFocus != null) {
+    focusRating = lFocus;
+  }
+
+  // 6. Notes (notes): Combines both notes ("Note 1 | Note 2")
+  const rNotes = (remote.notes || '').trim();
+  const lNotes = (local.notes || '').trim();
+  let notes = '';
+  if (rNotes && lNotes) {
+    if (rNotes === lNotes) {
+      notes = rNotes;
+    } else if (rNotes.includes(lNotes)) {
+      notes = rNotes;
+    } else if (lNotes.includes(rNotes)) {
+      notes = lNotes;
+    } else {
+      notes = `${rNotes} | ${lNotes}`;
     }
+  } else {
+    notes = rNotes || lNotes || '';
+  }
 
-    return {
-      id: `row_dev2_${log.date}_${idx}`,
-      date: log.date,
-      values,
-      notes: log.notes || '',
-      createdAt: new Date().toISOString(),
-    };
+  // 7. Custom Columns (customData): Deep Object Merge ({ ...device1, ...device2 })
+  const rCustom = remote.customData || {};
+  const lCustom = local.customData || {};
+  const mergedCustomData: Record<string, any> = { ...rCustom, ...lCustom };
+
+  const allKeys = new Set([...Object.keys(rCustom), ...Object.keys(lCustom)]);
+  allKeys.forEach((key) => {
+    const rVal = rCustom[key];
+    const lVal = lCustom[key];
+    if (rVal !== undefined && lVal !== undefined) {
+      if (typeof rVal === 'number' && typeof lVal === 'number') {
+        mergedCustomData[key] = Math.max(rVal, lVal);
+      } else if (typeof rVal === 'boolean' || typeof lVal === 'boolean') {
+        mergedCustomData[key] = Boolean(rVal || lVal);
+      } else if (typeof rVal === 'string' && typeof lVal === 'string') {
+        const rTrim = rVal.trim();
+        const lTrim = lVal.trim();
+        if (rTrim && lTrim) {
+          mergedCustomData[key] =
+            rTrim === lTrim
+              ? rTrim
+              : rTrim.includes(lTrim)
+              ? rTrim
+              : lTrim.includes(rTrim)
+              ? lTrim
+              : `${rTrim} | ${lTrim}`;
+        } else {
+          mergedCustomData[key] = rTrim || lTrim;
+        }
+      } else if (rVal != null && lVal == null) {
+        mergedCustomData[key] = rVal;
+      } else if (lVal != null && rVal == null) {
+        mergedCustomData[key] = lVal;
+      }
+    }
   });
 
   return {
-    id: `tbl_device2_${Date.now()}`,
-    title,
-    description: 'Independent table preserved from local device data',
-    createdAt: getLocalTodayDateString(),
-    columns: baseColumns,
-    rows,
+    date: remote.date || local.date,
+    studyHours,
+    attendedClass,
+    pyqsSolved,
+    revisionDone,
+    mockTestTaken,
+    sleepHours,
+    focusRating,
+    notes,
+    customData: mergedCustomData,
   };
 }
+
+export function mergeDailyLogsList(
+  remoteLogs: DailyLogEntry[] = [],
+  localLogs: DailyLogEntry[] = []
+): { mergedLogs: DailyLogEntry[]; logsToUpload: DailyLogEntry[] } {
+  const remoteMap = new Map<string, DailyLogEntry>();
+  remoteLogs.forEach((l) => {
+    if (l.date) remoteMap.set(l.date, l);
+  });
+
+  const localMap = new Map<string, DailyLogEntry>();
+  localLogs.forEach((l) => {
+    if (l.date) localMap.set(l.date, l);
+  });
+
+  const allDates = Array.from(new Set([...remoteMap.keys(), ...localMap.keys()])).sort();
+  const mergedLogs: DailyLogEntry[] = [];
+  const logsToUpload: DailyLogEntry[] = [];
+
+  allDates.forEach((date) => {
+    const r = remoteMap.get(date);
+    const l = localMap.get(date);
+
+    if (r && l) {
+      const merged = mergeDailyLogEntryPair(r, l);
+      mergedLogs.push(merged);
+      if (JSON.stringify(merged) !== JSON.stringify(r)) {
+        logsToUpload.push(merged);
+      }
+    } else if (l && !r) {
+      mergedLogs.push(l);
+      logsToUpload.push(l);
+    } else if (r) {
+      mergedLogs.push(r);
+    }
+  });
+
+  return { mergedLogs, logsToUpload };
+}
+
+export function mergeCustomTableRowPair(
+  remote: CustomTableRow,
+  local: CustomTableRow
+): CustomTableRow {
+  // Deep cell merge (values: { ...remote, ...local })
+  const rValues = remote.values || {};
+  const lValues = local.values || {};
+  const mergedValues: Record<string, any> = { ...rValues, ...lValues };
+
+  const allKeys = new Set([...Object.keys(rValues), ...Object.keys(lValues)]);
+  allKeys.forEach((key) => {
+    const rVal = rValues[key];
+    const lVal = lValues[key];
+    if (rVal !== undefined && lVal !== undefined) {
+      if (typeof rVal === 'number' && typeof lVal === 'number') {
+        mergedValues[key] = Math.max(rVal, lVal);
+      } else if (typeof rVal === 'boolean' || typeof lVal === 'boolean') {
+        mergedValues[key] = Boolean(rVal || lVal);
+      } else if (typeof rVal === 'string' && typeof lVal === 'string') {
+        const rTrim = rVal.trim();
+        const lTrim = lVal.trim();
+        if (rTrim && lTrim) {
+          mergedValues[key] =
+            rTrim === lTrim
+              ? rTrim
+              : rTrim.includes(lTrim)
+              ? rTrim
+              : lTrim.includes(rTrim)
+              ? lTrim
+              : `${rTrim} | ${lTrim}`;
+        } else {
+          mergedValues[key] = rTrim || lTrim;
+        }
+      } else if (rVal != null && lVal == null) {
+        mergedValues[key] = rVal;
+      } else if (lVal != null && rVal == null) {
+        mergedValues[key] = lVal;
+      }
+    }
+  });
+
+  const rNotes = (remote.notes || '').trim();
+  const lNotes = (local.notes || '').trim();
+  let notes = '';
+  if (rNotes && lNotes) {
+    notes = rNotes === lNotes ? rNotes : `${rNotes} | ${lNotes}`;
+  } else {
+    notes = rNotes || lNotes || '';
+  }
+
+  return {
+    id: remote.id || local.id,
+    date: remote.date || local.date,
+    values: mergedValues,
+    notes,
+    createdAt: remote.createdAt || local.createdAt || new Date().toISOString(),
+  };
+}
+
+export function mergeCustomTablesList(
+  remoteTables: CustomStudyTable[] = [],
+  localTables: CustomStudyTable[] = []
+): { mergedTables: CustomStudyTable[]; tablesNeedUpload: boolean } {
+  const tableMap = new Map<string, CustomStudyTable>();
+  remoteTables.forEach((t) => tableMap.set(t.id, t));
+
+  let tablesNeedUpload = false;
+
+  localTables.forEach((localT) => {
+    if (!tableMap.has(localT.id)) {
+      // Different Table: Unions both tables by ID
+      tableMap.set(localT.id, localT);
+      tablesNeedUpload = true;
+    } else {
+      const remoteT = tableMap.get(localT.id)!;
+
+      // 1. Merge column definitions (Different Columns: Merges column definitions)
+      const colMap = new Map<string, CustomTableColumn>();
+      (remoteT.columns || []).forEach((c) => colMap.set(c.id, c));
+      let colsChanged = false;
+      (localT.columns || []).forEach((c) => {
+        if (!colMap.has(c.id)) {
+          colMap.set(c.id, c);
+          colsChanged = true;
+        }
+      });
+      const mergedColumns = Array.from(colMap.values());
+
+      // 2. Merge rows: Unions rows by row ID & date
+      const remoteRows = remoteT.rows || [];
+      const localRows = localT.rows || [];
+      const mergedRows: CustomTableRow[] = [];
+      const matchedLocalRowIndices = new Set<number>();
+      let rowsChanged = false;
+
+      remoteRows.forEach((rRow) => {
+        let matchIdx = localRows.findIndex(
+          (lRow, idx) => !matchedLocalRowIndices.has(idx) && lRow.id === rRow.id
+        );
+        if (matchIdx === -1 && rRow.date) {
+          matchIdx = localRows.findIndex(
+            (lRow, idx) => !matchedLocalRowIndices.has(idx) && lRow.date === rRow.date
+          );
+        }
+
+        if (matchIdx !== -1) {
+          matchedLocalRowIndices.add(matchIdx);
+          const lRow = localRows[matchIdx];
+          const mergedRow = mergeCustomTableRowPair(rRow, lRow);
+          mergedRows.push(mergedRow);
+          if (JSON.stringify(mergedRow) !== JSON.stringify(rRow)) {
+            rowsChanged = true;
+          }
+        } else {
+          mergedRows.push(rRow);
+        }
+      });
+
+      localRows.forEach((lRow, idx) => {
+        if (!matchedLocalRowIndices.has(idx)) {
+          mergedRows.push(lRow);
+          rowsChanged = true;
+        }
+      });
+
+      if (colsChanged || rowsChanged) {
+        const updatedTable: CustomStudyTable = {
+          ...remoteT,
+          columns: mergedColumns,
+          rows: mergedRows,
+        };
+        tableMap.set(localT.id, updatedTable);
+        tablesNeedUpload = true;
+      }
+    }
+  });
+
+  return {
+    mergedTables: Array.from(tableMap.values()),
+    tablesNeedUpload,
+  };
+}
+
 
 export const useStudyStore = create<StudyState>()(
   persist(
@@ -428,8 +684,6 @@ export const useStudyStore = create<StudyState>()(
       dailyLogs: ensureDailyLogsDateWise([]),
       deletedDefaultColumns: [],
       isDefaultTableDeleted: false,
-      isSideBySideView: false,
-      secondaryTableId: null,
       customColumns: [],
       customTables: [],
       activeTableId: 'main',
@@ -532,8 +786,6 @@ export const useStudyStore = create<StudyState>()(
         }
       },
 
-      setSideBySideView: (val) => set({ isSideBySideView: val }),
-      setSecondaryTableId: (id) => set({ secondaryTableId: id }),
 
       // Daily Study Log Actions
       ensureTodayDailyLog: () => {
@@ -1572,103 +1824,21 @@ export const useStudyStore = create<StudyState>()(
             }
           });
 
-          // 4. Default Table Sync (Non-merging multi-device preservation)
-          // If remote already has default table data, AND local also has independent default table data:
-          // Instead of merging internal rows or columns, preserve local as an independent table
-          // titled "Daily Study Log (Device 2)" so both tables exist side by side with zero internal rows/columns merged!
-          const remoteHasLogs = (remote.dailyLogs || []).some(
-            (l) => (l.studyHours || 0) > 0 || l.attendedClass || l.notes || (l.pyqsSolved || 0) > 0 || Object.keys(l.customData || {}).length > 0
+          // 4. Default Table Sync (Intelligent Multi-Device Merge Engine per specification)
+          const { mergedLogs: rawMergedLogs, logsToUpload } = mergeDailyLogsList(
+            remote.dailyLogs || [],
+            current.dailyLogs || []
           );
-          const localHasLogs = (current.dailyLogs || []).some(
-            (l) => (l.studyHours || 0) > 0 || l.attendedClass || l.notes || (l.pyqsSolved || 0) > 0 || Object.keys(l.customData || {}).length > 0
+          const isDefDeleted = remote.tableConfig?.isDefaultTableDeleted ?? current.isDefaultTableDeleted;
+          const mergedLogs = isDefDeleted ? [] : ensureDailyLogsDateWise(rawMergedLogs);
+
+          // 5. Custom Tables Sync (Intelligent Multi-Device Merge Engine per specification)
+          const { mergedTables, tablesNeedUpload } = mergeCustomTablesList(
+            remote.customTables || [],
+            current.customTables || []
           );
 
-          let finalDailyLogs: DailyLogEntry[] = remote.dailyLogs || [];
-          const logsToUpload: DailyLogEntry[] = [];
-          const preservedLocalTables: CustomStudyTable[] = [];
-
-          if (remoteHasLogs && localHasLogs) {
-            // Check if local has distinct content from remote
-            const isDifferent = JSON.stringify(remote.dailyLogs) !== JSON.stringify(current.dailyLogs);
-            if (isDifferent) {
-              // Convert local default table into an independent CustomStudyTable!
-              // Neither table is merged internally!
-              const preservedTable = convertDailyLogsToCustomTable(
-                current.dailyLogs,
-                'Daily Study Log (Device 2)',
-                current.customColumns
-              );
-              preservedLocalTables.push(preservedTable);
-              finalDailyLogs = remote.dailyLogs;
-            }
-          } else if (!remoteHasLogs && localHasLogs) {
-            // First time device sync (only local has logs)
-            finalDailyLogs = current.dailyLogs;
-            logsToUpload.push(...current.dailyLogs);
-          } else if (remoteHasLogs && !localHasLogs) {
-            finalDailyLogs = remote.dailyLogs;
-          }
-
-          // 5. Two-way merge for Custom Tables
-          const tableMap = new Map<string, CustomStudyTable>();
-          (remote.customTables || []).forEach((t) => tableMap.set(t.id, t));
-          const tablesToUpload: CustomStudyTable[] = [];
-          let tablesNeedUpload = false;
-
-          // If we preserved a local device table, add it directly to tableMap!
-          preservedLocalTables.forEach((pt) => {
-            if (!tableMap.has(pt.id)) {
-              tableMap.set(pt.id, pt);
-              tablesToUpload.push(pt);
-              tablesNeedUpload = true;
-            }
-          });
-
-          (current.customTables || []).forEach((localT) => {
-            if (!tableMap.has(localT.id)) {
-              tableMap.set(localT.id, localT);
-              tablesToUpload.push(localT);
-              tablesNeedUpload = true;
-            } else {
-              const remoteT = tableMap.get(localT.id)!;
-
-              // 5a. Merge table columns
-              const colMap = new Map<string, CustomTableColumn>();
-              (remoteT.columns || []).forEach((c) => colMap.set(c.id, c));
-              let colsChanged = false;
-              (localT.columns || []).forEach((c) => {
-                if (!colMap.has(c.id)) {
-                  colMap.set(c.id, c);
-                  colsChanged = true;
-                }
-              });
-
-              // 5b. Merge table rows
-              const rowMap = new Map<string, CustomTableRow>();
-              (remoteT.rows || []).forEach((r) => rowMap.set(r.id, r));
-              let rowsChanged = false;
-
-              (localT.rows || []).forEach((localR) => {
-                if (!rowMap.has(localR.id)) {
-                  rowMap.set(localR.id, localR);
-                  rowsChanged = true;
-                }
-              });
-
-              if (colsChanged || rowsChanged) {
-                const updatedTable: CustomStudyTable = {
-                  ...remoteT,
-                  columns: Array.from(colMap.values()),
-                  rows: Array.from(rowMap.values()),
-                };
-                tableMap.set(localT.id, updatedTable);
-                tablesToUpload.push(updatedTable);
-                tablesNeedUpload = true;
-              }
-            }
-          });
-
-          // 6. Two-way merge for Custom Columns
+          // 6. Two-way merge for Custom Columns of the Default Table
           const colMap = new Map<string, CustomColumn>();
           (remote.customColumns || []).forEach((c) => colMap.set(c.id, c));
           let columnsToUpload = false;
@@ -1694,15 +1864,7 @@ export const useStudyStore = create<StudyState>()(
           const mergedSubjects = Array.from(subjectMap.values());
           const mergedSessions = Array.from(sessionMap.values());
           const mergedTasks = Array.from(taskMap.values());
-          const isDefDeleted = remote.tableConfig?.isDefaultTableDeleted ?? current.isDefaultTableDeleted;
-          const mergedLogs = isDefDeleted ? [] : ensureDailyLogsDateWise(finalDailyLogs);
-          const mergedTables = Array.from(tableMap.values());
           const mergedExams = Array.from(examMap.values());
-
-          const shouldEnableSideBySide = preservedLocalTables.length > 0 || current.isSideBySideView;
-          const secondaryId = preservedLocalTables.length > 0
-            ? preservedLocalTables[0].id
-            : (current.secondaryTableId || (mergedTables.length > 0 ? mergedTables[0].id : null));
 
           set((state) => ({
             isCloudSynced: true,
@@ -1714,8 +1876,6 @@ export const useStudyStore = create<StudyState>()(
             dailyLogs: mergedLogs,
             deletedDefaultColumns: remote.tableConfig?.deletedDefaultColumns || state.deletedDefaultColumns || [],
             isDefaultTableDeleted: isDefDeleted,
-            isSideBySideView: shouldEnableSideBySide,
-            secondaryTableId: secondaryId,
             customTables: mergedTables,
             customColumns: mergedColumns,
             examCountdowns: mergedExams,
@@ -1733,13 +1893,12 @@ export const useStudyStore = create<StudyState>()(
             },
           }));
 
-          // Upload any local items that didn't exist in Supabase yet
+          // Upload any local items or merged updates that need to sync to Supabase
           if (
             subjectsToUpload.length > 0 ||
             sessionsToUpload.length > 0 ||
             tasksToUpload.length > 0 ||
             logsToUpload.length > 0 ||
-            tablesToUpload.length > 0 ||
             tablesNeedUpload ||
             examsToUpload.length > 0 ||
             columnsToUpload
@@ -1748,8 +1907,8 @@ export const useStudyStore = create<StudyState>()(
               subjects: subjectsToUpload,
               sessions: sessionsToUpload,
               tasks: tasksToUpload,
-              dailyLogs: logsToUpload,
-              customTables: (tablesToUpload.length > 0 || tablesNeedUpload) ? mergedTables : undefined,
+              dailyLogs: logsToUpload.length > 0 ? mergedLogs : undefined,
+              customTables: tablesNeedUpload ? mergedTables : undefined,
               customColumns: columnsToUpload ? mergedColumns : undefined,
               examCountdowns: examsToUpload,
             }).catch((err) => console.warn('Background sync upload notice:', err));
@@ -2053,8 +2212,6 @@ export const useStudyStore = create<StudyState>()(
         dailyLogs: state.dailyLogs,
         deletedDefaultColumns: state.deletedDefaultColumns,
         isDefaultTableDeleted: state.isDefaultTableDeleted,
-        isSideBySideView: state.isSideBySideView,
-        secondaryTableId: state.secondaryTableId,
         customColumns: state.customColumns,
         customTables: state.customTables,
         activeTableId: state.activeTableId,
@@ -2147,8 +2304,6 @@ export const useStudyStore = create<StudyState>()(
           dailyLogs: mergedLogs,
           deletedDefaultColumns: Array.isArray(persisted.deletedDefaultColumns) ? persisted.deletedDefaultColumns : [],
           isDefaultTableDeleted: isDefDeleted,
-          isSideBySideView: Boolean(persisted.isSideBySideView),
-          secondaryTableId: persisted.secondaryTableId || null,
           customColumns: Array.isArray(persisted.customColumns) ? persisted.customColumns : [],
           activeTableId: persisted.activeTableId || 'main',
         };

@@ -19,11 +19,27 @@ export const App: React.FC = () => {
       }
     };
 
+    // Initial sync on mount if user is logged in
+    const user = useAuthStore.getState().currentUser;
+    if (user?.id) {
+      syncUserData(user.id);
+    }
+
     window.addEventListener('focus', handleFocusOrOnline);
     window.addEventListener('online', handleFocusOrOnline);
+
+    // Periodic background sync every 60 seconds when online
+    const intervalId = setInterval(() => {
+      const u = useAuthStore.getState().currentUser;
+      if (u?.id && navigator.onLine) {
+        syncUserData(u.id);
+      }
+    }, 60000);
+
     return () => {
       window.removeEventListener('focus', handleFocusOrOnline);
       window.removeEventListener('online', handleFocusOrOnline);
+      clearInterval(intervalId);
     };
   }, [syncUserData]);
 
