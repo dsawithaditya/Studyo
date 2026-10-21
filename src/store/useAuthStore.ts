@@ -557,24 +557,22 @@ if (typeof window !== 'undefined') {
 
     let lastSyncedUserId: string | null = null;
 
-    // Listen to Auth State Changes (including INITIAL_SESSION on page reload)
-    sb.auth.onAuthStateChange(async (event, session) => {
+    // Listen to Auth State Changes (including INITIAL_SESSION on page reload).
+    // IMPORTANT: this callback must stay synchronous. Awaiting other Supabase calls
+    // inside it deadlocks the auth lock (getSession() then hangs forever), which
+    // silently breaks every cloud fetch/save. Heavy work is deferred via setTimeout.
+    sb.auth.onAuthStateChange((event, session) => {
       if (
         (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') &&
         session?.user
       ) {
         const u = session.user;
-        let studentName = u.user_metadata?.name || u.email?.split('@')[0] || 'Student';
-        try {
-          const { data: profile } = await sb.from('profiles').select('*').eq('id', u.id).maybeSingle();
-          if (profile?.name) studentName = profile.name;
-        } catch {
-          // ignore
-        }
 
+        // Synchronous store update (no network)
+        const prev = useAuthStore.getState().currentUser;
         const authUser: AuthUser = {
           id: u.id,
-          name: studentName,
+          name: prev?.id === u.id && prev.name ? prev.name : (u.user_metadata?.name || u.email?.split('@')[0] || 'Student'),
           email: u.email || '',
           createdAt: u.created_at,
           updatedAt: u.updated_at || u.created_at,
@@ -592,10 +590,12 @@ if (typeof window !== 'undefined') {
           },
         });
 
-        // Only trigger store sync on sign in or initial session if not already synced for this user
+        // Defer network work until the auth lock is released
         if (event !== 'TOKEN_REFRESHED' && lastSyncedUserId !== u.id) {
           lastSyncedUserId = u.id;
-          useStudyStore.getState().syncUserData(u.id);
+          setTimeout(() => {
+            useStudyStore.getState().syncUserData(u.id, true);
+          }, 0);
         }
       } else if (event === 'SIGNED_OUT') {
         lastSyncedUserId = null;

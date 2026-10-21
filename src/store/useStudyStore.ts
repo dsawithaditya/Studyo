@@ -190,6 +190,7 @@ interface StudyState {
   // Cloud Config
   setSupabaseConfig: (url: string, key: string) => void;
   syncUserData: (forcedUserId?: string, force?: boolean) => Promise<void>;
+  syncError: string | null;
   loadUserData: (userId: string) => Promise<void>;
   clearUserData: () => void;
   resetToDefaults: () => void;
@@ -713,6 +714,7 @@ export const useStudyStore = create<StudyState>()(
       supabaseAnonKey: DEFAULT_SUPABASE_ANON_KEY,
       isCloudSynced: true,
       isSyncing: false,
+      syncError: null,
       lastSyncedAt: null,
 
       // Default Table Column Customization & Table Deletion Actions
@@ -1747,8 +1749,10 @@ export const useStudyStore = create<StudyState>()(
         try {
           const remote = await fetchUserDataFromSupabase(uid);
           if (!remote) {
+            set({ syncError: 'Cloud session not active. Please log out and log in again.' });
             return;
           }
+          set({ syncError: null });
 
           const current = get();
 
@@ -1927,6 +1931,7 @@ export const useStudyStore = create<StudyState>()(
           }
         } catch (err) {
           console.error('syncUserData error:', err);
+          set({ syncError: 'Sync failed. Check your connection and try again.' });
         } finally {
           clearTimeout(safetyTimer);
           set({ isSyncing: false });

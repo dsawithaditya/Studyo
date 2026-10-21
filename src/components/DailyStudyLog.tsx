@@ -82,6 +82,7 @@ export const DailyStudyLog: React.FC = () => {
     restoreDefaultTable,
     syncUserData,
     isSyncing,
+    syncError,
   } = useStudyStore();
 
   const todayStr = getLocalTodayDateString();
@@ -102,13 +103,14 @@ export const DailyStudyLog: React.FC = () => {
   const prevSyncingRef = useRef(isSyncing);
 
   useEffect(() => {
-    if (prevSyncingRef.current && !isSyncing) {
+    if (prevSyncingRef.current && !isSyncing && !syncError) {
       setJustSynced(true);
+      prevSyncingRef.current = isSyncing;
       const timer = setTimeout(() => setJustSynced(false), 2000);
       return () => clearTimeout(timer);
     }
     prevSyncingRef.current = isSyncing;
-  }, [isSyncing]);
+  }, [isSyncing, syncError]);
 
   useEffect(() => {
     ensureTodayDailyLog();
@@ -720,24 +722,39 @@ export const DailyStudyLog: React.FC = () => {
             className={`px-3.5 py-2 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-xs font-mono font-bold uppercase tracking-wider transition border cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95 ${
               isSyncing
                 ? 'opacity-70 animate-pulse text-[#e9762b] border-[#e9762b]/50'
+                : syncError
+                ? 'text-red-400 border-red-500/50 bg-red-500/10'
                 : justSynced
                 ? 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10'
                 : 'text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border-stone-300/80 dark:border-white/20 hover:border-[#e9762b]'
             }`}
-            title="Sync study log with cloud"
+            title={syncError || 'Sync study log with cloud'}
           >
-            {justSynced ? (
+            {isSyncing ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 text-[#e9762b] animate-spin" />
+                <span>Syncing...</span>
+              </>
+            ) : syncError ? (
+              <>
+                <X className="w-3.5 h-3.5 text-red-400" />
+                <span className="text-red-400">Sync failed – retry</span>
+              </>
+            ) : justSynced ? (
               <>
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="text-emerald-400">Synced</span>
               </>
             ) : (
               <>
-                <RefreshCw className={`w-3.5 h-3.5 text-[#e9762b] ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Syncing...' : 'Sync'}</span>
+                <RefreshCw className="w-3.5 h-3.5 text-[#e9762b]" />
+                <span>Sync</span>
               </>
             )}
           </button>
+          {syncError && (
+            <span className="text-[10px] font-mono text-red-400 max-w-[240px] leading-tight">{syncError}</span>
+          )}
 
         </div>
       </div>
