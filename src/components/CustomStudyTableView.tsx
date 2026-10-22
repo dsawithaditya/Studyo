@@ -1474,19 +1474,6 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                     </div>
                   </div>
 
-                  {/* Comma-separated raw text fallback */}
-                  <div className="space-y-1 pt-1">
-                    <label className="text-[10px] uppercase tracking-wider text-stone-500 dark:text-slate-500 font-semibold block">
-                      Or edit comma-separated text:
-                    </label>
-                    <input
-                      type="text"
-                      value={newColOptions}
-                      onChange={(e) => setNewColOptions(e.target.value)}
-                      placeholder="e.g. High, Normal, Low"
-                      className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-700 dark:text-slate-300 focus:outline-none"
-                    />
-                  </div>
                 </div>
               )}
 
