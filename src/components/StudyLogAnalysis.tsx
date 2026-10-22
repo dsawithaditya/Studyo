@@ -1,12 +1,16 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useStudyStore } from '../store/useStudyStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { 
   TrendingUp, 
   Flame, 
   CheckCircle2, 
   BarChart2, 
   Sparkles,
-  ChevronDown
+  ChevronDown,
+  RefreshCw,
+  Check,
+  X
 } from 'lucide-react';
 
 export const StudyLogAnalysis: React.FC = () => {
@@ -14,8 +18,24 @@ export const StudyLogAnalysis: React.FC = () => {
     dailyLogs: rawLogs,
     customColumns = [],
     customTables = [],
-    activeTableId = 'main'
+    activeTableId = 'main',
+    syncUserData,
+    isSyncing,
+    syncError,
+    isCloudSynced,
   } = useStudyStore();
+
+  const [justSynced, setJustSynced] = useState(false);
+  const prevSyncingRef = useRef(isSyncing);
+
+  useEffect(() => {
+    if (prevSyncingRef.current && !isSyncing && !syncError) {
+      setJustSynced(true);
+      const timer = setTimeout(() => setJustSynced(false), 2400);
+      return () => clearTimeout(timer);
+    }
+    prevSyncingRef.current = isSyncing;
+  }, [isSyncing, syncError]);
 
   const dailyLogs = useMemo(
     () => (Array.isArray(rawLogs) ? rawLogs : []),
@@ -254,28 +274,79 @@ export const StudyLogAnalysis: React.FC = () => {
           </h1>
         </div>
 
-        {/* Timeframe Toggle (Capsule Bar matching Border Magic theme) */}
-        <div className="flex items-center gap-1.5 border-magic-bar p-1.5 rounded-full text-xs">
+        <div className="flex items-center gap-3">
+          {/* Cloud Sync Button */}
           <button
-            onClick={() => setTimeframe('week')}
-            className={`px-4 py-1.5 rounded-full font-bold uppercase transition cursor-pointer ${
-              timeframe === 'week'
-                ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_15px_rgba(233,118,43,0.35)]'
-                : 'text-stone-600 dark:text-slate-400 hover:text-black dark:hover:text-white'
+            type="button"
+            onClick={() => {
+              const u = useAuthStore.getState().currentUser;
+              if (u?.id) syncUserData(u.id, true);
+            }}
+            disabled={isSyncing}
+            className={`px-3 py-1.5 rounded-full text-xs font-mono font-bold uppercase tracking-wider transition border cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95 ${
+              isSyncing
+                ? 'opacity-70 animate-pulse text-[#e9762b] border-[#e9762b]/50 bg-orange-500/10'
+                : syncError
+                ? 'text-red-400 border-red-500/50 bg-red-500/10'
+                : justSynced
+                ? 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10'
+                : isCloudSynced
+                ? 'text-emerald-500 border-emerald-500/30 bg-emerald-500/10 hover:border-emerald-500'
+                : 'text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border-stone-300/80 dark:border-white/10 hover:border-[#e9762b] bg-stone-100 dark:bg-white/5'
             }`}
+            title={syncError || 'Sync analysis and logs with cloud'}
           >
-            7 Days
+            {isSyncing ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 text-[#e9762b] animate-spin" />
+                <span>Syncing...</span>
+              </>
+            ) : syncError ? (
+              <>
+                <X className="w-3.5 h-3.5 text-red-400" />
+                <span className="text-red-400">Sync Retry</span>
+              </>
+            ) : justSynced ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400">Synced</span>
+              </>
+            ) : isCloudSynced ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Synced</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 text-stone-500" />
+                <span>Sync Cloud</span>
+              </>
+            )}
           </button>
-          <button
-            onClick={() => setTimeframe('month')}
-            className={`px-4 py-1.5 rounded-full font-bold uppercase transition cursor-pointer ${
-              timeframe === 'month'
-                ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_15px_rgba(233,118,43,0.35)]'
-                : 'text-stone-600 dark:text-slate-400 hover:text-black dark:hover:text-white'
-            }`}
-          >
-            30 Days
-          </button>
+
+          {/* Timeframe Toggle (Capsule Bar matching Border Magic theme) */}
+          <div className="flex items-center gap-1.5 border-magic-bar p-1.5 rounded-full text-xs">
+            <button
+              onClick={() => setTimeframe('week')}
+              className={`px-4 py-1.5 rounded-full font-bold uppercase transition cursor-pointer ${
+                timeframe === 'week'
+                  ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_15px_rgba(233,118,43,0.35)]'
+                  : 'text-stone-600 dark:text-slate-400 hover:text-black dark:hover:text-white'
+              }`}
+            >
+              7 Days
+            </button>
+            <button
+              onClick={() => setTimeframe('month')}
+              className={`px-4 py-1.5 rounded-full font-bold uppercase transition cursor-pointer ${
+                timeframe === 'month'
+                  ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_15px_rgba(233,118,43,0.35)]'
+                  : 'text-stone-600 dark:text-slate-400 hover:text-black dark:hover:text-white'
+              }`}
+            >
+              30 Days
+            </button>
+          </div>
         </div>
       </div>
 

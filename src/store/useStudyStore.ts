@@ -46,6 +46,7 @@ import {
   dbClearAllDailyLogs,
   dbSaveTableConfig,
   resetSupabaseClient,
+  dbDeleteAccount,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY
 } from '../services/supabaseClient';
@@ -193,6 +194,8 @@ interface StudyState {
   syncError: string | null;
   loadUserData: (userId: string) => Promise<void>;
   clearUserData: () => void;
+  importUserData: (payload: any, mode?: 'merge' | 'replace') => Promise<{ success: boolean; message: string }>;
+  deleteUserAccount: () => Promise<{ success: boolean; error?: string }>;
   resetToDefaults: () => void;
   loadDemoData: () => void;
 
@@ -1956,6 +1959,127 @@ export const useStudyStore = create<StudyState>()(
           isSyncing: false,
           lastSyncedAt: null,
         });
+      },
+
+      importUserData: async (payload: any, mode: 'merge' | 'replace' = 'merge') => {
+        if (!payload || typeof payload !== 'object') {
+          return { success: false, message: 'Invalid backup file format.' };
+        }
+
+        const state = get();
+        let newSubjects: Subject[] = [];
+        let newSessions: StudySession[] = [];
+        let newTasks: Task[] = [];
+        let newDailyLogs: DailyLogEntry[] = [];
+        let newCustomTables: CustomStudyTable[] = [];
+        let newCustomColumns: CustomColumn[] = [];
+        let newExamCountdowns: ExamCountdown[] = [];
+
+        if (mode === 'replace') {
+          newSubjects = Array.isArray(payload.subjects) ? payload.subjects : [];
+          newSessions = Array.isArray(payload.sessions) ? payload.sessions : [];
+          newTasks = Array.isArray(payload.tasks) ? payload.tasks : [];
+          newDailyLogs = Array.isArray(payload.dailyLogs) ? ensureDailyLogsDateWise(payload.dailyLogs) : ensureDailyLogsDateWise([]);
+          newCustomTables = Array.isArray(payload.customTables) ? payload.customTables : [];
+          newCustomColumns = Array.isArray(payload.customColumns) ? payload.customColumns : [];
+          newExamCountdowns = Array.isArray(payload.examCountdowns) ? payload.examCountdowns : [];
+        } else {
+          // Merge mode:
+          const subMap = new Map<string, Subject>();
+          state.subjects.forEach((s) => subMap.set(s.id, s));
+          if (Array.isArray(payload.subjects)) {
+            payload.subjects.forEach((s: Subject) => subMap.set(s.id, s));
+          }
+          newSubjects = Array.from(subMap.values());
+
+          const sessMap = new Map<string, StudySession>();
+          state.sessions.forEach((s) => sessMap.set(s.id, s));
+          if (Array.isArray(payload.sessions)) {
+            payload.sessions.forEach((s: StudySession) => sessMap.set(s.id, s));
+          }
+          newSessions = Array.from(sessMap.values());
+
+          const taskMap = new Map<string, Task>();
+          state.tasks.forEach((t) => taskMap.set(t.id, t));
+          if (Array.isArray(payload.tasks)) {
+            payload.tasks.forEach((t: Task) => taskMap.set(t.id, t));
+          }
+          newTasks = Array.from(taskMap.values());
+
+          const { mergedLogs } = mergeDailyLogsList(payload.dailyLogs || [], state.dailyLogs || []);
+          newDailyLogs = ensureDailyLogsDateWise(mergedLogs);
+
+          const { mergedTables } = mergeCustomTablesList(payload.customTables || [], state.customTables || []);
+          newCustomTables = mergedTables;
+
+          const colMap = new Map<string, CustomColumn>();
+          state.customColumns.forEach((c) => colMap.set(c.id, c));
+          if (Array.isArray(payload.customColumns)) {
+            payload.customColumns.forEach((c: CustomColumn) => colMap.set(c.id, c));
+          }
+          newCustomColumns = Array.from(colMap.values());
+
+          const examMap = new Map<string, ExamCountdown>();
+          state.examCountdowns.forEach((e) => examMap.set(e.id, e));
+          if (Array.isArray(payload.examCountdowns)) {
+            payload.examCountdowns.forEach((e: ExamCountdown) => examMap.set(e.id, e));
+          }
+          newExamCountdowns = Array.from(examMap.values());
+        }
+
+        const newUser = payload.user && typeof payload.user === 'object' 
+          ? { ...state.user, ...payload.user } 
+          : state.user;
+
+        set({
+          subjects: newSubjects,
+          sessions: newSessions,
+          tasks: newTasks,
+          dailyLogs: newDailyLogs,
+          customTables: newCustomTables,
+          customColumns: newCustomColumns,
+          examCountdowns: newExamCountdowns,
+          user: newUser,
+          deletedDefaultColumns: Array.isArray(payload.deletedDefaultColumns) 
+            ? payload.deletedDefaultColumns 
+            : state.deletedDefaultColumns,
+          isDefaultTableDeleted: typeof payload.isDefaultTableDeleted === 'boolean'
+            ? payload.isDefaultTableDeleted
+            : state.isDefaultTableDeleted,
+        });
+
+        // Immediately sync restored data to Supabase if logged in
+        const uid = getCurrentUserId();
+        if (uid) {
+          uploadAllUserDataToSupabase(uid, {
+            user: newUser,
+            subjects: newSubjects,
+            sessions: newSessions,
+            tasks: newTasks,
+            dailyLogs: newDailyLogs,
+            examCountdowns: newExamCountdowns,
+            customTables: newCustomTables,
+            customColumns: newCustomColumns,
+          }).catch(console.error);
+        }
+
+        return { 
+          success: true, 
+          message: `Successfully imported ${newDailyLogs.length} study logs, ${newTasks.length} tasks, and ${newCustomTables.length} custom tables!` 
+        };
+      },
+
+      deleteUserAccount: async () => {
+        const uid = getCurrentUserId();
+        if (uid) {
+          const res = await dbDeleteAccount(uid);
+          if (!res.success) {
+            return res;
+          }
+        }
+        get().clearUserData();
+        useAuthStore.getState().logout();
+        return { success: true };
       },
 
       // Social / Friends Network Actions

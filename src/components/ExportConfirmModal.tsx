@@ -16,7 +16,18 @@ export const ExportConfirmModal: React.FC<ExportConfirmModalProps> = ({
   onClose,
   onBack,
 }) => {
-  const { user, dailyLogs, tasks, sessions, subjects, customTables } = useStudyStore();
+  const { 
+    user, 
+    dailyLogs, 
+    tasks, 
+    sessions, 
+    subjects, 
+    customTables,
+    customColumns,
+    examCountdowns,
+    deletedDefaultColumns,
+    isDefaultTableDeleted
+  } = useStudyStore();
   const { setFlashMessage } = useAuthStore();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -110,6 +121,10 @@ export const ExportConfirmModal: React.FC<ExportConfirmModalProps> = ({
         sessions: Array.isArray(sessions) ? sessions : [],
         subjects: Array.isArray(subjects) ? subjects : [],
         customTables: Array.isArray(customTables) ? customTables : [],
+        customColumns: Array.isArray(customColumns) ? customColumns : [],
+        examCountdowns: Array.isArray(examCountdowns) ? examCountdowns : [],
+        deletedDefaultColumns: Array.isArray(deletedDefaultColumns) ? deletedDefaultColumns : [],
+        isDefaultTableDeleted: Boolean(isDefaultTableDeleted),
       };
 
       const jsonString = prettyPrint

@@ -34,6 +34,7 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
+  Star,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 
@@ -173,6 +174,7 @@ export const DailyStudyLog: React.FC = () => {
   const [newColName, setNewColName] = useState('');
   const [newColType, setNewColType] = useState<CustomColumnType>('boolean');
   const [newColOptions, setNewColOptions] = useState('');
+  const [newColOptionInput, setNewColOptionInput] = useState('');
 
   const [editingColumn, setEditingColumn] = useState<{
     id: string;
@@ -181,6 +183,7 @@ export const DailyStudyLog: React.FC = () => {
     options: string;
     index: number;
   } | null>(null);
+  const [editColOptionInput, setEditColOptionInput] = useState('');
 
   // Month/Year navigation and Chunk loading state
   const [selectedMonthYear, setSelectedMonthYear] = useState<string>('all');
@@ -576,6 +579,58 @@ export const DailyStudyLog: React.FC = () => {
     setAccordionState(null);
   };
 
+  // Add single option to newColOptions
+  const handleAddOptionToNewCol = (optText?: string) => {
+    const textToAdd = (optText !== undefined ? optText : newColOptionInput).trim();
+    if (!textToAdd) return;
+    const currentList = newColOptions
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!currentList.includes(textToAdd)) {
+      currentList.push(textToAdd);
+      setNewColOptions(currentList.join(', '));
+    }
+    setNewColOptionInput('');
+  };
+
+  // Remove single option from newColOptions
+  const handleRemoveOptionFromNewCol = (optToRemove: string) => {
+    const currentList = newColOptions
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const updated = currentList.filter((o) => o !== optToRemove);
+    setNewColOptions(updated.join(', '));
+  };
+
+  // Add single option to editingColumn.options
+  const handleAddOptionToEditCol = (optText?: string) => {
+    if (!editingColumn) return;
+    const textToAdd = (optText !== undefined ? optText : editColOptionInput).trim();
+    if (!textToAdd) return;
+    const currentList = (editingColumn.options || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!currentList.includes(textToAdd)) {
+      currentList.push(textToAdd);
+      setEditingColumn({ ...editingColumn, options: currentList.join(', ') });
+    }
+    setEditColOptionInput('');
+  };
+
+  // Remove single option from editingColumn.options
+  const handleRemoveOptionFromEditCol = (optToRemove: string) => {
+    if (!editingColumn) return;
+    const currentList = (editingColumn.options || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const updated = currentList.filter((o) => o !== optToRemove);
+    setEditingColumn({ ...editingColumn, options: updated.join(', ') });
+  };
+
   // Create new custom column
   const handleCreateColumn = (e: React.FormEvent) => {
     e.preventDefault();
@@ -597,6 +652,7 @@ export const DailyStudyLog: React.FC = () => {
     setNewColName('');
     setNewColType('boolean');
     setNewColOptions('');
+    setNewColOptionInput('');
     setShowAddColumnModal(false);
   };
 
@@ -2343,7 +2399,7 @@ export const DailyStudyLog: React.FC = () => {
                 <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
                   COLUMN TYPE
                 </label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {[
                     {
                       type: 'boolean' as CustomColumnType,
@@ -2373,6 +2429,13 @@ export const DailyStudyLog: React.FC = () => {
                       icon: List,
                       color: 'text-purple-400',
                     },
+                    {
+                      type: 'rating' as CustomColumnType,
+                      label: 'Rating (1-5)',
+                      desc: '1 to 5 score badge',
+                      icon: Star,
+                      color: 'text-amber-400',
+                    },
                   ].map((item) => {
                     const Icon = item.icon;
                     const isSelected = newColType === item.type;
@@ -2399,20 +2462,116 @@ export const DailyStudyLog: React.FC = () => {
               </div>
 
               {newColType === 'select' && (
-                <div className="space-y-1.5 animate-fadeIn">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                    DROPDOWN OPTIONS (comma separated)
-                  </label>
-                  <input
-                    type="text"
-                    value={newColOptions}
-                    onChange={(e) => setNewColOptions(e.target.value)}
-                    placeholder="e.g. Good, Okay, Bad, Exhausted"
-                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
-                  />
-                  <span className="text-[10px] text-stone-500 dark:text-slate-500 block">
-                    Default if empty: Good, Okay, Bad
-                  </span>
+                <div className="space-y-2.5 animate-fadeIn">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                      DROPDOWN OPTIONS
+                    </label>
+                    <span className="text-[10px] text-stone-500 dark:text-slate-500 font-mono">
+                      {newColOptions.split(',').map((s) => s.trim()).filter(Boolean).length} options added
+                    </span>
+                  </div>
+
+                  {/* Option Chips preview list */}
+                  <div className="flex flex-wrap gap-1.5 min-h-[42px] p-2 rounded-xl bg-stone-100/60 dark:bg-white/[0.03] border border-stone-200 dark:border-white/10 items-center">
+                    {newColOptions
+                      .split(',')
+                      .map((s) => s.trim())
+                      .filter(Boolean).length > 0 ? (
+                      newColOptions
+                        .split(',')
+                        .map((s) => s.trim())
+                        .filter(Boolean)
+                        .map((opt) => (
+                          <span
+                            key={opt}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-orange-500/15 text-[#e9762b] border border-orange-500/30 group animate-fadeIn"
+                          >
+                            <span>{opt}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveOptionFromNewCol(opt)}
+                              className="w-3.5 h-3.5 rounded-full hover:bg-orange-500/30 flex items-center justify-center transition cursor-pointer text-stone-500 dark:text-slate-400 hover:text-red-400"
+                              title={`Remove ${opt}`}
+                            >
+                              <X className="w-2.5 h-2.5" />
+                            </button>
+                          </span>
+                        ))
+                    ) : (
+                      <span className="text-[11px] text-stone-400 dark:text-slate-500 italic px-1">
+                        No options added yet. Type an option below or pick a preset.
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Add Option Input Row */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={newColOptionInput}
+                      onChange={(e) => setNewColOptionInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddOptionToNewCol();
+                        }
+                      }}
+                      placeholder="Type option (e.g. Done, In Progress)..."
+                      className="flex-1 glass-input rounded-xl px-3.5 py-2 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleAddOptionToNewCol()}
+                      className="px-3.5 py-2 rounded-xl bg-stone-200/80 dark:bg-white/10 hover:bg-[#e9762b] hover:text-black text-stone-800 dark:text-white text-xs font-bold uppercase transition border border-stone-300 dark:border-white/15 cursor-pointer flex items-center gap-1 shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Option</span>
+                    </button>
+                  </div>
+
+                  {/* Quick Preset Buttons */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-stone-500 dark:text-slate-500 block uppercase tracking-wider">
+                      Quick Presets:
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: '+ Status (Done, Progress, Pending)', opts: 'Done, In Progress, Pending' },
+                        { label: '+ Priority (High, Med, Low)', opts: 'High, Medium, Low' },
+                        { label: '+ Evaluation (Good, Okay, Bad)', opts: 'Good, Okay, Bad' },
+                        { label: '+ Level (Easy, Med, Hard)', opts: 'Easy, Medium, Hard' },
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => {
+                            const existing = newColOptions.split(',').map((s) => s.trim()).filter(Boolean);
+                            const toAdd = preset.opts.split(',').map((s) => s.trim()).filter(Boolean);
+                            const merged = Array.from(new Set([...existing, ...toAdd]));
+                            setNewColOptions(merged.join(', '));
+                          }}
+                          className="px-2 py-1 rounded-lg text-[10px] font-bold bg-stone-200/60 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 border border-stone-300/80 dark:border-white/10 transition cursor-pointer"
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Comma-separated raw text fallback */}
+                  <div className="space-y-1 pt-1">
+                    <label className="text-[10px] uppercase tracking-wider text-stone-500 dark:text-slate-500 font-semibold block">
+                      Or edit comma-separated text:
+                    </label>
+                    <input
+                      type="text"
+                      value={newColOptions}
+                      onChange={(e) => setNewColOptions(e.target.value)}
+                      placeholder="e.g. Good, Okay, Bad"
+                      className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-700 dark:text-slate-300 focus:outline-none"
+                    />
+                  </div>
                 </div>
               )}
 
@@ -2489,22 +2648,93 @@ export const DailyStudyLog: React.FC = () => {
                   <option value="number" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Number (Numeric input)</option>
                   <option value="text" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Short Text (Free text)</option>
                   <option value="select" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Dropdown / Select (Option badge)</option>
+                  <option value="rating" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Rating (1-5 score)</option>
                 </select>
               </div>
 
               {editingColumn.type === 'select' && (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                    OPTIONS (comma separated)
-                  </label>
-                  <input
-                    type="text"
-                    value={editingColumn.options}
-                    onChange={(e) =>
-                      setEditingColumn({ ...editingColumn, options: e.target.value })
-                    }
-                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none"
-                  />
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                      OPTIONS LIST
+                    </label>
+                    <span className="text-[10px] text-stone-500 dark:text-slate-500 font-mono">
+                      {(editingColumn.options || '').split(',').map((s) => s.trim()).filter(Boolean).length} options
+                    </span>
+                  </div>
+
+                  {/* Option Chips preview list */}
+                  <div className="flex flex-wrap gap-1.5 min-h-[42px] p-2 rounded-xl bg-stone-100/60 dark:bg-white/[0.03] border border-stone-200 dark:border-white/10 items-center">
+                    {(editingColumn.options || '')
+                      .split(',')
+                      .map((s) => s.trim())
+                      .filter(Boolean).length > 0 ? (
+                      (editingColumn.options || '')
+                        .split(',')
+                        .map((s) => s.trim())
+                        .filter(Boolean)
+                        .map((opt) => (
+                          <span
+                            key={opt}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-orange-500/15 text-[#e9762b] border border-orange-500/30 group animate-fadeIn"
+                          >
+                            <span>{opt}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveOptionFromEditCol(opt)}
+                              className="w-3.5 h-3.5 rounded-full hover:bg-orange-500/30 flex items-center justify-center transition cursor-pointer text-stone-500 dark:text-slate-400 hover:text-red-400"
+                              title={`Remove ${opt}`}
+                            >
+                              <X className="w-2.5 h-2.5" />
+                            </button>
+                          </span>
+                        ))
+                    ) : (
+                      <span className="text-[11px] text-stone-400 dark:text-slate-500 italic px-1">
+                        No options added yet. Type an option below to add.
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Add Option Input Row */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={editColOptionInput}
+                      onChange={(e) => setEditColOptionInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddOptionToEditCol();
+                        }
+                      }}
+                      placeholder="Type option name..."
+                      className="flex-1 glass-input rounded-xl px-3.5 py-2 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleAddOptionToEditCol()}
+                      className="px-3.5 py-2 rounded-xl bg-stone-200/80 dark:bg-white/10 hover:bg-[#e9762b] hover:text-black text-stone-800 dark:text-white text-xs font-bold uppercase transition border border-stone-300 dark:border-white/15 cursor-pointer flex items-center gap-1 shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add Option</span>
+                    </button>
+                  </div>
+
+                  {/* Comma-separated raw text */}
+                  <div className="space-y-1 pt-1">
+                    <label className="text-[10px] uppercase tracking-wider text-stone-500 dark:text-slate-500 font-semibold block">
+                      Edit comma-separated raw text:
+                    </label>
+                    <input
+                      type="text"
+                      value={editingColumn.options}
+                      onChange={(e) =>
+                        setEditingColumn({ ...editingColumn, options: e.target.value })
+                      }
+                      className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-700 dark:text-slate-300 focus:outline-none"
+                    />
+                  </div>
                 </div>
               )}
 

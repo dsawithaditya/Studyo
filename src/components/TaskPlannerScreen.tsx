@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useStudyStore } from '../store/useStudyStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { translations } from '../i18n/translations';
 import { TaskPriority } from '../types';
 import { 
@@ -15,7 +16,9 @@ import {
   AlertCircle, 
   ArrowUpDown, 
   X,
-  Target
+  Target,
+  RefreshCw,
+  Check,
 } from 'lucide-react';
 
 interface TaskPlannerProps {
@@ -32,9 +35,25 @@ export const TaskPlannerScreen: React.FC<TaskPlannerProps> = ({ onLaunchTimerFor
     toggleTask, 
     deleteTask, 
     addExamCountdown, 
-    deleteExamCountdown 
+    deleteExamCountdown,
+    syncUserData,
+    isSyncing,
+    syncError,
+    isCloudSynced,
   } = useStudyStore();
   const t = translations[language];
+
+  const [justSynced, setJustSynced] = useState(false);
+  const prevSyncingRef = useRef(isSyncing);
+
+  useEffect(() => {
+    if (prevSyncingRef.current && !isSyncing && !syncError) {
+      setJustSynced(true);
+      const timer = setTimeout(() => setJustSynced(false), 2400);
+      return () => clearTimeout(timer);
+    }
+    prevSyncingRef.current = isSyncing;
+  }, [isSyncing, syncError]);
 
   // Tab: 'today' | 'upcoming' | 'completed'
   const [activeTab, setActiveTab] = useState<'today' | 'upcoming' | 'completed'>('today');
@@ -125,8 +144,57 @@ export const TaskPlannerScreen: React.FC<TaskPlannerProps> = ({ onLaunchTimerFor
           </p>
         </div>
 
-        {/* Buttons to Add Task & Add Exam */}
-        <div className="flex items-center gap-2.5">
+        {/* Action Controls: Cloud Sync, Add Exam, Add Task */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+          {/* Cloud Sync Button */}
+          <button
+            type="button"
+            onClick={() => {
+              const u = useAuthStore.getState().currentUser;
+              if (u?.id) syncUserData(u.id, true);
+            }}
+            disabled={isSyncing}
+            className={`px-3 py-2 rounded-xl text-xs font-mono font-bold uppercase tracking-wider transition border cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95 ${
+              isSyncing
+                ? 'opacity-70 animate-pulse text-[#e9762b] border-[#e9762b]/50 bg-orange-500/10'
+                : syncError
+                ? 'text-red-400 border-red-500/50 bg-red-500/10'
+                : justSynced
+                ? 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10'
+                : isCloudSynced
+                ? 'text-emerald-500 border-emerald-500/30 bg-emerald-500/10 hover:border-emerald-500'
+                : 'text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border-stone-300/80 dark:border-white/10 hover:border-[#e9762b] bg-stone-100 dark:bg-white/5'
+            }`}
+            title={syncError || 'Sync tasks and deadlines with cloud'}
+          >
+            {isSyncing ? (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 text-[#e9762b] animate-spin" />
+                <span>Syncing...</span>
+              </>
+            ) : syncError ? (
+              <>
+                <X className="w-3.5 h-3.5 text-red-400" />
+                <span className="text-red-400">Sync Retry</span>
+              </>
+            ) : justSynced ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-400">Synced</span>
+              </>
+            ) : isCloudSynced ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                <span>Synced</span>
+              </>
+            ) : (
+              <>
+                <RefreshCw className="w-3.5 h-3.5 text-stone-500" />
+                <span>Sync Cloud</span>
+              </>
+            )}
+          </button>
+
           <button
             onClick={() => setShowAddExamModal(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-stone-100 dark:bg-slate-800/80 hover:bg-stone-200 dark:hover:bg-slate-700/80 border border-stone-200 dark:border-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white text-xs font-bold transition cursor-pointer"

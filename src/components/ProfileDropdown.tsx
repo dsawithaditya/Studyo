@@ -28,12 +28,15 @@ import confetti from 'canvas-confetti';
 import { SoundType } from '../services/soundSynth';
 import { ThemeSwitch } from './ThemeSwitch';
 import { ExportConfirmModal } from './ExportConfirmModal';
+import { ImportBackupModal } from './ImportBackupModal';
+import { DeleteAccountModal } from './DeleteAccountModal';
 import { useAuthStore } from '../store/useAuthStore';
 import {
   LogIn,
   LogOut,
   ShieldCheck,
   KeyRound,
+  Upload,
 } from 'lucide-react';
 
 const SOUNDS: { id: SoundType; label: string }[] = [
@@ -85,6 +88,8 @@ export const ProfileDropdown: React.FC = () => {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showTableSettingsModal, setShowTableSettingsModal] = useState(false);
   const [showExportConfirmModal, setShowExportConfirmModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [exportSource, setExportSource] = useState<'dropdown' | 'settings'>('dropdown');
 
   // Settings tab navigation: 'all' | 'network' | 'tables' | 'general' | 'study' | 'audio'
@@ -538,23 +543,42 @@ export const ProfileDropdown: React.FC = () => {
 
           {/* Bottom Actions: Export + Log Out / Log In */}
           <div className="pt-0.5 space-y-2">
-            <button
-              type="button"
-              onClick={() => {
-                setIsOpen(false);
-                setExportSource('dropdown');
-                setShowExportConfirmModal(true);
-              }}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-stone-700 dark:text-slate-200 hover:text-black dark:hover:text-white text-xs font-bold uppercase transition border cursor-pointer shadow-sm hover:bg-stone-100 dark:hover:bg-white/10"
-              style={{
-                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.03)',
-                borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
-              }}
-              title="Download backup file"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export</span>
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  setExportSource('dropdown');
+                  setShowExportConfirmModal(true);
+                }}
+                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-stone-700 dark:text-slate-200 hover:text-black dark:hover:text-white text-xs font-bold uppercase transition border cursor-pointer shadow-sm hover:bg-stone-100 dark:hover:bg-white/10"
+                style={{
+                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.03)',
+                  borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
+                }}
+                title="Download backup file"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  setShowImportModal(true);
+                }}
+                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-stone-700 dark:text-slate-200 hover:text-black dark:hover:text-white text-xs font-bold uppercase transition border cursor-pointer shadow-sm hover:bg-stone-100 dark:hover:bg-white/10"
+                style={{
+                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.03)',
+                  borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
+                }}
+                title="Restore data from backup file"
+              >
+                <Upload className="w-3.5 h-3.5 text-[#e9762b]" />
+                <span>Import</span>
+              </button>
+            </div>
 
             {/* Extra Log Out or Log In below Export */}
             {currentUser ? (
@@ -1283,36 +1307,75 @@ export const ProfileDropdown: React.FC = () => {
 
                 {/* Section 5: Data */}
                 {(settingsTab === 'all' || settingsTab === 'general') && (
-                  <div className="space-y-2 p-3.5 rounded-xl bg-stone-100/70 dark:bg-white/[0.04] border border-stone-200 dark:border-white/10">
+                  <div className="space-y-3 p-3.5 rounded-xl bg-stone-100/70 dark:bg-white/[0.04] border border-stone-200 dark:border-white/10">
                     <span className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-300 font-bold block">
-                      DATA
+                      DATA & BACKUP
                     </span>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
                         onClick={() => {
                           setExportSource('settings');
                           setShowExportConfirmModal(true);
                         }}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-800 dark:text-white text-xs font-bold uppercase transition border border-stone-300 dark:border-white/15 cursor-pointer"
+                        className="inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-800 dark:text-white text-xs font-bold uppercase transition border border-stone-300 dark:border-white/15 cursor-pointer"
+                        title="Export JSON backup"
                       >
-                        <Download className="w-3.5 h-3.5" />
+                        <Download className="w-3.5 h-3.5 text-[#e9762b]" />
                         <span>EXPORT</span>
                       </button>
+
                       <button
                         type="button"
                         onClick={() => {
-                          if (window.confirm('Clear all local study data?')) {
+                          setShowSettingsModal(false);
+                          setShowImportModal(true);
+                        }}
+                        className="inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-800 dark:text-white text-xs font-bold uppercase transition border border-stone-300 dark:border-white/15 cursor-pointer"
+                        title="Import JSON backup"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-cyan-500" />
+                        <span>IMPORT</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm('Clear all local study data on this device?')) {
                             clearUserData();
                             setShowSettingsModal(false);
                           }
                         }}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 text-xs font-bold uppercase transition border border-red-500/20 cursor-pointer"
+                        className="inline-flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 text-xs font-bold uppercase transition border border-stone-300 dark:border-white/15 cursor-pointer"
+                        title="Reset local device data"
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
-                        <span>CLEAR DATA</span>
+                        <span>RESET</span>
                       </button>
                     </div>
+
+                    {/* DANGER ZONE: Delete Account from All Database */}
+                    {currentUser && (
+                      <div className="pt-2.5 border-t border-stone-200 dark:border-white/10 space-y-1.5">
+                        <span className="text-[10px] uppercase tracking-widest text-red-500 font-bold block">
+                          DANGER ZONE
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowSettingsModal(false);
+                            setShowDeleteAccountModal(true);
+                          }}
+                          className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 text-xs font-bold uppercase transition border border-red-500/30 cursor-pointer shadow-sm group"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 transition group-hover:scale-110" />
+                          <span>DELETE ACCOUNT FROM ALL DATABASE</span>
+                        </button>
+                        <span className="text-[10px] text-stone-500 dark:text-slate-400 block leading-tight">
+                          Permanently wipes your account and all records (study logs, custom tables, task planner, subjects) across Supabase database.
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1614,6 +1677,18 @@ export const ProfileDropdown: React.FC = () => {
             setShowSettingsModal(true);
           }
         }}
+      />
+
+      {/* Import Backup Modal */}
+      <ImportBackupModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+      />
+
+      {/* Delete Account Modal */}
+      <DeleteAccountModal
+        isOpen={showDeleteAccountModal}
+        onClose={() => setShowDeleteAccountModal(false)}
       />
     </div>
   );

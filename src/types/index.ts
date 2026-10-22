@@ -112,7 +112,7 @@ export interface FriendProfile {
   comments: FriendComment[];
 }
 
-export type CustomColumnType = 'boolean' | 'number' | 'text' | 'select';
+export type CustomColumnType = 'boolean' | 'number' | 'text' | 'select' | 'rating';
 
 export type DefaultTableColumnKey =
   | 'studyHours'
@@ -129,6 +129,7 @@ export interface CustomColumn {
   name: string;
   type: CustomColumnType;
   options?: string[]; // for 'select' type (e.g. ['Good', 'Okay', 'Bad'])
+  unit?: string;
 }
 
 export interface DailyLogEntry {

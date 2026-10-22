@@ -226,6 +226,19 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- ==========================================================
+-- 13. SECURE ACCOUNT DELETION RPC
+-- ==========================================================
+CREATE OR REPLACE FUNCTION public.delete_user_account()
+RETURNS void AS $$
+BEGIN
+  -- Cascades through all public tables with REFERENCES auth.users(id) ON DELETE CASCADE
+  DELETE FROM auth.users WHERE id = auth.uid();
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.delete_user_account() TO authenticated;
 `;
 
 // Default project configuration fallback
@@ -1103,3 +1116,45 @@ export async function uploadAllUserDataToSupabase(
     console.error('Failed to upload all user data to Supabase:', err);
   }
 }
+
+// Complete Account & Data Deletion from all Database Tables
+export async function dbDeleteAccount(userId: string): Promise<{ success: boolean; error?: string }> {
+  const sb = getSupabaseClient();
+  if (!sb || !userId) {
+    return { success: false, error: 'Database client not connected.' };
+  }
+
+  try {
+    // 1. Try PostgreSQL RPC function if available (deletes auth.users record which cascades all tables)
+    try {
+      const { error: rpcError } = await sb.rpc('delete_user_account');
+      if (!rpcError) {
+        await sb.auth.signOut().catch(() => {});
+        return { success: true };
+      }
+    } catch {
+      // Fallback to table-by-table cascade deletion
+    }
+
+    // 2. Cascade delete all user records from every database table where user_id = auth.uid()
+    await Promise.allSettled([
+      sb.from('daily_logs').delete().eq('user_id', userId),
+      sb.from('custom_tables').delete().eq('user_id', userId),
+      sb.from('custom_columns').delete().eq('user_id', userId),
+      sb.from('tasks').delete().eq('user_id', userId),
+      sb.from('study_sessions').delete().eq('user_id', userId),
+      sb.from('subjects').delete().eq('user_id', userId),
+      sb.from('exam_countdowns').delete().eq('user_id', userId),
+      sb.from('friendships').delete().or(`user_id.eq.${userId},friend_id.eq.${userId}`),
+      sb.from('profiles').delete().eq('id', userId),
+    ]);
+
+    // Sign out the user
+    await sb.auth.signOut().catch(() => {});
+    return { success: true };
+  } catch (err: any) {
+    console.error('[Supabase dbDeleteAccount Error]:', err);
+    return { success: false, error: err?.message || 'Failed to delete account from database.' };
+  }
+}
+
