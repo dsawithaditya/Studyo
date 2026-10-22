@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useStudyStore } from '../store/useStudyStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { 
@@ -85,16 +86,21 @@ export const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({ isOpen, 
     }
   };
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="delete-account-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isLoading) {
+          onClose();
+        }
+      }}
     >
       <div
         ref={dialogRef}
-        className="w-full max-w-md glass-modal rounded-2xl p-5 sm:p-6 shadow-2xl font-mono space-y-5 border border-red-500/30 bg-stone-900/95"
+        className="w-full max-w-md my-auto glass-modal rounded-3xl p-6 sm:p-7 shadow-2xl font-mono space-y-5 border border-red-500/30 bg-stone-900/95 max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-red-500/20 pb-3">
@@ -195,6 +201,7 @@ export const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({ isOpen, 
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
