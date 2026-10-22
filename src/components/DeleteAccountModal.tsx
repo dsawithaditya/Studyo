@@ -112,8 +112,8 @@ export const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({ isOpen, 
               <h3 id="delete-account-title" className="text-base sm:text-lg font-bold text-red-500 uppercase tracking-tight">
                 Delete Account
               </h3>
-              <p className="text-[11px] text-stone-400">
-                Permanent deletion of account & database
+              <p className="text-[11px] text-stone-400 truncate max-w-[220px]">
+                {currentUser?.email || 'This account'}
               </p>
             </div>
           </div>
@@ -128,27 +128,24 @@ export const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({ isOpen, 
         </div>
 
         {/* Warning text */}
-        <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-stone-300 space-y-2">
-          <div className="flex items-start gap-2 font-bold text-red-400 uppercase text-[11px]">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span>Danger: This action cannot be undone</span>
+        <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 space-y-2.5">
+          <div className="flex items-center gap-2 font-bold text-red-400 uppercase text-[11px]">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>Permanent. Cannot be undone.</span>
           </div>
-          <p className="leading-relaxed text-[11px] text-stone-300">
-            Deleting this account will permanently erase all data associated with{' '}
-            <strong className="text-white">{currentUser?.email || 'this user'}</strong> from all cloud database tables:
-          </p>
-          <ul className="list-disc list-inside text-[10px] text-stone-400 space-y-0.5 pl-1">
-            <li>Daily Study Logs & Custom Tables</li>
-            <li>Task Planner & Exam Countdowns</li>
-            <li>Subject Syllabi, Chapters & Focus Sessions</li>
-            <li>User Profile & Social Friend Connections</li>
-          </ul>
+          <div className="flex flex-wrap gap-1.5">
+            {['Study logs', 'Tables', 'Tasks', 'Exams', 'Syllabus', 'Sessions', 'Profile', 'Friends'].map((item) => (
+              <span key={item} className="px-2 py-0.5 rounded-full text-[10px] text-stone-300 bg-white/5 border border-white/10">
+                {item}
+              </span>
+            ))}
+          </div>
         </div>
 
         {/* Confirmation Input */}
         <div className="space-y-1.5">
           <label className="text-[10px] uppercase tracking-widest text-stone-400 font-bold block">
-            Type <span className="text-red-400 underline font-extrabold">DELETE</span> to confirm:
+            Type <span className="text-red-400 font-extrabold">DELETE</span> to confirm
           </label>
           <input
             ref={inputRef}
@@ -195,7 +192,7 @@ export const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({ isOpen, 
             ) : (
               <>
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete Account Forever</span>
+                <span>Delete Forever</span>
               </>
             )}
           </button>

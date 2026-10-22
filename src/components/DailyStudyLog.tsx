@@ -361,6 +361,18 @@ export const DailyStudyLog: React.FC = () => {
     }
   };
 
+  // Smoothly scroll and center a specific row and its editing accordion in view
+  const scrollToRowCenter = (date: string) => {
+    setTimeout(() => {
+      const accordionEl = document.getElementById(`log-accordion-${date}`);
+      const rowEl = document.getElementById(`log-row-${date}`);
+      const target = accordionEl || rowEl;
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      }
+    }, 120);
+  };
+
   // Toggle expand in place for a specific entry
   const handleToggleExpand = (entry: DailyLogEntry) => {
     if (expandedDate === entry.date) {
@@ -384,9 +396,7 @@ export const DailyStudyLog: React.FC = () => {
         setContainerWidth(tableContainerRef.current.clientWidth);
         tableContainerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
       }
-      setTimeout(() => {
-        scrollToCenterTable();
-      }, 80);
+      scrollToRowCenter(entry.date);
     }
   };
 
@@ -1401,23 +1411,18 @@ export const DailyStudyLog: React.FC = () => {
                   return (
                     <React.Fragment key={entry.date}>
                       <tr
-                        onClick={() => {
-                          if (idx === 0) {
-                            scrollToCenterTable();
-                          }
-                        }}
+                        id={`log-row-${entry.date}`}
                         className={`hover:bg-white/[0.04] transition group/row ${
                           isExpanded ? 'bg-white/[0.04]' : ''
-                        } ${idx === 0 ? 'cursor-pointer' : ''}`}
-                        title={idx === 0 ? 'Click first row to center table on screen' : undefined}
+                        }`}
                       >
-                        {/* Pinned / Sticky Date Column - The ONLY button that opens edit/details */}
+                        {/* Pinned / Sticky Date Column - Click to open details & edit */}
                         <td
-                          onClick={scrollToCenterTable}
+                          onClick={() => handleToggleExpand(entry)}
                           className={`py-3 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap sticky left-0 z-20 glass-sticky-col-cell border-r border-black/10 dark:border-white/10 min-w-[110px] w-[110px] sm:min-w-[125px] sm:w-[125px] cursor-pointer ${
                             isExpanded ? '!bg-amber-500/15 dark:!bg-[#1a1a18]' : ''
                           }`}
-                          title="Click date column to center table on screen"
+                          title="Click date to open details & edit"
                         >
                           <div className="flex items-center gap-1.5">
                             <button
@@ -1667,7 +1672,7 @@ export const DailyStudyLog: React.FC = () => {
 
                       {/* Expand in place accordion sub-panel */}
                       {isExpanded && accordionState && (
-                        <tr className="bg-white/[0.02] backdrop-blur-2xl border-b border-white/10" onClick={(e) => e.stopPropagation()}>
+                        <tr id={`log-accordion-${entry.date}`} className="bg-white/[0.02] backdrop-blur-2xl border-b border-white/10" onClick={(e) => e.stopPropagation()}>
                           <td colSpan={totalDefaultTableCols} className="p-0 border-b border-white/10">
                             <div 
                               className="sticky left-0 p-3.5 sm:p-5 md:p-6 space-y-4 sm:space-y-5 box-border overflow-hidden"
@@ -2397,45 +2402,15 @@ export const DailyStudyLog: React.FC = () => {
 
               <div className="space-y-2">
                 <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  COLUMN TYPE
+                  TYPE
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-5 gap-1.5">
                   {[
-                    {
-                      type: 'boolean' as CustomColumnType,
-                      label: 'YES / NO',
-                      desc: 'Clickable Yes/No badge',
-                      icon: CheckSquare,
-                      color: 'text-[#10b981]',
-                    },
-                    {
-                      type: 'number' as CustomColumnType,
-                      label: 'Number',
-                      desc: 'Numeric value input',
-                      icon: Hash,
-                      color: 'text-sky-400',
-                    },
-                    {
-                      type: 'text' as CustomColumnType,
-                      label: 'Short Text',
-                      desc: 'Free text entry',
-                      icon: Type,
-                      color: 'text-amber-400',
-                    },
-                    {
-                      type: 'select' as CustomColumnType,
-                      label: 'Dropdown / Select',
-                      desc: 'Pick from custom options',
-                      icon: List,
-                      color: 'text-purple-400',
-                    },
-                    {
-                      type: 'rating' as CustomColumnType,
-                      label: 'Rating (1-5)',
-                      desc: '1 to 5 score badge',
-                      icon: Star,
-                      color: 'text-amber-400',
-                    },
+                    { type: 'boolean' as CustomColumnType, label: 'Yes/No', desc: 'Clickable yes/no', icon: CheckSquare, color: 'text-[#10b981]' },
+                    { type: 'number' as CustomColumnType, label: 'Number', desc: 'Numeric value', icon: Hash, color: 'text-sky-400' },
+                    { type: 'text' as CustomColumnType, label: 'Text', desc: 'Free text', icon: Type, color: 'text-amber-400' },
+                    { type: 'select' as CustomColumnType, label: 'Dropdown', desc: 'Pick from your options', icon: List, color: 'text-purple-400' },
+                    { type: 'rating' as CustomColumnType, label: 'Rating', desc: 'Score from 1 to 5', icon: Star, color: 'text-amber-400' },
                   ].map((item) => {
                     const Icon = item.icon;
                     const isSelected = newColType === item.type;
@@ -2444,123 +2419,111 @@ export const DailyStudyLog: React.FC = () => {
                         key={item.type}
                         type="button"
                         onClick={() => setNewColType(item.type)}
-                        className={`p-3 rounded-xl border text-left transition flex flex-col justify-between cursor-pointer ${
+                        aria-pressed={isSelected}
+                        title={item.desc}
+                        className={`py-2.5 px-1 rounded-xl border transition flex flex-col items-center gap-1.5 cursor-pointer ${
                           isSelected
                             ? 'bg-orange-500/10 border-[#e9762b] shadow-sm shadow-orange-500/20'
                             : 'glass-pill text-stone-700 dark:text-slate-300 hover:border-stone-400 dark:hover:border-white/20'
                         }`}
                       >
-                        <div className="flex items-center gap-2 mb-1">
-                          <Icon className={`w-3.5 h-3.5 ${item.color}`} />
-                          <span className="font-bold text-stone-900 dark:text-white text-[11px]">{item.label}</span>
-                        </div>
-                        <span className="text-[10px] text-stone-500 dark:text-slate-500">{item.desc}</span>
+                        <Icon className={`w-4 h-4 ${item.color}`} />
+                        <span className="font-bold text-stone-900 dark:text-white text-[10px] leading-none">{item.label}</span>
                       </button>
                     );
                   })}
                 </div>
+                <p className="text-[10px] text-stone-500 dark:text-slate-500">
+                  {{
+                    boolean: 'Clickable yes/no',
+                    number: 'Numeric value',
+                    text: 'Free text',
+                    select: 'Pick from your options',
+                    rating: 'Score from 1 to 5',
+                  }[newColType] ?? ''}
+                </p>
               </div>
 
-              {newColType === 'select' && (
-                <div className="space-y-2.5 animate-fadeIn">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                      DROPDOWN OPTIONS
-                    </label>
-                    <span className="text-[10px] text-stone-500 dark:text-slate-500 font-mono">
-                      {newColOptions.split(',').map((s) => s.trim()).filter(Boolean).length} options added
-                    </span>
-                  </div>
+              {newColType === 'select' && (() => {
+                const optList = newColOptions.split(',').map((s) => s.trim()).filter(Boolean);
+                return (
+                  <div className="space-y-2.5 animate-fadeIn">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                        OPTIONS
+                      </label>
+                      <span className="text-[10px] text-stone-500 dark:text-slate-500 font-mono">{optList.length}</span>
+                    </div>
 
-                  {/* Option Chips preview list */}
-                  <div className="flex flex-wrap gap-1.5 min-h-[42px] p-2 rounded-xl bg-stone-100/60 dark:bg-white/[0.03] border border-stone-200 dark:border-white/10 items-center">
-                    {newColOptions
-                      .split(',')
-                      .map((s) => s.trim())
-                      .filter(Boolean).length > 0 ? (
-                      newColOptions
-                        .split(',')
-                        .map((s) => s.trim())
-                        .filter(Boolean)
-                        .map((opt) => (
+                    <div className="flex flex-wrap gap-1.5 min-h-[40px] max-h-28 overflow-y-auto p-2 rounded-xl bg-stone-100/60 dark:bg-white/[0.03] border border-stone-200 dark:border-white/10 items-center">
+                      {optList.length > 0 ? (
+                        optList.map((opt) => (
                           <span
                             key={opt}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-orange-500/15 text-[#e9762b] border border-orange-500/30 group animate-fadeIn"
+                            className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-bold bg-orange-500/15 text-[#e9762b] border border-orange-500/30 animate-fadeIn"
                           >
                             <span>{opt}</span>
                             <button
                               type="button"
                               onClick={() => handleRemoveOptionFromNewCol(opt)}
-                              className="w-3.5 h-3.5 rounded-full hover:bg-orange-500/30 flex items-center justify-center transition cursor-pointer text-stone-500 dark:text-slate-400 hover:text-red-400"
-                              title={`Remove ${opt}`}
+                              className="w-4 h-4 rounded-full hover:bg-orange-500/30 flex items-center justify-center transition cursor-pointer hover:text-red-400"
+                              aria-label={`Remove ${opt}`}
                             >
                               <X className="w-2.5 h-2.5" />
                             </button>
                           </span>
                         ))
-                    ) : (
-                      <span className="text-[11px] text-stone-400 dark:text-slate-500 italic px-1">
-                        No options added yet. Type an option below or pick a preset.
-                      </span>
-                    )}
-                  </div>
+                      ) : (
+                        <span className="text-[11px] text-stone-400 dark:text-slate-500 px-1">No options yet</span>
+                      )}
+                    </div>
 
-                  {/* Add Option Input Row */}
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={newColOptionInput}
-                      onChange={(e) => setNewColOptionInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddOptionToNewCol();
-                        }
-                      }}
-                      placeholder="Type option (e.g. Done, In Progress)..."
-                      className="flex-1 glass-input rounded-xl px-3.5 py-2 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleAddOptionToNewCol()}
-                      className="px-3.5 py-2 rounded-xl bg-stone-200/80 dark:bg-white/10 hover:bg-[#e9762b] hover:text-black text-stone-800 dark:text-white text-xs font-bold uppercase transition border border-stone-300 dark:border-white/15 cursor-pointer flex items-center gap-1 shrink-0"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Option</span>
-                    </button>
-                  </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newColOptionInput}
+                        onChange={(e) => setNewColOptionInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddOptionToNewCol();
+                          }
+                        }}
+                        placeholder="Add option, press Enter"
+                        className="flex-1 min-w-0 glass-input rounded-xl px-3.5 py-2 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddOptionToNewCol()}
+                        disabled={!newColOptionInput.trim()}
+                        aria-label="Add option"
+                        className="w-9 h-9 rounded-xl bg-[#e9762b] text-black flex items-center justify-center hover:brightness-110 active:scale-95 transition cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
 
-                  {/* Quick Preset Buttons */}
-                  <div className="space-y-1">
-                    <span className="text-[10px] text-stone-500 dark:text-slate-500 block uppercase tracking-wider">
-                      Quick Presets:
-                    </span>
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {[
-                        { label: '+ Status (Done, Progress, Pending)', opts: 'Done, In Progress, Pending' },
-                        { label: '+ Priority (High, Med, Low)', opts: 'High, Medium, Low' },
-                        { label: '+ Evaluation (Good, Okay, Bad)', opts: 'Good, Okay, Bad' },
-                        { label: '+ Level (Easy, Med, Hard)', opts: 'Easy, Medium, Hard' },
+                        { label: 'Status', opts: ['Done', 'In Progress', 'Pending'] },
+                        { label: 'Priority', opts: ['High', 'Medium', 'Low'] },
+                        { label: 'Quality', opts: ['Good', 'Okay', 'Bad'] },
+                        { label: 'Level', opts: ['Easy', 'Medium', 'Hard'] },
                       ].map((preset) => (
                         <button
                           key={preset.label}
                           type="button"
-                          onClick={() => {
-                            const existing = newColOptions.split(',').map((s) => s.trim()).filter(Boolean);
-                            const toAdd = preset.opts.split(',').map((s) => s.trim()).filter(Boolean);
-                            const merged = Array.from(new Set([...existing, ...toAdd]));
-                            setNewColOptions(merged.join(', '));
-                          }}
-                          className="px-2 py-1 rounded-lg text-[10px] font-bold bg-stone-200/60 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 border border-stone-300/80 dark:border-white/10 transition cursor-pointer"
+                          title={preset.opts.join(', ')}
+                          onClick={() => setNewColOptions(Array.from(new Set([...optList, ...preset.opts])).join(', '))}
+                          className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-stone-200/60 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 border border-stone-300/80 dark:border-white/10 transition cursor-pointer"
                         >
-                          {preset.label}
+                          + {preset.label}
                         </button>
                       ))}
                     </div>
                   </div>
-
-                </div>
-              )}
+                );
+              })()}
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-orange-950/10 dark:border-white/10">
                 <button
@@ -2631,85 +2594,75 @@ export const DailyStudyLog: React.FC = () => {
                   }
                   className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
                 >
-                  <option value="boolean" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">YES / NO (Clickable badge)</option>
-                  <option value="number" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Number (Numeric input)</option>
-                  <option value="text" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Short Text (Free text)</option>
-                  <option value="select" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Dropdown / Select (Option badge)</option>
-                  <option value="rating" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Rating (1-5 score)</option>
+                  <option value="boolean" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Yes / No</option>
+                  <option value="number" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Number</option>
+                  <option value="text" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Text</option>
+                  <option value="select" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Dropdown</option>
+                  <option value="rating" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Rating</option>
                 </select>
               </div>
 
-              {editingColumn.type === 'select' && (
-                <div className="space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                      OPTIONS LIST
-                    </label>
-                    <span className="text-[10px] text-stone-500 dark:text-slate-500 font-mono">
-                      {(editingColumn.options || '').split(',').map((s) => s.trim()).filter(Boolean).length} options
-                    </span>
-                  </div>
+              {editingColumn.type === 'select' && (() => {
+                const optList = (editingColumn.options || '').split(',').map((s) => s.trim()).filter(Boolean);
+                return (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                        OPTIONS
+                      </label>
+                      <span className="text-[10px] text-stone-500 dark:text-slate-500 font-mono">{optList.length}</span>
+                    </div>
 
-                  {/* Option Chips preview list */}
-                  <div className="flex flex-wrap gap-1.5 min-h-[42px] p-2 rounded-xl bg-stone-100/60 dark:bg-white/[0.03] border border-stone-200 dark:border-white/10 items-center">
-                    {(editingColumn.options || '')
-                      .split(',')
-                      .map((s) => s.trim())
-                      .filter(Boolean).length > 0 ? (
-                      (editingColumn.options || '')
-                        .split(',')
-                        .map((s) => s.trim())
-                        .filter(Boolean)
-                        .map((opt) => (
+                    <div className="flex flex-wrap gap-1.5 min-h-[40px] max-h-28 overflow-y-auto p-2 rounded-xl bg-stone-100/60 dark:bg-white/[0.03] border border-stone-200 dark:border-white/10 items-center">
+                      {optList.length > 0 ? (
+                        optList.map((opt) => (
                           <span
                             key={opt}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-orange-500/15 text-[#e9762b] border border-orange-500/30 group animate-fadeIn"
+                            className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-bold bg-orange-500/15 text-[#e9762b] border border-orange-500/30 animate-fadeIn"
                           >
                             <span>{opt}</span>
                             <button
                               type="button"
                               onClick={() => handleRemoveOptionFromEditCol(opt)}
-                              className="w-3.5 h-3.5 rounded-full hover:bg-orange-500/30 flex items-center justify-center transition cursor-pointer text-stone-500 dark:text-slate-400 hover:text-red-400"
-                              title={`Remove ${opt}`}
+                              className="w-4 h-4 rounded-full hover:bg-orange-500/30 flex items-center justify-center transition cursor-pointer hover:text-red-400"
+                              aria-label={`Remove ${opt}`}
                             >
                               <X className="w-2.5 h-2.5" />
                             </button>
                           </span>
                         ))
-                    ) : (
-                      <span className="text-[11px] text-stone-400 dark:text-slate-500 italic px-1">
-                        No options added yet. Type an option below to add.
-                      </span>
-                    )}
-                  </div>
+                      ) : (
+                        <span className="text-[11px] text-stone-400 dark:text-slate-500 px-1">No options yet</span>
+                      )}
+                    </div>
 
-                  {/* Add Option Input Row */}
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={editColOptionInput}
-                      onChange={(e) => setEditColOptionInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddOptionToEditCol();
-                        }
-                      }}
-                      placeholder="Type option name..."
-                      className="flex-1 glass-input rounded-xl px-3.5 py-2 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleAddOptionToEditCol()}
-                      className="px-3.5 py-2 rounded-xl bg-stone-200/80 dark:bg-white/10 hover:bg-[#e9762b] hover:text-black text-stone-800 dark:text-white text-xs font-bold uppercase transition border border-stone-300 dark:border-white/15 cursor-pointer flex items-center gap-1 shrink-0"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>Add Option</span>
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={editColOptionInput}
+                        onChange={(e) => setEditColOptionInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddOptionToEditCol();
+                          }
+                        }}
+                        placeholder="Add option, press Enter"
+                        className="flex-1 min-w-0 glass-input rounded-xl px-3.5 py-2 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddOptionToEditCol()}
+                        disabled={!editColOptionInput.trim()}
+                        aria-label="Add option"
+                        className="w-9 h-9 rounded-xl bg-[#e9762b] text-black flex items-center justify-center hover:brightness-110 active:scale-95 transition cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-
-                </div>
-              )}
+                );
+              })()}
 
               {/* Column Reordering */}
               <div className="space-y-1.5 pt-2">

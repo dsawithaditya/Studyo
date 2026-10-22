@@ -492,7 +492,7 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
                 <input
                   type="text"
                   maxLength={6}
-                  placeholder="Enter 4-5 alphanumeric code (e.g. S3W5Y, E7K92)..."
+                  placeholder="Enter 4-5 digit friend code..."
                   value={searchQuery}
                   onChange={(e) => {
                     setSearchQuery(e.target.value.toUpperCase());
@@ -523,29 +523,6 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
                 <span>Search</span>
               </button>
             </form>
-
-            {/* Quick Discover Pills */}
-            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/5 text-xs text-slate-400">
-              <span className="font-semibold text-slate-300">Try Sample Codes:</span>
-              {[
-                { name: 'Sara Chen', code: 'S3W5Y' },
-                { name: 'Rohan Sharma', code: 'R8P2T' },
-                { name: 'Elena Rostova', code: 'E7K92' },
-                { name: 'Dev Patel', code: 'D4M8X' },
-              ].map((sample) => (
-                <button
-                  key={sample.code}
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery(sample.code);
-                    handleSearch(sample.code);
-                  }}
-                  className="px-2.5 py-1 rounded-lg glass-pill hover:border-[#e9762b]/50 text-slate-300 hover:text-[#e9762b] transition cursor-pointer font-mono text-[11px]"
-                >
-                  {sample.name} <span className="text-[#e9762b] font-bold">#{sample.code}</span>
-                </button>
-              ))}
-            </div>
 
             {/* Feedback notification */}
             {searchFeedback && (

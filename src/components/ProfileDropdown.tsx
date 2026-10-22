@@ -1369,10 +1369,10 @@ export const ProfileDropdown: React.FC = () => {
                           className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 text-xs font-bold uppercase transition border border-red-500/30 cursor-pointer shadow-sm group"
                         >
                           <Trash2 className="w-3.5 h-3.5 transition group-hover:scale-110" />
-                          <span>DELETE ACCOUNT FROM ALL DATABASE</span>
+                          <span>DELETE ACCOUNT</span>
                         </button>
                         <span className="text-[10px] text-stone-500 dark:text-slate-400 block leading-tight">
-                          Permanently wipes your account and all records (study logs, custom tables, task planner, subjects) across Supabase database.
+                          Erases your account and all cloud data.
                         </span>
                       </div>
                     )}
