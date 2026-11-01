@@ -26,7 +26,8 @@ export const ExportConfirmModal: React.FC<ExportConfirmModalProps> = ({
     customColumns,
     examCountdowns,
     deletedDefaultColumns,
-    isDefaultTableDeleted
+    isDefaultTableDeleted,
+    autoGenerateRows
   } = useStudyStore();
   const { setFlashMessage } = useAuthStore();
 
@@ -125,6 +126,7 @@ export const ExportConfirmModal: React.FC<ExportConfirmModalProps> = ({
         examCountdowns: Array.isArray(examCountdowns) ? examCountdowns : [],
         deletedDefaultColumns: Array.isArray(deletedDefaultColumns) ? deletedDefaultColumns : [],
         isDefaultTableDeleted: Boolean(isDefaultTableDeleted),
+        autoGenerateRows: Boolean(autoGenerateRows ?? true),
       };
 
       const jsonString = prettyPrint

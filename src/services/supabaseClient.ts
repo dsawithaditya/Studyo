@@ -119,9 +119,11 @@ CREATE TABLE IF NOT EXISTS public.custom_tables (
     description TEXT,
     columns JSONB DEFAULT '[]'::jsonb,
     rows JSONB DEFAULT '[]'::jsonb,
+    auto_generate_rows BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+ALTER TABLE public.custom_tables ADD COLUMN IF NOT EXISTS auto_generate_rows BOOLEAN DEFAULT true;
 
 -- 9. Custom Daily Study Log Columns
 CREATE TABLE IF NOT EXISTS public.custom_columns (
@@ -616,15 +618,26 @@ export async function fetchUserDataFromSupabase(userId: string) {
 
     // Custom study tables: from dedicated table if available, or from metadata row
     let customTables: CustomStudyTable[] = [];
+    const metaTablesMap = new Map<string, Partial<CustomStudyTable>>();
+    if (metaTablesRow?.custom_data?.tables && Array.isArray(metaTablesRow.custom_data.tables)) {
+      for (const mt of metaTablesRow.custom_data.tables) {
+        if (mt?.id) metaTablesMap.set(mt.id, mt);
+      }
+    }
     if (customTablesRes?.data && Array.isArray(customTablesRes.data) && customTablesRes.data.length > 0) {
-      customTables = (customTablesRes.data as any[]).map((row: any) => ({
-        id: row.id,
-        title: row.title,
-        description: row.description || '',
-        createdAt: row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
-        columns: Array.isArray(row.columns) ? row.columns : [],
-        rows: Array.isArray(row.rows) ? row.rows : [],
-      }));
+      customTables = (customTablesRes.data as any[]).map((row: any) => {
+        const metaTbl = metaTablesMap.get(row.id);
+        return {
+          id: row.id,
+          title: row.title,
+          description: row.description || '',
+          createdAt: row.created_at ? row.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+          columns: Array.isArray(row.columns) ? row.columns : [],
+          rows: Array.isArray(row.rows) ? row.rows : [],
+          ...(typeof metaTbl?.autoGenerateRows === 'boolean' ? { autoGenerateRows: metaTbl.autoGenerateRows } : {}),
+          ...(Array.isArray(metaTbl?.deletedRowDates) ? { deletedRowDates: metaTbl.deletedRowDates } : {}),
+        };
+      });
     } else if (metaTablesRow?.custom_data?.tables && Array.isArray(metaTablesRow.custom_data.tables)) {
       customTables = metaTablesRow.custom_data.tables;
     }
@@ -645,6 +658,10 @@ export async function fetchUserDataFromSupabase(userId: string) {
     const tableConfig = {
       deletedDefaultColumns: (metaConfigRow?.custom_data?.deletedDefaultColumns as string[]) || [],
       isDefaultTableDeleted: Boolean(metaConfigRow?.custom_data?.isDefaultTableDeleted),
+      autoGenerateRows:
+        typeof metaConfigRow?.custom_data?.autoGenerateRows === 'boolean'
+          ? metaConfigRow.custom_data.autoGenerateRows
+          : undefined,
     };
 
     const examCountdowns: ExamCountdown[] = ((examsRes?.data as any[]) || []).map((row: any) => ({
@@ -912,7 +929,10 @@ export async function dbClearAllDailyLogs(userId: string) {
   }
 }
 
-export async function dbSaveTableConfig(userId: string, config: { deletedDefaultColumns: string[]; isDefaultTableDeleted: boolean }) {
+export async function dbSaveTableConfig(
+  userId: string,
+  config: { deletedDefaultColumns: string[]; isDefaultTableDeleted: boolean; autoGenerateRows?: boolean }
+) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
   const authed = await ensureSupabaseAuth(userId);
@@ -1020,17 +1040,20 @@ export async function dbSaveCustomTable(
 
   // 1. Try dedicated public.custom_tables
   try {
-    const { error: tblErr } = await sb.from('custom_tables').upsert({
+    const tableRecord = {
       id: table.id,
       user_id: userId,
       title: table.title,
       description: table.description || '',
       columns: table.columns || [],
       rows: table.rows || [],
+      auto_generate_rows: table.autoGenerateRows ?? true,
       updated_at: new Date().toISOString(),
-    });
-    if (tblErr) {
-      // Dedicate table might not be present in public schema; fallback will handle it
+    };
+    const { error: tblErr } = await sb.from('custom_tables').upsert(tableRecord);
+    if (tblErr && tblErr.message?.includes('auto_generate_rows')) {
+      delete (tableRecord as any).auto_generate_rows;
+      await sb.from('custom_tables').upsert(tableRecord);
     }
   } catch {
     // Graceful fallback if table does not exist
@@ -1100,15 +1123,21 @@ export async function dbSaveAllCustomTables(userId: string, tables: CustomStudyT
 
   try {
     for (const table of tables) {
-      await sb.from('custom_tables').upsert({
+      const tableRecord = {
         id: table.id,
         user_id: userId,
         title: table.title,
         description: table.description || '',
         columns: table.columns || [],
         rows: table.rows || [],
+        auto_generate_rows: table.autoGenerateRows ?? true,
         updated_at: new Date().toISOString(),
-      });
+      };
+      const { error } = await sb.from('custom_tables').upsert(tableRecord);
+      if (error && error.message?.includes('auto_generate_rows')) {
+        delete (tableRecord as any).auto_generate_rows;
+        await sb.from('custom_tables').upsert(tableRecord);
+      }
     }
   } catch {
     // Graceful fallback
@@ -1184,6 +1213,7 @@ export async function uploadAllUserDataToSupabase(
     examCountdowns?: ExamCountdown[];
     customTables?: CustomStudyTable[];
     customColumns?: CustomColumn[];
+    tableConfig?: { deletedDefaultColumns: string[]; isDefaultTableDeleted: boolean; autoGenerateRows?: boolean };
   }
 ) {
   const sb = getSupabaseClient();
@@ -1195,6 +1225,10 @@ export async function uploadAllUserDataToSupabase(
   }
 
   const promises: Promise<any>[] = [];
+
+  if (data.tableConfig) {
+    promises.push(dbSaveTableConfig(userId, data.tableConfig));
+  }
 
   if (data.user) {
     promises.push(dbUpdateProfile(userId, data.user));

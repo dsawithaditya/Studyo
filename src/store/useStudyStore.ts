@@ -41,6 +41,7 @@ import {
   dbDeleteExamCountdown,
   dbUpdateProfile,
   dbSaveCustomTable,
+  dbSaveAllCustomTables,
   dbDeleteCustomTable,
   dbSaveCustomColumns,
   uploadAllUserDataToSupabase,
@@ -107,6 +108,8 @@ interface StudyState {
   deletedDefaultColumns: string[];
   deletedDailyLogDates: string[];
   isDefaultTableDeleted: boolean;
+  autoGenerateRows: boolean;
+  setAutoGenerateRows: (enable: boolean) => void;
   showSortArrows: boolean;
   setShowSortArrows: (show: boolean) => void;
   enableClickToCycle: boolean;
@@ -136,6 +139,8 @@ interface StudyState {
   setActiveTableId: (id: string) => void;
   addCustomTable: (table: { title: string; description?: string; columns?: Omit<CustomTableColumn, 'id'>[] }) => string;
   updateCustomTable: (tableId: string, updates: Partial<Omit<CustomStudyTable, 'id' | 'rows' | 'createdAt'>>) => void;
+  setCustomTableAutoGenerateRows: (tableId: string, enable: boolean) => void;
+  ensureCustomTableTodayRow: (tableId: string) => void;
   deleteCustomTable: (tableId: string) => void;
   addCustomTableRow: (tableId: string, date: string, values?: Record<string, any>, notes?: string) => void;
   updateCustomTableCell: (tableId: string, rowId: string, columnId: string, value: any) => void;
@@ -282,11 +287,45 @@ export const createDefaultDailyLog = (date: string): DailyLogEntry => ({
   customData: {},
 });
 
+export const isBlankDailyLogEntry = (todayLog: DailyLogEntry): boolean => {
+  return (
+    (todayLog.studyHours === 0 || todayLog.studyHours == null) &&
+    (todayLog.pyqsSolved === 0 || todayLog.pyqsSolved == null) &&
+    (todayLog.sleepHours === 0 || todayLog.sleepHours == null) &&
+    (todayLog.focusRating === 5 || todayLog.focusRating == null) &&
+    !todayLog.notes &&
+    (!todayLog.attendedClass || todayLog.attendedClass === 'na') &&
+    (!todayLog.revisionDone || todayLog.revisionDone === 'na') &&
+    (!todayLog.mockTestTaken || todayLog.mockTestTaken === 'na') &&
+    (!todayLog.customData ||
+      Object.keys(todayLog.customData).every(
+        (k) =>
+          k === 'location' ||
+          k === '__tri' ||
+          todayLog.customData![k] === '' ||
+          todayLog.customData![k] == null ||
+          todayLog.customData![k] === 'na'
+      ))
+  );
+};
+
+export const isBlankCustomTableRow = (row: CustomTableRow): boolean => {
+  return (
+    (!row.notes || !row.notes.trim()) &&
+    (!row.values ||
+      Object.values(row.values).every((v) => v === '' || v == null || v === 'na'))
+  );
+};
+
 /**
- * Ensures today's log exists date-wise, and guarantees no future dates exist.
- * For today it generates today (unless explicitly deleted by the user).
+ * Ensures today's log exists date-wise when autoGenerate is true, and guarantees no future dates exist.
+ * For today it generates today (unless explicitly deleted by the user or autoGenerate is false).
  */
-export const ensureDailyLogsDateWise = (logs: DailyLogEntry[], deletedDates: string[] = []): DailyLogEntry[] => {
+export const ensureDailyLogsDateWise = (
+  logs: DailyLogEntry[],
+  deletedDates: string[] = [],
+  autoGenerate: boolean = true
+): DailyLogEntry[] => {
   const todayStr = getLocalTodayDateString();
   const map = new Map<string, DailyLogEntry>();
   const deletedSet = new Set(deletedDates);
@@ -300,24 +339,14 @@ export const ensureDailyLogsDateWise = (logs: DailyLogEntry[], deletedDates: str
     }
   }
 
-  // Ensure today's entry is generated ONLY if today has not been explicitly deleted by the user
-  if (!deletedSet.has(todayStr)) {
+  // Ensure today's entry is generated ONLY if autoGenerate is enabled and today has not been explicitly deleted
+  if (autoGenerate && !deletedSet.has(todayStr)) {
     if (!map.has(todayStr)) {
       map.set(todayStr, createDefaultDailyLog(todayStr));
     } else {
       // If today was previously auto-generated with default zeroes and has no user study notes or actions, clean to unentered state
       const todayLog = map.get(todayStr)!;
-      if (
-        (todayLog.studyHours === 0 || todayLog.studyHours == null) &&
-        (todayLog.pyqsSolved === 0 || todayLog.pyqsSolved == null) &&
-        (todayLog.sleepHours === 0 || todayLog.sleepHours == null) &&
-        (todayLog.focusRating === 5 || todayLog.focusRating == null) &&
-        !todayLog.notes &&
-        !todayLog.attendedClass &&
-        !todayLog.revisionDone &&
-        !todayLog.mockTestTaken &&
-        (!todayLog.customData || Object.keys(todayLog.customData).length === 0)
-      ) {
+      if (isBlankDailyLogEntry(todayLog)) {
         map.set(todayStr, createDefaultDailyLog(todayStr));
       }
     }
@@ -675,11 +704,21 @@ export function mergeCustomTablesList(
         }
       });
 
-      if (colsChanged || rowsChanged) {
+      const metaChanged =
+        (typeof localT.autoGenerateRows === 'boolean' && localT.autoGenerateRows !== remoteT.autoGenerateRows) ||
+        JSON.stringify(localT.deletedRowDates || []) !== JSON.stringify(remoteT.deletedRowDates || []);
+
+      if (colsChanged || rowsChanged || metaChanged) {
         const updatedTable: CustomStudyTable = {
           ...remoteT,
           columns: mergedColumns,
           rows: mergedRows,
+          ...(typeof localT.autoGenerateRows === 'boolean'
+            ? { autoGenerateRows: localT.autoGenerateRows }
+            : typeof remoteT.autoGenerateRows === 'boolean'
+            ? { autoGenerateRows: remoteT.autoGenerateRows }
+            : {}),
+          deletedRowDates: Array.from(new Set([...(remoteT.deletedRowDates || []), ...(localT.deletedRowDates || [])])),
         };
         tableMap.set(localT.id, updatedTable);
         tablesNeedUpload = true;
@@ -699,6 +738,7 @@ export const DEFAULT_CHECK_TABLE: CustomStudyTable = {
   title: 'CHECK',
   description: 'Mock Exam & Sectional Performance Tracker',
   createdAt: '2026-10-30',
+  autoGenerateRows: false,
   columns: [
     { id: 'col_paper', name: 'PAPER', type: 'text' },
     { id: 'col_score', name: 'SCORE', type: 'number', unit: 'pts' },
@@ -806,6 +846,56 @@ export const useStudyStore = create<StudyState>()(
       deletedDefaultColumns: [],
       deletedDailyLogDates: [],
       isDefaultTableDeleted: false,
+      autoGenerateRows: true,
+      setAutoGenerateRows: (enable) => {
+        const todayStr = getLocalTodayDateString();
+        set((state) => {
+          if (enable) {
+            const nextDeleted = (state.deletedDailyLogDates || []).filter((d) => d !== todayStr);
+            return {
+              autoGenerateRows: true,
+              deletedDailyLogDates: nextDeleted,
+              dailyLogs: state.isDefaultTableDeleted
+                ? []
+                : ensureDailyLogsDateWise(state.dailyLogs, nextDeleted, true),
+            };
+          } else {
+            const filteredLogs = (state.dailyLogs || []).filter(
+              (l) => !(l.date === todayStr && isBlankDailyLogEntry(l))
+            );
+            const updatedTables = (state.customTables || []).map((tbl) => ({
+              ...tbl,
+              autoGenerateRows: false,
+              rows: (tbl.rows || []).filter((r) => !(r.date === todayStr && isBlankCustomTableRow(r))),
+            }));
+            return {
+              autoGenerateRows: false,
+              dailyLogs: filteredLogs,
+              customTables: updatedTables,
+            };
+          }
+        });
+        const uid = getCurrentUserId();
+        if (uid) {
+          dbSaveTableConfig(uid, {
+            deletedDefaultColumns: get().deletedDefaultColumns,
+            isDefaultTableDeleted: get().isDefaultTableDeleted,
+            autoGenerateRows: enable,
+          });
+          if (!enable) {
+            const stillHasToday = get().dailyLogs.some((l) => l.date === todayStr);
+            if (!stillHasToday) {
+              dbDeleteDailyLog(uid, todayStr);
+            }
+            dbSaveAllCustomTables(uid, get().customTables);
+          } else {
+            const todayEntry = get().dailyLogs.find((l) => l.date === todayStr);
+            if (todayEntry) {
+              dbSaveDailyLog(uid, todayEntry);
+            }
+          }
+        }
+      },
       showSortArrows: false,
       setShowSortArrows: (show) => set({ showSortArrows: show }),
       enableClickToCycle: false,
@@ -924,7 +1014,11 @@ export const useStudyStore = create<StudyState>()(
         set((state) => ({
           dailyLogs: state.isDefaultTableDeleted
             ? []
-            : ensureDailyLogsDateWise(state.dailyLogs, state.deletedDailyLogDates || []),
+            : ensureDailyLogsDateWise(
+                state.dailyLogs,
+                state.deletedDailyLogDates || [],
+                state.autoGenerateRows ?? true
+              ),
         }));
       },
 
@@ -942,7 +1036,7 @@ export const useStudyStore = create<StudyState>()(
           }
           return {
             deletedDailyLogDates: nextDeleted,
-            dailyLogs: ensureDailyLogsDateWise(updated, nextDeleted),
+            dailyLogs: ensureDailyLogsDateWise(updated, nextDeleted, state.autoGenerateRows ?? true),
           };
         });
         const uid = getCurrentUserId();
@@ -1063,21 +1157,26 @@ export const useStudyStore = create<StudyState>()(
           ];
 
         const todayStr = getLocalTodayDateString();
+        const shouldAutoGen = get().autoGenerateRows ?? true;
         const newTable: CustomStudyTable = {
           id: newId,
           title: title.trim() || 'Untitled Table',
           description: description?.trim() || '',
           createdAt: todayStr,
           columns: initialColumns,
-          rows: [
-            {
-              id: `row_${Date.now()}_1`,
-              date: todayStr,
-              values: {},
-              notes: '',
-              createdAt: new Date().toISOString(),
-            },
-          ],
+          autoGenerateRows: shouldAutoGen,
+          deletedRowDates: [],
+          rows: shouldAutoGen
+            ? [
+                {
+                  id: `row_${Date.now()}_1`,
+                  date: todayStr,
+                  values: {},
+                  notes: '',
+                  createdAt: new Date().toISOString(),
+                },
+              ]
+            : [],
         };
 
         set((state) => ({
@@ -1094,6 +1193,82 @@ export const useStudyStore = create<StudyState>()(
           customTables: (state.customTables || []).map((t) =>
             t.id === tableId ? { ...t, ...updates } : t
           ),
+        }));
+        const uid = getCurrentUserId();
+        const target = get().customTables.find((t) => t.id === tableId);
+        if (uid && target) dbSaveCustomTable(uid, target, get().customTables);
+      },
+
+      setCustomTableAutoGenerateRows: (tableId, enable) => {
+        const todayStr = getLocalTodayDateString();
+        set((state) => ({
+          customTables: (state.customTables || []).map((tbl) => {
+            if (tbl.id !== tableId) return tbl;
+            if (enable) {
+              const nextDeleted = (tbl.deletedRowDates || []).filter((d) => d !== todayStr);
+              const hasToday = tbl.rows.some((r) => r.date === todayStr);
+              const nextRows = hasToday
+                ? tbl.rows
+                : [
+                    {
+                      id: `row_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                      date: todayStr,
+                      values: {},
+                      notes: '',
+                      createdAt: new Date().toISOString(),
+                    },
+                    ...tbl.rows,
+                  ].sort((a, b) => b.date.localeCompare(a.date));
+              return {
+                ...tbl,
+                autoGenerateRows: true,
+                deletedRowDates: nextDeleted,
+                rows: nextRows,
+              };
+            } else {
+              const filteredRows = tbl.rows.filter(
+                (r) => !(r.date === todayStr && isBlankCustomTableRow(r))
+              );
+              return {
+                ...tbl,
+                autoGenerateRows: false,
+                rows: filteredRows,
+              };
+            }
+          }),
+        }));
+        const uid = getCurrentUserId();
+        const target = get().customTables.find((t) => t.id === tableId);
+        if (uid && target) dbSaveCustomTable(uid, target, get().customTables);
+      },
+
+      ensureCustomTableTodayRow: (tableId) => {
+        const todayStr = getLocalTodayDateString();
+        const currentTables = get().customTables || [];
+        const tbl = currentTables.find((t) => t.id === tableId);
+        if (!tbl) return;
+        const shouldAuto = tbl.autoGenerateRows ?? (get().autoGenerateRows ?? true);
+        if (!shouldAuto) return;
+        if ((tbl.deletedRowDates || []).includes(todayStr)) return;
+        if (tbl.rows.some((r) => r.date === todayStr)) return;
+
+        const newRow: CustomTableRow = {
+          id: `row_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          date: todayStr,
+          values: {},
+          notes: '',
+          createdAt: new Date().toISOString(),
+        };
+
+        set((state) => ({
+          customTables: (state.customTables || []).map((t) => {
+            if (t.id !== tableId) return t;
+            if (t.rows.some((r) => r.date === todayStr)) return t;
+            return {
+              ...t,
+              rows: [newRow, ...t.rows].sort((a, b) => b.date.localeCompare(a.date)),
+            };
+          }),
         }));
         const uid = getCurrentUserId();
         const target = get().customTables.find((t) => t.id === tableId);
@@ -1121,8 +1296,9 @@ export const useStudyStore = create<StudyState>()(
         set((state) => ({
           customTables: (state.customTables || []).map((tbl) => {
             if (tbl.id !== tableId) return tbl;
+            const nextDeleted = (tbl.deletedRowDates || []).filter((d) => d !== date);
             const nextRows = [newRow, ...tbl.rows].sort((a, b) => b.date.localeCompare(a.date));
-            return { ...tbl, rows: nextRows };
+            return { ...tbl, deletedRowDates: nextDeleted, rows: nextRows };
           }),
         }));
         const uid = getCurrentUserId();
@@ -1173,8 +1349,13 @@ export const useStudyStore = create<StudyState>()(
         set((state) => ({
           customTables: (state.customTables || []).map((tbl) => {
             if (tbl.id !== tableId) return tbl;
+            const targetRow = tbl.rows.find((r) => r.id === rowId);
+            const nextDeleted = targetRow?.date
+              ? Array.from(new Set([...(tbl.deletedRowDates || []), targetRow.date]))
+              : tbl.deletedRowDates || [];
             return {
               ...tbl,
+              deletedRowDates: nextDeleted,
               rows: tbl.rows.filter((row) => row.id !== rowId),
             };
           }),
@@ -2102,7 +2283,15 @@ export const useStudyStore = create<StudyState>()(
             current.dailyLogs || []
           );
           const isDefDeleted = remote.tableConfig?.isDefaultTableDeleted ?? current.isDefaultTableDeleted;
-          const mergedLogs = isDefDeleted ? [] : ensureDailyLogsDateWise(rawMergedLogs, current.deletedDailyLogDates);
+          const resolvedAutoGen =
+            typeof current.autoGenerateRows === 'boolean'
+              ? current.autoGenerateRows
+              : typeof remote.tableConfig?.autoGenerateRows === 'boolean'
+              ? remote.tableConfig.autoGenerateRows
+              : true;
+          const mergedLogs = isDefDeleted
+            ? []
+            : ensureDailyLogsDateWise(rawMergedLogs, current.deletedDailyLogDates, resolvedAutoGen);
 
           // 5. Custom Tables Sync (Intelligent Multi-Device Merge Engine per specification)
           const { mergedTables, tablesNeedUpload } = mergeCustomTablesList(
@@ -2147,6 +2336,7 @@ export const useStudyStore = create<StudyState>()(
             dailyLogs: mergedLogs,
             deletedDefaultColumns: remote.tableConfig?.deletedDefaultColumns || state.deletedDefaultColumns || [],
             isDefaultTableDeleted: isDefDeleted,
+            autoGenerateRows: resolvedAutoGen,
             customTables: mergedTables,
             customColumns: mergedColumns,
             examCountdowns: mergedExams,
@@ -2182,6 +2372,11 @@ export const useStudyStore = create<StudyState>()(
               customTables: tablesNeedUpload ? mergedTables : undefined,
               customColumns: columnsToUpload ? mergedColumns : undefined,
               examCountdowns: examsToUpload,
+              tableConfig: {
+                deletedDefaultColumns: remote.tableConfig?.deletedDefaultColumns || get().deletedDefaultColumns || [],
+                isDefaultTableDeleted: isDefDeleted,
+                autoGenerateRows: resolvedAutoGen,
+              },
             }).catch((err) => console.warn('Background sync upload notice:', err));
           }
 
@@ -2401,6 +2596,9 @@ export const useStudyStore = create<StudyState>()(
           isDefaultTableDeleted: typeof payload.isDefaultTableDeleted === 'boolean'
             ? payload.isDefaultTableDeleted
             : state.isDefaultTableDeleted,
+          autoGenerateRows: typeof payload.autoGenerateRows === 'boolean'
+            ? payload.autoGenerateRows
+            : state.autoGenerateRows,
         });
 
         // Immediately sync restored data to Supabase if logged in
@@ -2415,6 +2613,17 @@ export const useStudyStore = create<StudyState>()(
             examCountdowns: newExamCountdowns,
             customTables: newCustomTables,
             customColumns: newCustomColumns,
+            tableConfig: {
+              deletedDefaultColumns: Array.isArray(payload.deletedDefaultColumns)
+                ? payload.deletedDefaultColumns
+                : state.deletedDefaultColumns,
+              isDefaultTableDeleted: typeof payload.isDefaultTableDeleted === 'boolean'
+                ? payload.isDefaultTableDeleted
+                : state.isDefaultTableDeleted,
+              autoGenerateRows: typeof payload.autoGenerateRows === 'boolean'
+                ? payload.autoGenerateRows
+                : state.autoGenerateRows,
+            },
           }).catch(console.error);
         }
 
@@ -2729,6 +2938,7 @@ export const useStudyStore = create<StudyState>()(
         deletedDefaultColumns: state.deletedDefaultColumns,
         deletedDailyLogDates: state.deletedDailyLogDates,
         isDefaultTableDeleted: state.isDefaultTableDeleted,
+        autoGenerateRows: state.autoGenerateRows,
         showSortArrows: state.showSortArrows,
         enableClickToCycle: state.enableClickToCycle,
         mainTableTitle: state.mainTableTitle,
@@ -2826,7 +3036,10 @@ export const useStudyStore = create<StudyState>()(
         });
         const isDefDeleted = Boolean(persisted.isDefaultTableDeleted);
         const deletedDates = Array.isArray(persisted.deletedDailyLogDates) ? persisted.deletedDailyLogDates : [];
-        const mergedLogs = isDefDeleted ? [] : ensureDailyLogsDateWise(Array.from(mergedMap.values()), deletedDates);
+        const resolvedAutoGen = persisted.autoGenerateRows ?? true;
+        const mergedLogs = isDefDeleted
+          ? []
+          : ensureDailyLogsDateWise(Array.from(mergedMap.values()), deletedDates, resolvedAutoGen);
 
         const isDemoUser =
           persisted.user?.name === 'Alex' &&
@@ -2875,6 +3088,7 @@ export const useStudyStore = create<StudyState>()(
           deletedDefaultColumns: Array.isArray(persisted.deletedDefaultColumns) ? persisted.deletedDefaultColumns : [],
           deletedDailyLogDates: Array.isArray(persisted.deletedDailyLogDates) ? persisted.deletedDailyLogDates : [],
           isDefaultTableDeleted: isDefDeleted,
+          autoGenerateRows: resolvedAutoGen,
           showSortArrows: persisted.showSortArrows ?? false,
           enableClickToCycle: persisted.enableClickToCycle ?? false,
           mainTableTitle: persisted.mainTableTitle || 'Study Log',

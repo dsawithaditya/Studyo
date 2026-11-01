@@ -109,8 +109,11 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
     deleteCustomTableColumn,
     reorderCustomTableColumns,
     updateCustomTable,
+    setCustomTableAutoGenerateRows,
+    ensureCustomTableTodayRow,
     deleteCustomTable,
     setActiveTableId,
+    autoGenerateRows = true,
     showSortArrows,
     setShowSortArrows,
     enableClickToCycle = false,
@@ -121,6 +124,13 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
   const isDark = theme !== 'light';
 
   const todayStr = getLocalTodayDateString();
+  const isTableAutoGen = table.autoGenerateRows ?? (table.id === 'tbl-check-demo' ? false : autoGenerateRows);
+
+  useEffect(() => {
+    if (isTableAutoGen) {
+      ensureCustomTableTodayRow(table.id);
+    }
+  }, [table.id, isTableAutoGen, ensureCustomTableTodayRow]);
 
   // 1. Search, Filter & Sort State
   const [searchQuery, setSearchQuery] = useState('');
@@ -1177,6 +1187,38 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                         type="button"
                         onClick={() => setEnableClickToCycle(false)}
                         className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${!enableClickToCycle
+                            ? isDark
+                              ? 'bg-white/10 text-white font-extrabold'
+                              : 'bg-white text-stone-900 shadow-sm font-extrabold'
+                            : 'text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                          }`}
+                      >
+                        OFF
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Auto-Generate Daily Rows by Date */}
+                  <div className="flex items-center justify-between gap-3 py-1">
+                    <span className="text-[11px] uppercase tracking-wider font-bold text-stone-700 dark:text-stone-300">
+                      AUTO-GENERATE ROWS (BY DATE)
+                    </span>
+                    <div className={`flex items-center gap-1 p-1 rounded-xl border shrink-0 ${isDark ? 'bg-[#121211] border-white/10' : 'bg-stone-100 border-stone-300'
+                      }`}>
+                      <button
+                        type="button"
+                        onClick={() => setCustomTableAutoGenerateRows(table.id, true)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${isTableAutoGen
+                            ? 'bg-[#e9762b] text-white shadow-sm font-extrabold'
+                            : 'text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                          }`}
+                      >
+                        ON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCustomTableAutoGenerateRows(table.id, false)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${!isTableAutoGen
                             ? isDark
                               ? 'bg-white/10 text-white font-extrabold'
                               : 'bg-white text-stone-900 shadow-sm font-extrabold'

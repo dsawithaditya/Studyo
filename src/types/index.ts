@@ -183,6 +183,8 @@ export interface CustomStudyTable {
   createdAt: string;
   columns: CustomTableColumn[];
   rows: CustomTableRow[];
+  autoGenerateRows?: boolean;
+  deletedRowDates?: string[];
 }
 
 

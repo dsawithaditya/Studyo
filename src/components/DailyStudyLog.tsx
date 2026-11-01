@@ -88,12 +88,15 @@ export const DailyStudyLog: React.FC = () => {
     setActiveTableId,
     addCustomTable,
     deletedDefaultColumns = [],
+    deletedDailyLogDates = [],
     deleteDefaultColumn,
     restoreDefaultColumn,
     resetDefaultColumns,
     isDefaultTableDeleted = false,
     deleteDefaultTable,
     restoreDefaultTable,
+    autoGenerateRows = true,
+    setAutoGenerateRows,
     showSortArrows = false,
     setShowSortArrows,
     enableClickToCycle = false,
@@ -119,8 +122,13 @@ export const DailyStudyLog: React.FC = () => {
   const yesterdayStr = `${yesterdayYear}-${yesterdayMonth}-${yesterdayDay}`;
 
   const dailyLogs = useMemo(
-    () => ensureDailyLogsDateWise(Array.isArray(rawLogs) ? rawLogs : []),
-    [rawLogs]
+    () =>
+      ensureDailyLogsDateWise(
+        Array.isArray(rawLogs) ? rawLogs : [],
+        deletedDailyLogDates,
+        autoGenerateRows
+      ),
+    [rawLogs, deletedDailyLogDates, autoGenerateRows]
   );
 
   const hasMountedSyncRef = useRef(false);
@@ -3493,6 +3501,38 @@ export const DailyStudyLog: React.FC = () => {
                         type="button"
                         onClick={() => setEnableClickToCycle(false)}
                         className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${!enableClickToCycle
+                          ? isDark
+                            ? 'bg-white/10 text-white font-extrabold'
+                            : 'bg-white text-stone-900 shadow-sm font-extrabold'
+                          : 'text-stone-500 hover:text-black dark:text-stone-400 dark:hover:text-white'
+                          }`}
+                      >
+                        OFF
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Auto-Generate Daily Rows by Date */}
+                  <div className="flex items-center justify-between gap-3 py-1">
+                    <span className="text-[11px] uppercase tracking-wider font-bold text-stone-700 dark:text-stone-300">
+                      AUTO-GENERATE ROWS (BY DATE)
+                    </span>
+                    <div className={`flex items-center gap-1 p-1 rounded-xl border shrink-0 ${isDark ? 'bg-[#121211] border-white/10' : 'bg-stone-100 border-stone-300'
+                      }`}>
+                      <button
+                        type="button"
+                        onClick={() => setAutoGenerateRows(true)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${autoGenerateRows
+                          ? 'bg-[#e9762b] text-white shadow-sm font-extrabold'
+                          : 'text-stone-500 hover:text-black dark:text-stone-400 dark:hover:text-white'
+                          }`}
+                      >
+                        ON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAutoGenerateRows(false)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${!autoGenerateRows
                           ? isDark
                             ? 'bg-white/10 text-white font-extrabold'
                             : 'bg-white text-stone-900 shadow-sm font-extrabold'
