@@ -144,13 +144,15 @@ export const useAuthStore = create<AuthState>()(
           }
 
           if (data.user) {
-            // Upsert profile in public.profiles table
+            // Upsert profile in public.profiles table with friend_code
+            const currentFriendCode = useStudyStore.getState().user?.friendCode;
             try {
               await sb.from('profiles').upsert({
                 id: data.user.id,
                 name: cleanName,
                 email: cleanEmail,
                 daily_target_minutes: 360,
+                ...(currentFriendCode ? { friend_code: currentFriendCode } : {}),
                 updated_at: new Date().toISOString(),
               });
             } catch (err) {
@@ -271,6 +273,12 @@ export const useAuthStore = create<AuthState>()(
 
               if (profile?.name) {
                 studentName = profile.name;
+              }
+              if (!profile?.friend_code) {
+                const myCode = useStudyStore.getState().user?.friendCode;
+                if (myCode) {
+                  await dbUpdateProfile(data.user.id, { friendCode: myCode });
+                }
               }
             } catch (pErr) {
               console.warn('Profile fetch warning:', pErr);
@@ -450,10 +458,14 @@ export const useAuthStore = create<AuthState>()(
         return { success: true };
       },
 
-      changePassword: async (_currentPassword: string, newPassword: string) => {
+      changePassword: async (currentPassword: string, newPassword: string) => {
         const currentUser = get().currentUser;
         if (!currentUser) {
           return { success: false, error: 'You must be logged in to change your password.' };
+        }
+
+        if (!currentPassword || !currentPassword.trim()) {
+          return { success: false, error: 'Please enter your current password to verify your identity.' };
         }
 
         const strength = validatePasswordStrength(newPassword);
@@ -467,6 +479,17 @@ export const useAuthStore = create<AuthState>()(
         }
 
         try {
+          // Verify current password first before permitting password update
+          if (currentUser.email) {
+            const { error: verifyErr } = await sb.auth.signInWithPassword({
+              email: currentUser.email,
+              password: currentPassword,
+            });
+            if (verifyErr) {
+              return { success: false, error: 'Current password is incorrect.' };
+            }
+          }
+
           const { error } = await sb.auth.updateUser({
             password: newPassword,
           });
@@ -475,7 +498,7 @@ export const useAuthStore = create<AuthState>()(
             return { success: false, error: error.message };
           }
 
-          get().setFlashMessage('success', 'Password changed successfully in Supabase.');
+          get().setFlashMessage('success', 'Password changed successfully.');
           return { success: true };
         } catch (err: any) {
           return { success: false, error: err?.message || 'Failed to update password.' };
@@ -552,6 +575,13 @@ if (typeof window !== 'undefined') {
 
         // Trigger two-way merge and sync
         useStudyStore.getState().syncUserData(u.id);
+      } else {
+        const curUser = useAuthStore.getState().currentUser;
+        const curSession = useAuthStore.getState().session;
+        if (curUser?.id === 'demo-user-1' || curSession?.token === 'demo-token') {
+          useAuthStore.setState({ currentUser: null, session: null });
+          useStudyStore.setState({ syncError: null });
+        }
       }
     });
 

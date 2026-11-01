@@ -47,7 +47,13 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
 
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
-    setSupabaseConfig(urlInput.trim(), keyInput.trim());
+    const trimmedUrl = urlInput.trim();
+    const trimmedKey = keyInput.trim();
+    if (trimmedUrl && !/^https:\/\//i.test(trimmedUrl)) {
+      alert('Supabase Project URL must start with https://');
+      return;
+    }
+    setSupabaseConfig(trimmedUrl, trimmedKey);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 2500);
   };
@@ -60,7 +66,7 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 dark:bg-black/80 backdrop-blur-md animate-fadeIn">
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/70 dark:bg-black/70 backdrop-blur-sm animate-fadeIn">
       <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl p-6 sm:p-8 glass-modal shadow-2xl space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-stone-200 dark:border-white/10">

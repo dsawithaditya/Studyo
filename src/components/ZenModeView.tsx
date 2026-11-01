@@ -7,17 +7,42 @@ import { ThemeSwitch } from './ThemeSwitch';
 export const ZenModeView: React.FC = () => {
   const {
     timer,
+    timerSubMode,
+    stopwatchTime,
+    stopwatchRunning,
     showFinishButton,
     setZenMode,
     startTimer,
     pauseTimer,
     resetTimer,
+    startStopwatch,
+    pauseStopwatch,
+    resetStopwatch,
     logSession
   } = useStudyStore();
 
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [rating, setRating] = useState(5);
   const [notes, setNotes] = useState('');
+
+  const isStopwatch = timerSubMode === 'stopwatch';
+  const activeRunning = isStopwatch ? stopwatchRunning : timer.isRunning;
+  const activeSeconds = isStopwatch ? stopwatchTime : timer.timeLeft;
+
+  const handleToggleRun = () => {
+    if (isStopwatch) {
+      if (stopwatchRunning) pauseStopwatch();
+      else startStopwatch();
+    } else {
+      if (timer.isRunning) pauseTimer();
+      else startTimer();
+    }
+  };
+
+  const handleReset = () => {
+    if (isStopwatch) resetStopwatch();
+    else resetTimer();
+  };
 
   // Keyboard shortcuts in Focus Mode
   useEffect(() => {
@@ -27,8 +52,13 @@ export const ZenModeView: React.FC = () => {
 
       if (e.code === 'Space') {
         e.preventDefault();
-        if (timer.isRunning) pauseTimer();
-        else startTimer();
+        if (isStopwatch) {
+          if (stopwatchRunning) pauseStopwatch();
+          else startStopwatch();
+        } else {
+          if (timer.isRunning) pauseTimer();
+          else startTimer();
+        }
       } else if (e.key === 'Escape' || e.key === 'z' || e.key === 'Z') {
         e.preventDefault();
         setZenMode(false);
@@ -37,11 +67,11 @@ export const ZenModeView: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [timer.isRunning, pauseTimer, startTimer, setZenMode]);
+  }, [isStopwatch, timer.isRunning, stopwatchRunning, pauseTimer, startTimer, pauseStopwatch, startStopwatch, setZenMode]);
 
-  const hours = Math.floor(timer.timeLeft / 3600);
-  const minutes = Math.floor((timer.timeLeft % 3600) / 60);
-  const seconds = timer.timeLeft % 60;
+  const hours = Math.floor(activeSeconds / 3600);
+  const minutes = Math.floor((activeSeconds % 3600) / 60);
+  const seconds = activeSeconds % 60;
 
   const hhStr = String(hours).padStart(2, '0');
   const mmStr = String(minutes).padStart(2, '0');
@@ -49,6 +79,7 @@ export const ZenModeView: React.FC = () => {
 
   const handleFinish = () => {
     pauseTimer();
+    pauseStopwatch();
     setShowRatingModal(true);
   };
 
@@ -118,7 +149,7 @@ export const ZenModeView: React.FC = () => {
           {/* Seconds (Highlighted vibrant orange with soft radial glow) */}
           <div className="flex flex-col items-center relative">
             <div className="absolute inset-0 bg-[#e9762b]/20 dark:bg-[#e9762b]/30 blur-3xl rounded-full pointer-events-none scale-125" />
-            <span className="text-[#e9762b] drop-shadow-[0_0_40px_rgba(233,118,43,0.45)] font-mono tabular-nums slashed-zero-num relative z-10 leading-none">
+            <span className="text-[#e9762b] font-mono tabular-nums slashed-zero-num relative z-10 leading-none">
               {ssStr}
             </span>
             <span className="text-[11px] sm:text-xs md:text-sm uppercase tracking-[0.25em] text-[#e9762b] font-bold mt-3 sm:mt-5 relative z-10">
@@ -131,10 +162,10 @@ export const ZenModeView: React.FC = () => {
         <div className="flex items-center justify-center gap-3 sm:gap-4 mt-8 sm:mt-12 md:mt-16 flex-wrap">
           {/* Start / Pause (Border Magic Pill) */}
           <ShinyButton
-            onClick={timer.isRunning ? pauseTimer : startTimer}
+            onClick={handleToggleRun}
             className="!px-8 sm:!px-10 !py-3.5 !text-xs sm:!text-sm !font-mono !font-extrabold !uppercase !tracking-wider active:scale-95 transition shadow-lg shadow-orange-500/25 cursor-pointer"
           >
-            {timer.isRunning ? (
+            {activeRunning ? (
               <>
                 <Pause className="w-4 h-4 fill-white text-white" />
                 <span>Pause</span>
@@ -149,7 +180,7 @@ export const ZenModeView: React.FC = () => {
 
           {/* Reset */}
           <button
-            onClick={resetTimer}
+            onClick={handleReset}
             className="flex items-center gap-2 px-6 sm:px-7 py-3.5 rounded-full glass-panel hover:bg-black/5 dark:hover:bg-[#222220]/90 text-stone-800 dark:text-[#f2eee3] font-bold text-xs sm:text-sm uppercase tracking-wider transition active:scale-95 cursor-pointer shadow-sm"
           >
             <RotateCcw className="w-4 h-4 text-stone-500 dark:text-slate-400" />
@@ -160,7 +191,7 @@ export const ZenModeView: React.FC = () => {
           {showFinishButton && (
             <button
               onClick={handleFinish}
-              className="flex items-center gap-2 px-6 sm:px-7 py-3.5 rounded-full bg-emerald-500/15 dark:bg-[#111f18]/80 backdrop-blur-md hover:bg-emerald-500/25 dark:hover:bg-[#14281e] border border-emerald-600/30 dark:border-[#10b981]/40 text-emerald-700 dark:text-[#10b981] font-bold text-xs sm:text-sm uppercase tracking-wider transition active:scale-95 cursor-pointer shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+              className="flex items-center gap-2 px-6 sm:px-7 py-3.5 rounded-full bg-emerald-500/15 dark:bg-[#111f18]/80 backdrop-blur-md hover:bg-emerald-500/25 dark:hover:bg-[#14281e] border border-emerald-600/30 dark:border-[#10b981]/40 text-emerald-700 dark:text-[#10b981] font-bold text-xs sm:text-sm uppercase tracking-wider transition active:scale-95 cursor-pointer shadow-md shadow-emerald-950/20"
             >
               <Check className="w-4 h-4 text-emerald-600 dark:text-[#10b981]" />
               <span>Finish</span>

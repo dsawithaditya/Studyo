@@ -16,7 +16,8 @@ import {
   TrendingUp, 
   BookOpen, 
   X,
-  Printer
+  Printer,
+  MapPin
 } from 'lucide-react';
 
 interface DaySessionModalData {
@@ -421,7 +422,7 @@ export const AnalyticsHubScreen: React.FC = () => {
       {/* 5. DAY DETAILS POPUP MODAL (ON CLICKING ANY HEATMAP CELL) */}
       {/* ======================================================== */}
       {dayDetails && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-md rounded-3xl p-6 glass-modal shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-stone-200/60 dark:border-white/10">
               <div className="flex items-center gap-2">
@@ -464,7 +465,15 @@ export const AnalyticsHubScreen: React.FC = () => {
                       </p>
                     )}
                     <div className="flex items-center justify-between text-[10px] text-stone-500 dark:text-slate-400 pt-1">
-                      <span>Time: {new Date(sess.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <div className="flex items-center gap-2">
+                        <span>Time: {new Date(sess.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        {sess.location && (
+                          <span className="inline-flex items-center gap-1 font-mono text-[9px] px-1.5 py-0.5 rounded-full bg-orange-500/10 text-[#e9762b] border border-orange-500/20 font-bold">
+                            <MapPin className="w-2.5 h-2.5" />
+                            <span>{sess.location}</span>
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-0.5 text-amber-500 dark:text-amber-400">
                         <Star className="w-3 h-3 fill-amber-500 dark:fill-amber-400" />
                         <span>{sess.focusRating}/5</span>
@@ -489,7 +498,7 @@ export const AnalyticsHubScreen: React.FC = () => {
       {/* 6. ONE-CLICK STUDY SUMMARY EXPORT MODAL                  */}
       {/* ======================================================== */}
       {showExportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
           <div className="w-full max-w-lg rounded-3xl p-6 sm:p-8 glass-modal shadow-2xl space-y-6">
             {/* Report Header */}
             <div className="flex items-center justify-between border-b border-stone-200/60 dark:border-white/10 pb-4">

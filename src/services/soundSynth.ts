@@ -211,6 +211,14 @@ class SoundSynthesizer {
 
       osc.connect(tickGain);
       tickGain.connect(this.masterGain);
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          tickGain.disconnect();
+        } catch {
+          // ignore if already disconnected
+        }
+      };
       osc.start();
       osc.stop(this.ctx.currentTime + 0.05);
     };
@@ -237,6 +245,14 @@ class SoundSynthesizer {
 
       osc.connect(gain);
       gain.connect(this.ctx.destination);
+      osc.onended = () => {
+        try {
+          osc.disconnect();
+          gain.disconnect();
+        } catch {
+          // ignore if already disconnected
+        }
+      };
       osc.start(now + idx * 0.08);
       osc.stop(now + idx * 0.08 + 1.3);
     });

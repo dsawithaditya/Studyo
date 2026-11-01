@@ -1,17 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import confetti from 'canvas-confetti';
-import { 
-  Language, 
-  Subject, 
+import {
+  Language,
+  Subject,
   Chapter,
   Topic,
-  StudySession, 
-  Task, 
-  ExamCountdown, 
-  DistractionNote, 
-  UserProfile, 
-  RevisionConfidence, 
+  StudySession,
+  Task,
+  ExamCountdown,
+  DistractionNote,
+  UserProfile,
+  RevisionConfidence,
   TopicStatus,
   TimerMode,
   DailyLogEntry,
@@ -25,6 +25,7 @@ import {
   CustomTableColumnType,
   ThemeMode
 } from '../types';
+import { normalizeTriState, mergeTriState } from '../components/ui/TriStateToggle';
 import { SoundType, soundSynth } from '../services/soundSynth';
 import { useAuthStore } from './useAuthStore';
 import {
@@ -47,12 +48,23 @@ import {
   dbSaveTableConfig,
   resetSupabaseClient,
   dbDeleteAccount,
+  dbSendFriendRequest,
+  dbFetchFriendRequests,
+  dbAcceptFriendRequest,
+  dbDeclineFriendRequest,
+  dbCancelFriendRequest,
+  dbRemoveFriend,
+  dbFetchFriends,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY
 } from '../services/supabaseClient';
 
 const getCurrentUserId = () => {
-  return useAuthStore.getState().currentUser?.id || null;
+  const auth = useAuthStore.getState();
+  if (auth.currentUser?.id === 'demo-user-1' || auth.session?.token === 'demo-token') {
+    return null;
+  }
+  return auth.currentUser?.id || null;
 };
 
 interface TimerState {
@@ -93,7 +105,16 @@ interface StudyState {
 
   // Default Table Deletion & Column Customization
   deletedDefaultColumns: string[];
+  deletedDailyLogDates: string[];
   isDefaultTableDeleted: boolean;
+  showSortArrows: boolean;
+  setShowSortArrows: (show: boolean) => void;
+  enableClickToCycle: boolean;
+  setEnableClickToCycle: (enable: boolean) => void;
+  mainTableTitle: string;
+  setMainTableTitle: (title: string) => void;
+  mainTableDescription: string;
+  setMainTableDescription: (desc: string) => void;
   deleteDefaultColumn: (colKey: string) => void;
   restoreDefaultColumn: (colKey: string) => void;
   resetDefaultColumns: () => void;
@@ -126,6 +147,8 @@ interface StudyState {
   reorderCustomTableColumns: (tableId: string, fromIndex: number, toIndex: number) => void;
 
   // Timer Settings & Stopwatch Module
+  timerSubMode: 'timer' | 'stopwatch';
+  setTimerSubMode: (mode: 'timer' | 'stopwatch') => void;
   autoStartNextRound: boolean;
   soundAlertOnFinish: boolean;
   enableQuickScratchpad: boolean;
@@ -151,7 +174,7 @@ interface StudyState {
   setZenMode: (zen: boolean) => void;
   setAmbientSound: (sound: SoundType) => void;
   setAmbientVolume: (vol: number) => void;
-  
+
   // Timer Actions
   setTimerMode: (mode: TimerMode, durationMinutes?: number) => void;
   setTimerDuration: (seconds: number) => void;
@@ -163,10 +186,12 @@ interface StudyState {
   tickTimer: () => void;
 
   // Session Logging
-  logSession: (rating: number, notes?: string) => void;
+  logSession: (rating: number, notes?: string, location?: string) => void;
 
   // Task Actions
   addTask: (task: Omit<Task, 'id' | 'completed'>) => void;
+  updateTask: (taskId: string, updates: Partial<Task>) => void;
+  updateTaskDueDate: (taskId: string, dueDate: string) => void;
   toggleTask: (taskId: string) => void;
   deleteTask: (taskId: string) => void;
 
@@ -201,14 +226,13 @@ interface StudyState {
 
   // Friends & Social Study Circle Module
   friends: FriendProfile[];
-  sendFriendRequest: (code: string) => { success: boolean; message: string; friend?: FriendProfile };
-  acceptFriendRequest: (code: string) => void;
-  declineFriendRequest: (code: string) => void;
-  cancelFriendRequest: (code: string) => void;
-  removeFriend: (code: string) => void;
+  sendFriendRequest: (code: string, friendName?: string) => Promise<{ success: boolean; message: string; friend?: FriendProfile }>;
+  acceptFriendRequest: (code: string) => Promise<void>;
+  declineFriendRequest: (code: string) => Promise<void>;
+  cancelFriendRequest: (code: string) => Promise<void>;
+  removeFriend: (code: string) => Promise<void>;
   addFriendComment: (friendCode: string, text: string) => void;
   deleteFriendComment: (friendCode: string, commentId: string) => void;
-  generateNewFriendCode: () => string;
   updateProfileMetricSlot: (slotIndex: 0 | 1 | 2, metricKey: string) => void;
   setCustomWordmarkText: (text: string) => void;
 }
@@ -226,66 +250,89 @@ export const INITIAL_CUSTOM_COLUMNS: CustomColumn[] = [];
 export const INITIAL_CUSTOM_TABLES: CustomStudyTable[] = [];
 export const INITIAL_TASKS: Task[] = [];
 
-export const getLocalTodayDateString = (): string => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
+export const getLocalDateString = (date: Date = new Date()): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+
+export const getLocalTodayDateString = (): string => getLocalDateString(new Date());
+
+export const DEFAULT_STUDY_LOCATIONS: string[] = [
+  'Library',
+  'Home Desk',
+  'Quiet Cafe',
+  'Study Hall',
+  'Dorm Room',
+  'Campus Hub',
+];
 
 export const createDefaultDailyLog = (date: string): DailyLogEntry => ({
   date,
   studyHours: null,
-  attendedClass: false,
+  attendedClass: 'na',
   pyqsSolved: null,
-  revisionDone: false,
-  mockTestTaken: false,
+  revisionDone: 'na',
+  mockTestTaken: 'na',
   sleepHours: null,
   focusRating: null,
   notes: '',
+  location: '',
   customData: {},
 });
 
 /**
  * Ensures today's log exists date-wise, and guarantees no future dates exist.
- * For today it generates today. For tomorrow it will only generate when tomorrow arrives.
+ * For today it generates today (unless explicitly deleted by the user).
  */
-export const ensureDailyLogsDateWise = (logs: DailyLogEntry[]): DailyLogEntry[] => {
+export const ensureDailyLogsDateWise = (logs: DailyLogEntry[], deletedDates: string[] = []): DailyLogEntry[] => {
   const todayStr = getLocalTodayDateString();
   const map = new Map<string, DailyLogEntry>();
+  const deletedSet = new Set(deletedDates);
 
-  // Only include logs up to today (never generate tomorrow today)
+  // Only include logs up to today (never generate tomorrow today) and skip deleted dates
   if (Array.isArray(logs)) {
     for (const log of logs) {
-      if (log && log.date && log.date <= todayStr) {
+      if (log && log.date && log.date <= todayStr && !deletedSet.has(log.date)) {
         map.set(log.date, log);
       }
     }
   }
 
-  // Ensure today's entry is generated
-  if (!map.has(todayStr)) {
-    map.set(todayStr, createDefaultDailyLog(todayStr));
-  } else {
-    // If today was previously auto-generated with default zeroes and has no user study notes or actions, clean to unentered state
-    const todayLog = map.get(todayStr)!;
-    if (
-      (todayLog.studyHours === 0 || todayLog.studyHours == null) &&
-      (todayLog.pyqsSolved === 0 || todayLog.pyqsSolved == null) &&
-      (todayLog.sleepHours === 0 || todayLog.sleepHours == null) &&
-      (todayLog.focusRating === 5 || todayLog.focusRating == null) &&
-      !todayLog.notes &&
-      !todayLog.attendedClass &&
-      !todayLog.revisionDone &&
-      !todayLog.mockTestTaken &&
-      (!todayLog.customData || Object.keys(todayLog.customData).length === 0)
-    ) {
+  // Ensure today's entry is generated ONLY if today has not been explicitly deleted by the user
+  if (!deletedSet.has(todayStr)) {
+    if (!map.has(todayStr)) {
       map.set(todayStr, createDefaultDailyLog(todayStr));
+    } else {
+      // If today was previously auto-generated with default zeroes and has no user study notes or actions, clean to unentered state
+      const todayLog = map.get(todayStr)!;
+      if (
+        (todayLog.studyHours === 0 || todayLog.studyHours == null) &&
+        (todayLog.pyqsSolved === 0 || todayLog.pyqsSolved == null) &&
+        (todayLog.sleepHours === 0 || todayLog.sleepHours == null) &&
+        (todayLog.focusRating === 5 || todayLog.focusRating == null) &&
+        !todayLog.notes &&
+        !todayLog.attendedClass &&
+        !todayLog.revisionDone &&
+        !todayLog.mockTestTaken &&
+        (!todayLog.customData || Object.keys(todayLog.customData).length === 0)
+      ) {
+        map.set(todayStr, createDefaultDailyLog(todayStr));
+      }
     }
   }
 
   return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+};
+
+// Extracts first name and enforces max length (max 11 chars)
+export const getUserFirstName = (fullName?: string, maxLength: number = 11): string => {
+  if (!fullName) return '';
+  const trimmed = fullName.trim();
+  if (!trimmed) return '';
+  const firstWord = trimmed.split(/[\s,._-]+/)[0] || '';
+  return firstWord.slice(0, maxLength);
 };
 
 export const INITIAL_DAILY_LOGS: DailyLogEntry[] = [];
@@ -314,16 +361,6 @@ function clearStopwatchLoop() {
     stopwatchInterval = null;
   }
   stopwatchTimeStartedAt = null;
-}
-
-// Generate 4-5 digit unique alphanumeric student code (e.g. 7K9X2)
-export function generateStudentCode(): string {
-  const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-  let result = '';
-  for (let i = 0; i < 5; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
 }
 
 export const INITIAL_FRIENDS: FriendProfile[] = [];
@@ -373,10 +410,10 @@ export function mergeDailyLogEntryPair(
     studyHours = lStudy;
   }
 
-  // 2. Checkboxes (attendedClass, revisionDone, mockTestTaken): OR Logic (true always wins)
-  const attendedClass = Boolean(remote.attendedClass || local.attendedClass);
-  const revisionDone = Boolean(remote.revisionDone || local.revisionDone);
-  const mockTestTaken = Boolean(remote.mockTestTaken || local.mockTestTaken);
+  // 2. Checkboxes / Tri-State Status (attendedClass, revisionDone, mockTestTaken)
+  const attendedClass = mergeTriState(remote.attendedClass, local.attendedClass);
+  const revisionDone = mergeTriState(remote.revisionDone, local.revisionDone);
+  const mockTestTaken = mergeTriState(remote.mockTestTaken, local.mockTestTaken);
 
   // 3. PYQs Solved (pyqsSolved): Takes higher count (Math.max) or non-null
   const rPyqs = remote.pyqsSolved != null ? Number(remote.pyqsSolved) : null;
@@ -447,19 +484,12 @@ export function mergeDailyLogEntryPair(
       } else if (typeof rVal === 'boolean' || typeof lVal === 'boolean') {
         mergedCustomData[key] = Boolean(rVal || lVal);
       } else if (typeof rVal === 'string' && typeof lVal === 'string') {
-        const rTrim = rVal.trim();
-        const lTrim = lVal.trim();
-        if (rTrim && lTrim) {
-          mergedCustomData[key] =
-            rTrim === lTrim
-              ? rTrim
-              : rTrim.includes(lTrim)
-              ? rTrim
-              : lTrim.includes(rTrim)
-              ? lTrim
-              : `${rTrim} | ${lTrim}`;
+        const rClean = rVal.includes('|') ? rVal.split('|').map((s) => s.trim()).filter(Boolean).pop() || '' : rVal.trim();
+        const lClean = lVal.includes('|') ? lVal.split('|').map((s) => s.trim()).filter(Boolean).pop() || '' : lVal.trim();
+        if (lClean && lClean.toLowerCase() !== 'na') {
+          mergedCustomData[key] = lClean;
         } else {
-          mergedCustomData[key] = rTrim || lTrim;
+          mergedCustomData[key] = rClean || lClean;
         }
       } else if (rVal != null && lVal == null) {
         mergedCustomData[key] = rVal;
@@ -468,6 +498,10 @@ export function mergeDailyLogEntryPair(
       }
     }
   });
+
+  const rLocation = (remote.location || '').trim();
+  const lLocation = (local.location || '').trim();
+  const location = lLocation || rLocation || undefined;
 
   return {
     date: remote.date || local.date,
@@ -479,6 +513,7 @@ export function mergeDailyLogEntryPair(
     sleepHours,
     focusRating,
     notes,
+    location,
     customData: mergedCustomData,
   };
 }
@@ -541,19 +576,12 @@ export function mergeCustomTableRowPair(
       } else if (typeof rVal === 'boolean' || typeof lVal === 'boolean') {
         mergedValues[key] = Boolean(rVal || lVal);
       } else if (typeof rVal === 'string' && typeof lVal === 'string') {
-        const rTrim = rVal.trim();
-        const lTrim = lVal.trim();
-        if (rTrim && lTrim) {
-          mergedValues[key] =
-            rTrim === lTrim
-              ? rTrim
-              : rTrim.includes(lTrim)
-              ? rTrim
-              : lTrim.includes(rTrim)
-              ? lTrim
-              : `${rTrim} | ${lTrim}`;
+        const rClean = rVal.includes('|') ? rVal.split('|').map((s) => s.trim()).filter(Boolean).pop() || '' : rVal.trim();
+        const lClean = lVal.includes('|') ? lVal.split('|').map((s) => s.trim()).filter(Boolean).pop() || '' : lVal.trim();
+        if (lClean && lClean.toLowerCase() !== 'na') {
+          mergedValues[key] = lClean;
         } else {
-          mergedValues[key] = rTrim || lTrim;
+          mergedValues[key] = rClean || lClean;
         }
       } else if (rVal != null && lVal == null) {
         mergedValues[key] = rVal;
@@ -666,6 +694,93 @@ export function mergeCustomTablesList(
 }
 
 
+export const DEFAULT_CHECK_TABLE: CustomStudyTable = {
+  id: 'tbl-check-demo',
+  title: 'CHECK',
+  description: 'Mock Exam & Sectional Performance Tracker',
+  createdAt: '2026-10-30',
+  columns: [
+    { id: 'col_paper', name: 'PAPER', type: 'text' },
+    { id: 'col_score', name: 'SCORE', type: 'number', unit: 'pts' },
+    { id: 'col_total', name: 'TOTAL', type: 'number', unit: 'pts' },
+    { id: 'col_accuracy', name: 'ACCURACY', type: 'number', unit: '%' },
+    { id: 'col_difficulty', name: 'DIFFICULTY', type: 'select', options: ['High', 'Medium', 'Low'] },
+    { id: 'col_analyzed', name: 'ANALYZED', type: 'boolean' },
+  ],
+  rows: [
+    {
+      id: 'row-1',
+      date: '2026-10-25',
+      values: {
+        col_paper: 'CS Mock #4 (Algorithms)',
+        col_score: 142,
+        col_total: 180,
+        col_accuracy: 78.8,
+        col_difficulty: 'Medium',
+        col_analyzed: true,
+      },
+      notes: 'Revised DP and Graph optimization. Good pacing throughout Section 1 & 2.',
+      createdAt: '2026-10-25T14:30:00Z',
+    },
+    {
+      id: 'row-2',
+      date: '2026-10-16',
+      values: {
+        col_paper: 'Full Syllabus Exam A',
+        col_score: 118,
+        col_total: 180,
+        col_accuracy: 65.5,
+        col_difficulty: 'High',
+        col_analyzed: false,
+      },
+      notes: 'Ran short of time in Section 2. Need to skip 3-minute traps sooner.',
+      createdAt: '2026-10-16T11:00:00Z',
+    },
+    {
+      id: 'row-3',
+      date: '2026-10-12',
+      values: {
+        col_paper: 'Discrete Math Sectional #2',
+        col_score: 85,
+        col_total: 100,
+        col_accuracy: 85.0,
+        col_difficulty: 'Medium',
+        col_analyzed: true,
+      },
+      notes: 'Permutations formulas remembered quickly. 2 silly calculation mistakes.',
+      createdAt: '2026-10-12T16:20:00Z',
+    },
+    {
+      id: 'row-4',
+      date: '2026-10-05',
+      values: {
+        col_paper: 'Logical Reasoning Drill #7',
+        col_score: 48,
+        col_total: 50,
+        col_accuracy: 96.0,
+        col_difficulty: 'Low',
+        col_analyzed: true,
+      },
+      notes: 'Fast completion under 18 mins. High confidence score.',
+      createdAt: '2026-10-05T09:15:00Z',
+    },
+    {
+      id: 'row-5',
+      date: '2026-09-28',
+      values: {
+        col_paper: 'Diagnostic Test Baseline',
+        col_score: 102,
+        col_total: 180,
+        col_accuracy: 56.6,
+        col_difficulty: 'High',
+        col_analyzed: true,
+      },
+      notes: 'Initial benchmark test. Identified weak spots in Combinatorics.',
+      createdAt: '2026-09-28T10:00:00Z',
+    },
+  ],
+};
+
 let lastSyncTimestamp = 0;
 
 export const useStudyStore = create<StudyState>()(
@@ -679,7 +794,7 @@ export const useStudyStore = create<StudyState>()(
         longestStreak: 0,
         lastStudiedDate: '',
         lastActiveSubjectId: '',
-        friendCode: generateStudentCode(),
+        friendCode: 'STUDY1',
         profileMetricSlots: ['currentStreak', 'bestStreak', 'daysLogged'],
         customWordmarkText: 'studyo',
       },
@@ -689,10 +804,20 @@ export const useStudyStore = create<StudyState>()(
       tasks: [],
       dailyLogs: ensureDailyLogsDateWise([]),
       deletedDefaultColumns: [],
+      deletedDailyLogDates: [],
       isDefaultTableDeleted: false,
+      showSortArrows: false,
+      setShowSortArrows: (show) => set({ showSortArrows: show }),
+      enableClickToCycle: false,
+      setEnableClickToCycle: (enable) => set({ enableClickToCycle: enable }),
+      mainTableTitle: 'Study Log',
+      setMainTableTitle: (title) => set({ mainTableTitle: title }),
+      mainTableDescription: 'Daily Habit, Hours & Performance Tracker',
+      setMainTableDescription: (desc) => set({ mainTableDescription: desc }),
       customColumns: [],
-      customTables: [],
+      customTables: [DEFAULT_CHECK_TABLE],
       activeTableId: 'main',
+      timerSubMode: 'timer',
       autoStartNextRound: false,
       soundAlertOnFinish: true,
       enableQuickScratchpad: false,
@@ -797,13 +922,16 @@ export const useStudyStore = create<StudyState>()(
       // Daily Study Log Actions
       ensureTodayDailyLog: () => {
         set((state) => ({
-          dailyLogs: state.isDefaultTableDeleted ? [] : ensureDailyLogsDateWise(state.dailyLogs),
+          dailyLogs: state.isDefaultTableDeleted
+            ? []
+            : ensureDailyLogsDateWise(state.dailyLogs, state.deletedDailyLogDates || []),
         }));
       },
 
       addOrUpdateDailyLog: (entry) => {
         set((state) => {
           const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : [];
+          const nextDeleted = (state.deletedDailyLogDates || []).filter((d) => d !== entry.date);
           const existingIndex = logs.findIndex((l) => l.date === entry.date);
           let updated: DailyLogEntry[];
           if (existingIndex >= 0) {
@@ -812,7 +940,10 @@ export const useStudyStore = create<StudyState>()(
           } else {
             updated = [entry, ...logs];
           }
-          return { dailyLogs: ensureDailyLogsDateWise(updated) };
+          return {
+            deletedDailyLogDates: nextDeleted,
+            dailyLogs: ensureDailyLogsDateWise(updated, nextDeleted),
+          };
         });
         const uid = getCurrentUserId();
         if (uid) dbSaveDailyLog(uid, entry);
@@ -837,7 +968,11 @@ export const useStudyStore = create<StudyState>()(
       deleteDailyLog: (date) => {
         set((state) => {
           const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : [];
-          return { dailyLogs: logs.filter((l) => l.date !== date) };
+          const nextDeleted = Array.from(new Set([...(state.deletedDailyLogDates || []), date]));
+          return {
+            deletedDailyLogDates: nextDeleted,
+            dailyLogs: logs.filter((l) => l.date !== date),
+          };
         });
         const uid = getCurrentUserId();
         if (uid) dbDeleteDailyLog(uid, date);
@@ -919,13 +1054,13 @@ export const useStudyStore = create<StudyState>()(
         const newId = `tbl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
         const initialColumns: CustomTableColumn[] = columns.length > 0
           ? columns.map((c, idx) => ({
-              ...c,
-              id: `col_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
-            }))
+            ...c,
+            id: `col_${Date.now()}_${idx}_${Math.random().toString(36).substring(2, 6)}`,
+          }))
           : [
-              { id: `col_${Date.now()}_1`, name: 'Topic / Item', type: 'text' },
-              { id: `col_${Date.now()}_2`, name: 'Status', type: 'boolean' },
-            ];
+            { id: `col_${Date.now()}_1`, name: 'Topic / Item', type: 'text' },
+            { id: `col_${Date.now()}_2`, name: 'Status', type: 'boolean' },
+          ];
 
         const todayStr = getLocalTodayDateString();
         const newTable: CustomStudyTable = {
@@ -1123,6 +1258,7 @@ export const useStudyStore = create<StudyState>()(
       },
 
       // Timer Settings & Stopwatch Actions
+      setTimerSubMode: (mode) => set({ timerSubMode: mode }),
       setAutoStartNextRound: (val) => set({ autoStartNextRound: val }),
       setSoundAlertOnFinish: (val) => set({ soundAlertOnFinish: val }),
       setEnableQuickScratchpad: (val) => set({ enableQuickScratchpad: val }),
@@ -1187,12 +1323,26 @@ export const useStudyStore = create<StudyState>()(
         if (uid) dbUpdateProfile(uid, { dailyTargetMinutes: minutes });
       },
       updateUserProfile: (updates) => {
-        set((state) => ({ user: { ...state.user, ...updates } }));
+        set((state) => {
+          const updatedUser = { ...state.user, ...updates };
+          if (
+            updates.name &&
+            (!state.user.customWordmarkText ||
+              state.user.customWordmarkText === 'studyo' ||
+              state.user.customWordmarkText === getUserFirstName(state.user.name, 11))
+          ) {
+            const first = getUserFirstName(updates.name, 11);
+            if (first && first.toLowerCase() !== 'student') {
+              updatedUser.customWordmarkText = first;
+            }
+          }
+          return { user: updatedUser };
+        });
         const uid = getCurrentUserId();
         if (uid) dbUpdateProfile(uid, updates);
       },
       setZenMode: (zen) => set({ zenMode: zen }),
-      
+
       setAmbientSound: (sound) => {
         soundSynth.play(sound);
         set({ ambientSound: sound });
@@ -1326,7 +1476,7 @@ export const useStudyStore = create<StudyState>()(
                   timer: {
                     ...current,
                     timeLeft: current.initialDuration,
-                    isRunning: true,
+                    isRunning: false,
                   },
                 });
                 get().startTimer();
@@ -1424,21 +1574,41 @@ export const useStudyStore = create<StudyState>()(
         }
       },
 
-      logSession: (rating, notes) => {
+      logSession: (rating, notes, location) => {
         clearTimerLoop();
-        const { timer, subjects, sessions, user } = get();
+        clearStopwatchLoop();
+        const {
+          timer,
+          timerSubMode,
+          stopwatchTime,
+          subjects,
+          sessions,
+          user,
+          dailyLogs,
+          isDefaultTableDeleted,
+        } = get();
         const activeSub = subjects.find((s) => s.id === timer.activeSubjectId) || subjects[0];
         const activeChap = activeSub?.chapters.find((c) => c.id === timer.activeChapterId);
 
-        let durationMins = 25;
-        if (timer.mode === 'stopwatch') {
-          durationMins = Math.max(1, Math.round(timer.timeLeft / 60));
+        const isStopwatchSession =
+          (timerSubMode === 'stopwatch' && stopwatchTime > 0) || timer.mode === 'stopwatch';
+
+        let elapsedSecs = 25 * 60;
+        if (timerSubMode === 'stopwatch' && stopwatchTime > 0) {
+          elapsedSecs = stopwatchTime;
+        } else if (timer.mode === 'stopwatch') {
+          elapsedSecs = timer.timeLeft;
         } else {
-          const elapsedSecs = timer.initialDuration - timer.timeLeft;
-          durationMins = Math.max(1, Math.round(elapsedSecs / 60));
+          const diff = timer.initialDuration - timer.timeLeft;
+          elapsedSecs = diff > 0 ? diff : timer.initialDuration;
         }
 
+        const durationMins = Math.max(1, Math.round(elapsedSecs / 60));
+        const sessionHours = Math.max(0.02, Math.round((elapsedSecs / 3600) * 100) / 100);
+
         const now = new Date();
+        const todayStr = getLocalDateString(now);
+
         const newSession: StudySession = {
           id: `sess-${Date.now()}`,
           subjectId: activeSub?.id || 'general',
@@ -1447,22 +1617,49 @@ export const useStudyStore = create<StudyState>()(
           chapterTitle: activeChap?.title,
           durationMinutes: durationMins,
           timestamp: now.toISOString(),
-          dateString: now.toISOString().split('T')[0],
+          dateString: todayStr,
           hour: now.getHours(),
           focusRating: rating,
           notes: notes || '',
-          mode: timer.mode === 'stopwatch' ? 'stopwatch' : 'pomodoro',
+          location: location && location.trim() ? location.trim() : undefined,
+          mode: isStopwatchSession ? 'stopwatch' : 'pomodoro',
         };
 
-        const todayStr = now.toISOString().split('T')[0];
         let streak = user.streakDays;
         if (user.lastStudiedDate !== todayStr) {
           streak += 1;
         }
 
+        // Also update today's DailyLogEntry so Study Log & Analysis reflect the completed session
+        let nextDailyLogs = dailyLogs;
+        let updatedTodayLog: DailyLogEntry | null = null;
+        if (!isDefaultTableDeleted) {
+          const existingToday = dailyLogs.find((l) => l.date === todayStr) || createDefaultDailyLog(todayStr);
+          const prevHours = Number(existingToday.studyHours) || 0;
+          const nextHours = Math.round((prevHours + sessionHours) * 100) / 100;
+          const trimmedNote = (notes || '').trim();
+          const combinedNotes = trimmedNote
+            ? existingToday.notes
+              ? `${existingToday.notes} | ${trimmedNote}`
+              : trimmedNote
+            : existingToday.notes;
+
+          updatedTodayLog = {
+            ...existingToday,
+            studyHours: nextHours,
+            focusRating: rating,
+            notes: combinedNotes,
+            location: location && location.trim() ? location.trim() : existingToday.location,
+          };
+
+          const otherLogs = dailyLogs.filter((l) => l.date !== todayStr);
+          nextDailyLogs = ensureDailyLogsDateWise([updatedTodayLog, ...otherLogs], get().deletedDailyLogDates);
+        }
+
         // Optimistic UI updates
         set({
           sessions: [newSession, ...sessions],
+          dailyLogs: nextDailyLogs,
           user: {
             ...user,
             streakDays: streak,
@@ -1470,17 +1667,28 @@ export const useStudyStore = create<StudyState>()(
             lastStudiedDate: todayStr,
             lastActiveSubjectId: activeSub?.id,
           },
-          timer: {
-            ...timer,
-            timeLeft: timer.mode === 'pomodoro' ? 25 * 60 : 0,
-            isRunning: false,
-          },
+          ...(timerSubMode === 'stopwatch' && stopwatchTime > 0
+            ? {
+              stopwatchRunning: false,
+              stopwatchTime: 0,
+              stopwatchLaps: [],
+            }
+            : {
+              timer: {
+                ...timer,
+                timeLeft: timer.mode === 'stopwatch' ? 0 : timer.initialDuration,
+                isRunning: false,
+              },
+            }),
         });
 
         // Background Supabase Persistence
         const uid = getCurrentUserId();
         if (uid) {
           dbSaveStudySession(uid, newSession);
+          if (updatedTodayLog) {
+            dbSaveDailyLog(uid, updatedTodayLog);
+          }
           dbUpdateProfile(uid, {
             streakDays: streak,
             longestStreak: Math.max(streak, user.longestStreak),
@@ -1524,10 +1732,10 @@ export const useStudyStore = create<StudyState>()(
         const updatedTasks = tasks.map((t) =>
           t.id === taskId
             ? {
-                ...t,
-                completed: !t.completed,
-                completedAt: !t.completed ? new Date().toISOString() : undefined,
-              }
+              ...t,
+              completed: !t.completed,
+              completedAt: !t.completed ? new Date().toISOString() : undefined,
+            }
             : t
         );
 
@@ -1541,6 +1749,23 @@ export const useStudyStore = create<StudyState>()(
         set((state) => ({ tasks: state.tasks.filter((t) => t.id !== taskId) }));
         const uid = getCurrentUserId();
         if (uid) dbDeleteTask(uid, taskId);
+      },
+
+      updateTask: (taskId, updates) => {
+        set((state) => ({
+          tasks: state.tasks.map((t) =>
+            t.id === taskId ? { ...t, ...updates } : t
+          ),
+        }));
+        const uid = getCurrentUserId();
+        const updatedTask = get().tasks.find((t) => t.id === taskId);
+        if (uid && updatedTask) dbSaveTask(uid, updatedTask);
+      },
+
+      updateTaskDueDate: (taskId, dueDate) => {
+        get().updateTask(taskId, {
+          dueDate: dueDate && dueDate.trim() ? dueDate.trim() : undefined,
+        });
       },
 
       addSubject: (name, color, icon, examDate) => {
@@ -1620,8 +1845,8 @@ export const useStudyStore = create<StudyState>()(
                       top.status === 'pending'
                         ? 'in_progress'
                         : top.status === 'in_progress'
-                        ? 'completed'
-                        : 'pending';
+                          ? 'completed'
+                          : 'pending';
                     return { ...top, status: nextStatus };
                   }),
                 };
@@ -1697,7 +1922,7 @@ export const useStudyStore = create<StudyState>()(
           title: note.text,
           subjectId: defaultSub,
           priority: 'med',
-          dueDate: new Date().toISOString().split('T')[0],
+          dueDate: getLocalTodayDateString(),
           estimatedPomodoros: 1,
         });
 
@@ -1733,7 +1958,7 @@ export const useStudyStore = create<StudyState>()(
 
       syncUserData: async (forcedUserId?: string, force = false) => {
         const uid = forcedUserId || getCurrentUserId();
-        if (!uid) return;
+        if (!uid || uid === 'demo-user-1') return;
         if (get().isSyncing) return;
 
         const now = Date.now();
@@ -1752,7 +1977,13 @@ export const useStudyStore = create<StudyState>()(
         try {
           const remote = await fetchUserDataFromSupabase(uid);
           if (!remote) {
-            set({ syncError: 'Cloud session not active. Please log out and log in again.' });
+            const authState = useAuthStore.getState();
+            if (authState.currentUser?.id === uid && (uid === 'demo-user-1' || authState.session?.token === 'demo-token')) {
+              useAuthStore.setState({ currentUser: null, session: null });
+              set({ syncError: null, isSyncing: false });
+              return;
+            }
+            set({ syncError: 'Cloud session not active. Click to log in.' });
             return;
           }
           set({ syncError: null });
@@ -1838,19 +2069,40 @@ export const useStudyStore = create<StudyState>()(
           (remote.tasks || []).forEach((t) => taskMap.set(t.id, t));
           const tasksToUpload: Task[] = [];
           (current.tasks || []).forEach((t) => {
-            if (!taskMap.has(t.id)) {
+            const existing = taskMap.get(t.id);
+            if (!existing) {
               taskMap.set(t.id, t);
               tasksToUpload.push(t);
+            } else {
+              const mergedCompleted = Boolean(existing.completed || t.completed);
+              const mergedTask: Task = {
+                ...existing,
+                ...t,
+                completed: mergedCompleted,
+                completedAt: t.completedAt || existing.completedAt,
+              };
+              taskMap.set(t.id, mergedTask);
+              if (
+                existing.completed !== mergedTask.completed ||
+                existing.title !== mergedTask.title ||
+                (existing.notes || '') !== (mergedTask.notes || '') ||
+                existing.priority !== mergedTask.priority ||
+                (existing.dueDate || '') !== (mergedTask.dueDate || '')
+              ) {
+                tasksToUpload.push(mergedTask);
+              }
             }
           });
 
           // 4. Default Table Sync (Intelligent Multi-Device Merge Engine per specification)
+          const deletedLogSet = new Set(current.deletedDailyLogDates || []);
+          const filteredRemoteLogs = (remote.dailyLogs || []).filter((l) => !deletedLogSet.has(l.date));
           const { mergedLogs: rawMergedLogs, logsToUpload } = mergeDailyLogsList(
-            remote.dailyLogs || [],
+            filteredRemoteLogs,
             current.dailyLogs || []
           );
           const isDefDeleted = remote.tableConfig?.isDefaultTableDeleted ?? current.isDefaultTableDeleted;
-          const mergedLogs = isDefDeleted ? [] : ensureDailyLogsDateWise(rawMergedLogs);
+          const mergedLogs = isDefDeleted ? [] : ensureDailyLogsDateWise(rawMergedLogs, current.deletedDailyLogDates);
 
           // 5. Custom Tables Sync (Intelligent Multi-Device Merge Engine per specification)
           const { mergedTables, tablesNeedUpload } = mergeCustomTablesList(
@@ -1932,6 +2184,92 @@ export const useStudyStore = create<StudyState>()(
               examCountdowns: examsToUpload,
             }).catch((err) => console.warn('Background sync upload notice:', err));
           }
+
+          // Fetch Live Friend Requests and Friendships from Supabase
+          try {
+            const [cloudRequests, cloudFriends] = await Promise.all([
+              dbFetchFriendRequests(uid),
+              dbFetchFriends(uid),
+            ]);
+
+            const currentFriends = get().friends || [];
+            const friendsMap = new Map<string, FriendProfile>();
+
+            // A. Add live accepted friends from cloud
+            cloudFriends.forEach((cf) => {
+              const local = currentFriends.find((f) => f.code.toUpperCase() === cf.friendCode.toUpperCase());
+              friendsMap.set(cf.friendCode.toUpperCase(), {
+                code: cf.friendCode,
+                name: cf.name,
+                avatar: cf.name.charAt(0).toUpperCase(),
+                bio: `Studyo peer student • #${cf.friendCode}`,
+                streakDays: cf.streakDays || 1,
+                dailyTargetMinutes: cf.dailyTargetMinutes || 360,
+                todayStudyMinutes: local?.todayStudyMinutes || 0,
+                lastActive: cf.lastStudiedDate ? `Active ${cf.lastStudiedDate}` : 'Recently active',
+                status: 'accepted',
+                friendId: cf.id,
+                studyLogs: local?.studyLogs || [],
+                comments: local?.comments || [],
+              });
+            });
+
+            // B. Add incoming pending friend requests from cloud
+            cloudRequests.incoming.forEach((req) => {
+              const code = req.sender_code.toUpperCase();
+              friendsMap.set(code, {
+                code: req.sender_code,
+                name: req.sender_name,
+                avatar: req.sender_name.charAt(0).toUpperCase(),
+                bio: `Student #${req.sender_code} sent you a friend request!`,
+                streakDays: 1,
+                dailyTargetMinutes: 360,
+                todayStudyMinutes: 0,
+                lastActive: 'Pending request',
+                status: 'incoming_request',
+                requestId: req.id,
+                friendId: req.sender_id,
+                requestedAt: req.created_at,
+                studyLogs: [],
+                comments: [],
+              });
+            });
+
+            // C. Add outgoing pending friend requests from cloud
+            cloudRequests.outgoing.forEach((req) => {
+              const code = req.receiver_code.toUpperCase();
+              if (!friendsMap.has(code)) {
+                friendsMap.set(code, {
+                  code: req.receiver_code,
+                  name: `Student #${req.receiver_code}`,
+                  avatar: req.receiver_code.charAt(0).toUpperCase(),
+                  bio: `Request sent to #${req.receiver_code}`,
+                  streakDays: 1,
+                  dailyTargetMinutes: 360,
+                  todayStudyMinutes: 0,
+                  lastActive: 'Request pending',
+                  status: 'outgoing_request',
+                  requestId: req.id,
+                  friendId: req.receiver_id,
+                  requestedAt: req.created_at,
+                  studyLogs: [],
+                  comments: [],
+                });
+              }
+            });
+
+            // D. Preserve any offline/local-only friend entries not yet in cloud
+            currentFriends.forEach((lf) => {
+              const code = lf.code.toUpperCase();
+              if (!friendsMap.has(code)) {
+                friendsMap.set(code, lf);
+              }
+            });
+
+            set({ friends: Array.from(friendsMap.values()) });
+          } catch (fErr) {
+            console.warn('Sync friend requests warning:', fErr);
+          }
         } catch (err) {
           console.error('syncUserData error:', err);
           set({ syncError: 'Sync failed. Check your connection and try again.' });
@@ -2007,7 +2345,7 @@ export const useStudyStore = create<StudyState>()(
           newTasks = Array.from(taskMap.values());
 
           const { mergedLogs } = mergeDailyLogsList(payload.dailyLogs || [], state.dailyLogs || []);
-          newDailyLogs = ensureDailyLogsDateWise(mergedLogs);
+          newDailyLogs = ensureDailyLogsDateWise(mergedLogs, state.deletedDailyLogDates);
 
           const { mergedTables } = mergeCustomTablesList(payload.customTables || [], state.customTables || []);
           newCustomTables = mergedTables;
@@ -2027,8 +2365,25 @@ export const useStudyStore = create<StudyState>()(
           newExamCountdowns = Array.from(examMap.values());
         }
 
-        const newUser = payload.user && typeof payload.user === 'object' 
-          ? { ...state.user, ...payload.user } 
+        const rawUser = payload.user && typeof payload.user === 'object' ? payload.user : null;
+        const newUser: UserProfile = rawUser
+          ? {
+              ...state.user,
+              ...(typeof rawUser.name === 'string' && rawUser.name.trim() ? { name: rawUser.name.trim() } : {}),
+              ...(typeof rawUser.dailyTargetMinutes === 'number' && rawUser.dailyTargetMinutes > 0
+                ? { dailyTargetMinutes: rawUser.dailyTargetMinutes }
+                : {}),
+              ...(typeof rawUser.streakDays === 'number' && rawUser.streakDays >= 0
+                ? { streakDays: rawUser.streakDays }
+                : {}),
+              ...(typeof rawUser.longestStreak === 'number' && rawUser.longestStreak >= 0
+                ? { longestStreak: rawUser.longestStreak }
+                : {}),
+              ...(typeof rawUser.lastStudiedDate === 'string' ? { lastStudiedDate: rawUser.lastStudiedDate } : {}),
+              ...(typeof rawUser.customWordmarkText === 'string'
+                ? { customWordmarkText: rawUser.customWordmarkText }
+                : {}),
+            }
           : state.user;
 
         set({
@@ -2040,8 +2395,8 @@ export const useStudyStore = create<StudyState>()(
           customColumns: newCustomColumns,
           examCountdowns: newExamCountdowns,
           user: newUser,
-          deletedDefaultColumns: Array.isArray(payload.deletedDefaultColumns) 
-            ? payload.deletedDefaultColumns 
+          deletedDefaultColumns: Array.isArray(payload.deletedDefaultColumns)
+            ? payload.deletedDefaultColumns
             : state.deletedDefaultColumns,
           isDefaultTableDeleted: typeof payload.isDefaultTableDeleted === 'boolean'
             ? payload.isDefaultTableDeleted
@@ -2063,9 +2418,9 @@ export const useStudyStore = create<StudyState>()(
           }).catch(console.error);
         }
 
-        return { 
-          success: true, 
-          message: `Successfully imported ${newDailyLogs.length} study logs, ${newTasks.length} tasks, and ${newCustomTables.length} custom tables!` 
+        return {
+          success: true,
+          message: `Successfully imported ${newDailyLogs.length} study logs, ${newTasks.length} tasks, and ${newCustomTables.length} custom tables!`
         };
       },
 
@@ -2083,13 +2438,13 @@ export const useStudyStore = create<StudyState>()(
       },
 
       // Social / Friends Network Actions
-      sendFriendRequest: (code: string) => {
+      sendFriendRequest: async (code: string, friendName?: string) => {
         const cleanCode = code.trim().toUpperCase();
         if (!cleanCode) {
           return { success: false, message: 'Please enter a valid student code.' };
         }
         const { user, friends } = get();
-        if (cleanCode === (user.friendCode || 'A9X4K').toUpperCase()) {
+        if (cleanCode === (user.friendCode || 'STUDY1').toUpperCase()) {
           return { success: false, message: 'You cannot connect with your own student code!' };
         }
 
@@ -2098,6 +2453,44 @@ export const useStudyStore = create<StudyState>()(
           return { success: false, message: 'Friend limit reached (max 51 friends allowed).' };
         }
 
+        const uid = getCurrentUserId();
+        // A. If user is logged in to Supabase cloud, send via real backend
+        if (uid) {
+          const cloudRes = await dbSendFriendRequest(
+            uid,
+            user.friendCode || 'STUDY1',
+            user.name || 'Student',
+            cleanCode
+          );
+
+          if (!cloudRes.success) {
+            return { success: false, message: cloudRes.message };
+          }
+
+          const receiver = cloudRes.receiver;
+          const newFriend: FriendProfile = {
+            code: cleanCode,
+            name: receiver?.name || friendName?.trim() || `Student #${cleanCode}`,
+            avatar: (receiver?.name || cleanCode).charAt(0).toUpperCase(),
+            bio: `Studyo peer student • #${cleanCode}`,
+            streakDays: receiver?.streakDays || 1,
+            dailyTargetMinutes: receiver?.dailyTargetMinutes || 360,
+            todayStudyMinutes: 0,
+            lastActive: receiver?.lastStudiedDate ? `Active ${receiver.lastStudiedDate}` : 'Recently active',
+            status: 'outgoing_request',
+            requestId: cloudRes.requestId,
+            friendId: receiver?.id,
+            requestedAt: new Date().toISOString(),
+            studyLogs: [],
+            comments: [],
+          };
+
+          const updated = [newFriend, ...friends.filter((f) => f.code.toUpperCase() !== cleanCode)];
+          set({ friends: updated });
+          return { success: true, message: cloudRes.message, friend: newFriend };
+        }
+
+        // B. Offline / local fallback
         const existing = friends.find((f) => f.code.toUpperCase() === cleanCode);
         if (existing) {
           if (existing.status === 'accepted') {
@@ -2107,7 +2500,7 @@ export const useStudyStore = create<StudyState>()(
             return { success: false, message: `Request already pending for ${existing.name}.` };
           }
           if (existing.status === 'incoming_request') {
-            get().acceptFriendRequest(cleanCode);
+            await get().acceptFriendRequest(cleanCode);
             return { success: true, message: `Accepted incoming request from ${existing.name}!`, friend: existing };
           }
           const updated = friends.map((f) =>
@@ -2119,56 +2512,35 @@ export const useStudyStore = create<StudyState>()(
           return { success: true, message: `Friend request sent to ${existing.name}!`, friend: existing };
         }
 
-        // Code not in known list - dynamically generate student profile so any valid 4-5 code works
+        const realName = friendName && friendName.trim() ? friendName.trim() : `Student ${cleanCode}`;
         const newFriend: FriendProfile = {
           code: cleanCode,
-          name: `Student ${cleanCode}`,
-          avatar: cleanCode.charAt(0),
-          bio: '',
-          streakDays: Math.floor(Math.random() * 15) + 3,
+          name: realName,
+          avatar: realName.charAt(0).toUpperCase(),
+          bio: `Studyo peer student • ${realName}`,
+          streakDays: 3,
           dailyTargetMinutes: 300,
-          todayStudyMinutes: 180,
+          todayStudyMinutes: 120,
           lastActive: 'Just now',
           status: 'outgoing_request',
           requestedAt: new Date().toISOString(),
-          studyLogs: [
-            {
-              date: new Date().toISOString().split('T')[0],
-              studyHours: 4.0,
-              attendedClass: true,
-              pyqsSolved: 20,
-              revisionDone: true,
-              mockTestTaken: false,
-              sleepHours: 7.5,
-              focusRating: 4,
-              notes: 'Active study sprint and problem solving.',
-            },
-            {
-              date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
-              studyHours: 3.5,
-              attendedClass: true,
-              pyqsSolved: 15,
-              revisionDone: true,
-              mockTestTaken: false,
-              sleepHours: 7.0,
-              focusRating: 4,
-              notes: 'Topic review and question bank practice.',
-            },
-          ],
+          studyLogs: [],
           comments: [],
         };
         set({ friends: [newFriend, ...friends] });
-        return { success: true, message: `Friend request sent to Student ${cleanCode}!`, friend: newFriend };
+        return { success: true, message: `Friend request sent to ${realName}!`, friend: newFriend };
       },
 
-      acceptFriendRequest: (code: string) => {
+      acceptFriendRequest: async (code: string) => {
         const cleanCode = code.trim().toUpperCase();
         const { friends } = get();
-        const acceptedCount = friends.filter((f) => f.status === 'accepted').length;
-        if (acceptedCount >= 51) {
-          alert('Friend limit reached (max 51 friends allowed).');
-          return;
+        const target = friends.find((f) => f.code.toUpperCase() === cleanCode);
+        const uid = getCurrentUserId();
+
+        if (uid && target?.requestId) {
+          await dbAcceptFriendRequest(target.requestId, uid);
         }
+
         set((state) => ({
           friends: state.friends.map((f) =>
             f.code.toUpperCase() === cleanCode
@@ -2183,36 +2555,48 @@ export const useStudyStore = create<StudyState>()(
         });
       },
 
-      declineFriendRequest: (code: string) => {
+      declineFriendRequest: async (code: string) => {
         const cleanCode = code.trim().toUpperCase();
+        const { friends } = get();
+        const target = friends.find((f) => f.code.toUpperCase() === cleanCode);
+        const uid = getCurrentUserId();
+
+        if (uid && target?.requestId) {
+          await dbDeclineFriendRequest(target.requestId, uid);
+        }
+
         set((state) => ({
-          friends: state.friends.map((f) =>
-            f.code.toUpperCase() === cleanCode
-              ? { ...f, status: 'none' as const }
-              : f
-          ),
+          friends: state.friends.filter((f) => f.code.toUpperCase() !== cleanCode),
         }));
       },
 
-      cancelFriendRequest: (code: string) => {
+      cancelFriendRequest: async (code: string) => {
         const cleanCode = code.trim().toUpperCase();
+        const { friends } = get();
+        const target = friends.find((f) => f.code.toUpperCase() === cleanCode);
+        const uid = getCurrentUserId();
+
+        if (uid && target?.requestId) {
+          await dbCancelFriendRequest(target.requestId, uid);
+        }
+
         set((state) => ({
-          friends: state.friends.map((f) =>
-            f.code.toUpperCase() === cleanCode
-              ? { ...f, status: 'none' as const }
-              : f
-          ),
+          friends: state.friends.filter((f) => f.code.toUpperCase() !== cleanCode),
         }));
       },
 
-      removeFriend: (code: string) => {
+      removeFriend: async (code: string) => {
         const cleanCode = code.trim().toUpperCase();
+        const { friends } = get();
+        const target = friends.find((f) => f.code.toUpperCase() === cleanCode);
+        const uid = getCurrentUserId();
+
+        if (uid) {
+          await dbRemoveFriend(uid, target?.friendId || cleanCode);
+        }
+
         set((state) => ({
-          friends: state.friends.map((f) =>
-            f.code.toUpperCase() === cleanCode
-              ? { ...f, status: 'none' as const }
-              : f
-          ),
+          friends: state.friends.filter((f) => f.code.toUpperCase() !== cleanCode),
         }));
       },
 
@@ -2224,8 +2608,8 @@ export const useStudyStore = create<StudyState>()(
 
         const newComment: FriendComment = {
           id: `comm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          authorCode: user.friendCode || 'A9X4K',
-          authorName: user.name || 'Alex',
+          authorCode: user.friendCode || 'STUDY1',
+          authorName: user.name || 'Student',
           text: cleanText,
           timestamp: new Date().toISOString(),
           reactions: ['🔥'],
@@ -2251,19 +2635,6 @@ export const useStudyStore = create<StudyState>()(
         }));
       },
 
-      generateNewFriendCode: () => {
-        const newCode = generateStudentCode();
-        set((state) => ({
-          user: {
-            ...state.user,
-            friendCode: newCode,
-          },
-        }));
-        const uid = getCurrentUserId();
-        if (uid) dbUpdateProfile(uid, { friendCode: newCode });
-        return newCode;
-      },
-
       updateProfileMetricSlot: (slotIndex: 0 | 1 | 2, metricKey: string) => {
         set((state) => {
           const currentSlots = state.user.profileMetricSlots || ['currentStreak', 'bestStreak', 'daysLogged'];
@@ -2279,8 +2650,9 @@ export const useStudyStore = create<StudyState>()(
       },
 
       setCustomWordmarkText: (text: string) => {
-        const trimmed = text.trim().slice(0, 12);
-        const nextVal = trimmed ? trimmed : 'studyo';
+        const trimmed = text.trim().slice(0, 11);
+        const fallback = getUserFirstName(get().user?.name, 11) || 'studyo';
+        const nextVal = trimmed ? trimmed : fallback;
         set((state) => ({
           user: {
             ...state.user,
@@ -2355,7 +2727,12 @@ export const useStudyStore = create<StudyState>()(
         lastSyncedAt: state.lastSyncedAt,
         dailyLogs: state.dailyLogs,
         deletedDefaultColumns: state.deletedDefaultColumns,
+        deletedDailyLogDates: state.deletedDailyLogDates,
         isDefaultTableDeleted: state.isDefaultTableDeleted,
+        showSortArrows: state.showSortArrows,
+        enableClickToCycle: state.enableClickToCycle,
+        mainTableTitle: state.mainTableTitle,
+        mainTableDescription: state.mainTableDescription,
         customColumns: state.customColumns,
         customTables: state.customTables,
         activeTableId: state.activeTableId,
@@ -2374,15 +2751,50 @@ export const useStudyStore = create<StudyState>()(
         const cleanSessions = (persisted.sessions || []).filter(
           (s) => !s.id.startsWith('sess-today-') && !s.id.startsWith('sess-hist-') && !DEMO_SUBJECT_IDS.has(s.subjectId)
         );
-        const cleanTasks = (persisted.tasks || []).filter(
-          (t) => !DEMO_TASK_IDS.has(t.id) && !DEMO_SUBJECT_IDS.has(t.subjectId)
-        );
+        const cleanTasks = (persisted.tasks || [])
+          .filter((t) => !DEMO_TASK_IDS.has(t.id) && !DEMO_SUBJECT_IDS.has(t.subjectId))
+          .map((t) => ({
+            ...t,
+            dueDate: t.dueDate && t.dueDate.trim() ? t.dueDate : getLocalTodayDateString(),
+          }));
         const cleanFriends = (persisted.friends || []).filter(
           (f) => !DEMO_FRIEND_CODES.has(f.code.toUpperCase())
         );
-        const cleanTables = (persisted.customTables || []).filter(
+        const rawCleanTables = (persisted.customTables || []).filter(
           (tbl) => tbl.id !== 'tbl-mock-tests'
         );
+        const hasRealCheckTable = rawCleanTables.some(
+          (tbl) => tbl.id !== 'tbl-check-demo' && tbl.title?.trim().toLowerCase() === 'check'
+        );
+        const cleanTables = hasRealCheckTable
+          ? rawCleanTables.filter((tbl) => tbl.id !== 'tbl-check-demo')
+          : rawCleanTables;
+        const resolvedTables = (cleanTables.length > 0 ? cleanTables : [DEFAULT_CHECK_TABLE]).map((tbl) => ({
+          ...tbl,
+          columns: (tbl.columns || []).map((col) => {
+            if (/accuracy/i.test(col.name) || col.unit === '%' || col.id === 'col_accuracy') {
+              const cleanedName = col.name.replace(/(\s*\(\s*%\s*\))+/gi, '').trim();
+              return { ...col, name: cleanedName || 'ACCURACY', unit: '%' };
+            }
+            if (col.unit) {
+              const cleanUnit = col.unit.replace(/[()]/g, '').trim();
+              const escaped = cleanUnit.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+              const dupRegex = new RegExp(`(\\s*\\(\\s*${escaped}\\s*\\))+`, 'gi');
+              return { ...col, name: col.name.replace(dupRegex, '').trim() };
+            }
+            return col;
+          }),
+          rows: (tbl.rows || []).map((r) => {
+            const cleanedValues: Record<string, any> = { ...(r.values || {}) };
+            Object.keys(cleanedValues).forEach((k) => {
+              const v = cleanedValues[k];
+              if (typeof v === 'string' && v.includes('|')) {
+                cleanedValues[k] = v.split('|').map((s) => s.trim()).filter(Boolean).pop() || v.split('|')[0].trim();
+              }
+            });
+            return { ...r, values: cleanedValues };
+          }),
+        }));
 
         const mergedMap = new Map<string, DailyLogEntry>();
         persistedLogs.forEach((log) => {
@@ -2396,11 +2808,25 @@ export const useStudyStore = create<StudyState>()(
               log.notes.includes('Calculus integration') ||
               log.notes.includes('October goal kickoff'));
           if (!isDemoLog) {
-            mergedMap.set(log.date, log);
+            const cleanedCustom: Record<string, any> = { ...(log.customData || {}) };
+            Object.keys(cleanedCustom).forEach((k) => {
+              const v = cleanedCustom[k];
+              if (typeof v === 'string' && v.includes('|')) {
+                cleanedCustom[k] = v.split('|').map((s) => s.trim()).filter(Boolean).pop() || v.split('|')[0].trim();
+              }
+            });
+            mergedMap.set(log.date, {
+              ...log,
+              attendedClass: normalizeTriState(log.attendedClass),
+              revisionDone: normalizeTriState(log.revisionDone),
+              mockTestTaken: normalizeTriState(log.mockTestTaken),
+              customData: cleanedCustom,
+            });
           }
         });
         const isDefDeleted = Boolean(persisted.isDefaultTableDeleted);
-        const mergedLogs = isDefDeleted ? [] : ensureDailyLogsDateWise(Array.from(mergedMap.values()));
+        const deletedDates = Array.isArray(persisted.deletedDailyLogDates) ? persisted.deletedDailyLogDates : [];
+        const mergedLogs = isDefDeleted ? [] : ensureDailyLogsDateWise(Array.from(mergedMap.values()), deletedDates);
 
         const isDemoUser =
           persisted.user?.name === 'Alex' &&
@@ -2412,14 +2838,14 @@ export const useStudyStore = create<StudyState>()(
           ...(persisted.user || {}),
           ...(isDemoUser
             ? {
-                name: 'Student',
-                streakDays: 0,
-                longestStreak: 0,
-                lastStudiedDate: '',
-                lastActiveSubjectId: '',
-              }
+              name: 'Student',
+              streakDays: 0,
+              longestStreak: 0,
+              lastStudiedDate: '',
+              lastActiveSubjectId: '',
+            }
             : {}),
-          friendCode: persisted.user?.friendCode || currentState.user.friendCode || generateStudentCode(),
+          friendCode: persisted.user?.friendCode || currentState.user.friendCode || 'STUDY1',
           profileMetricSlots:
             persisted.user?.profileMetricSlots ||
             currentState.user.profileMetricSlots ||
@@ -2442,13 +2868,32 @@ export const useStudyStore = create<StudyState>()(
           sessions: cleanSessions,
           tasks: cleanTasks,
           friends: cleanFriends,
-          customTables: cleanTables,
+          customTables: resolvedTables,
           enableQuickScratchpad: persisted.enableQuickScratchpad ?? false,
           showFinishButton: persisted.showFinishButton ?? true,
           dailyLogs: mergedLogs,
           deletedDefaultColumns: Array.isArray(persisted.deletedDefaultColumns) ? persisted.deletedDefaultColumns : [],
+          deletedDailyLogDates: Array.isArray(persisted.deletedDailyLogDates) ? persisted.deletedDailyLogDates : [],
           isDefaultTableDeleted: isDefDeleted,
-          customColumns: Array.isArray(persisted.customColumns) ? persisted.customColumns : [],
+          showSortArrows: persisted.showSortArrows ?? false,
+          enableClickToCycle: persisted.enableClickToCycle ?? false,
+          mainTableTitle: persisted.mainTableTitle || 'Study Log',
+          mainTableDescription: persisted.mainTableDescription || 'Daily Habit, Hours & Performance Tracker',
+          customColumns: Array.isArray(persisted.customColumns)
+            ? persisted.customColumns.map((col: any) => {
+              if (/accuracy/i.test(col.name) || col.unit === '%' || col.id === 'col_accuracy') {
+                const cleanedName = col.name.replace(/(\s*\(\s*%\s*\))+/gi, '').trim();
+                return { ...col, name: cleanedName || 'ACCURACY', unit: '%' };
+              }
+              if (col.unit) {
+                const cleanUnit = col.unit.replace(/[()]/g, '').trim();
+                const escaped = cleanUnit.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+                const dupRegex = new RegExp(`(\\s*\\(\\s*${escaped}\\s*\\))+`, 'gi');
+                return { ...col, name: col.name.replace(dupRegex, '').trim() };
+              }
+              return col;
+            })
+            : [],
           activeTableId: persisted.activeTableId || 'main',
         };
       },
@@ -2490,6 +2935,54 @@ if (typeof window !== 'undefined') {
         if (data.state.customTables?.some((t: any) => t.id === 'tbl-mock-tests')) {
           data.state.customTables = data.state.customTables.filter((t: any) => t.id !== 'tbl-mock-tests');
           modified = true;
+        }
+        if (data.state.customTables) {
+          const hasUserCheckTable = data.state.customTables.some(
+            (t: any) => t.id !== 'tbl-check-demo' && t.title?.trim().toLowerCase() === 'check'
+          );
+          if (hasUserCheckTable && data.state.customTables.some((t: any) => t.id === 'tbl-check-demo')) {
+            data.state.customTables = data.state.customTables.filter((t: any) => t.id !== 'tbl-check-demo');
+            if (data.state.activeTableId === 'tbl-check-demo') {
+              const userCheck = data.state.customTables.find((t: any) => t.title?.trim().toLowerCase() === 'check');
+              if (userCheck) data.state.activeTableId = userCheck.id;
+            }
+            modified = true;
+          }
+          data.state.customTables.forEach((t: any) => {
+            (t.columns || []).forEach((c: any) => {
+              if (/accuracy/i.test(c.name) || c.unit === '%' || c.id === 'col_accuracy') {
+                const cleaned = c.name.replace(/(\s*\(\s*%\s*\))+/gi, '').trim();
+                if (cleaned !== c.name || c.unit !== '%') {
+                  c.name = cleaned || 'ACCURACY';
+                  c.unit = '%';
+                  modified = true;
+                }
+              }
+            });
+            (t.rows || []).forEach((r: any) => {
+              if (r.values) {
+                Object.keys(r.values).forEach((k) => {
+                  const v = r.values[k];
+                  if (typeof v === 'string' && v.includes('|')) {
+                    r.values[k] = v.split('|').map((s: string) => s.trim()).filter(Boolean).pop() || v.split('|')[0].trim();
+                    modified = true;
+                  }
+                });
+              }
+            });
+          });
+        }
+        if (data.state.customColumns) {
+          data.state.customColumns.forEach((c: any) => {
+            if (/accuracy/i.test(c.name) || c.unit === '%' || c.id === 'col_accuracy') {
+              const cleaned = c.name.replace(/(\s*\(\s*%\s*\))+/gi, '').trim();
+              if (cleaned !== c.name || c.unit !== '%') {
+                c.name = cleaned || 'ACCURACY';
+                c.unit = '%';
+                modified = true;
+              }
+            }
+          });
         }
         if (data.state.user?.name === 'Alex' && data.state.user?.streakDays === 14) {
           data.state.user.name = 'Student';

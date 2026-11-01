@@ -59,11 +59,13 @@ CREATE TABLE IF NOT EXISTS public.study_sessions (
     focus_rating SMALLINT DEFAULT 5,
     mode TEXT CHECK (mode IN ('pomodoro', 'stopwatch')),
     notes TEXT,
+    location TEXT,
     timestamp TIMESTAMPTZ NOT NULL,
     date_string TEXT NOT NULL,
     hour SMALLINT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+ALTER TABLE public.study_sessions ADD COLUMN IF NOT EXISTS location TEXT;
 
 -- 5. Tasks Table
 CREATE TABLE IF NOT EXISTS public.tasks (
@@ -132,8 +134,33 @@ CREATE TABLE IF NOT EXISTS public.custom_columns (
     created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- 10. Friend Requests Table (Real-time student networking)
+CREATE TABLE IF NOT EXISTS public.friend_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sender_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    sender_code TEXT NOT NULL,
+    sender_name TEXT NOT NULL,
+    receiver_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    receiver_code TEXT NOT NULL,
+    status TEXT CHECK (status IN ('pending', 'accepted', 'declined', 'cancelled')) DEFAULT 'pending' NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(sender_id, receiver_id)
+);
+
+-- 11. Friendships Table (Mutual study circle connections)
+CREATE TABLE IF NOT EXISTS public.friendships (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    friend_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    friend_code TEXT NOT NULL,
+    friend_name TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT timezone('utc'::text, now()) NOT NULL,
+    UNIQUE(user_id, friend_id)
+);
+
 -- ==========================================================
--- 10. PERFORMANCE INDEXES
+-- 12. PERFORMANCE INDEXES
 -- ==========================================================
 CREATE INDEX IF NOT EXISTS idx_subjects_user_id ON public.subjects (user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_date ON public.study_sessions (user_id, date_string DESC);
@@ -143,9 +170,12 @@ CREATE INDEX IF NOT EXISTS idx_daily_logs_user_date ON public.daily_logs (user_i
 CREATE INDEX IF NOT EXISTS idx_exam_user_date ON public.exam_countdowns (user_id, exam_date);
 CREATE INDEX IF NOT EXISTS idx_custom_tables_user ON public.custom_tables (user_id);
 CREATE INDEX IF NOT EXISTS idx_custom_columns_user ON public.custom_columns (user_id);
+CREATE INDEX IF NOT EXISTS idx_friend_requests_receiver ON public.friend_requests (receiver_id, status);
+CREATE INDEX IF NOT EXISTS idx_friend_requests_sender ON public.friend_requests (sender_id, status);
+CREATE INDEX IF NOT EXISTS idx_friendships_user ON public.friendships (user_id);
 
 -- ==========================================================
--- 11. ROW LEVEL SECURITY (RLS) POLICIES
+-- 13. ROW LEVEL SECURITY (RLS) POLICIES
 -- ==========================================================
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.subjects ENABLE ROW LEVEL SECURITY;
@@ -155,12 +185,16 @@ ALTER TABLE public.daily_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.exam_countdowns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.custom_tables ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.custom_columns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.friend_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.friendships ENABLE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
     DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
+    DROP POLICY IF EXISTS "Users can view student profiles" ON public.profiles;
     DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
     DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
+    DROP POLICY IF EXISTS "Users can delete own profile" ON public.profiles;
     DROP POLICY IF EXISTS "Users can manage own subjects" ON public.subjects;
     DROP POLICY IF EXISTS "Users can manage own study sessions" ON public.study_sessions;
     DROP POLICY IF EXISTS "Users can manage own tasks" ON public.tasks;
@@ -168,18 +202,27 @@ BEGIN
     DROP POLICY IF EXISTS "Users can manage own exam countdowns" ON public.exam_countdowns;
     DROP POLICY IF EXISTS "Users can manage own custom tables" ON public.custom_tables;
     DROP POLICY IF EXISTS "Users can manage own custom columns" ON public.custom_columns;
+    DROP POLICY IF EXISTS "Users can view their friend requests" ON public.friend_requests;
+    DROP POLICY IF EXISTS "Users can send friend requests" ON public.friend_requests;
+    DROP POLICY IF EXISTS "Users can update their friend requests" ON public.friend_requests;
+    DROP POLICY IF EXISTS "Users can delete their friend requests" ON public.friend_requests;
+    DROP POLICY IF EXISTS "Users can view their friendships" ON public.friendships;
+    DROP POLICY IF EXISTS "Users can manage their friendships" ON public.friendships;
 EXCEPTION WHEN OTHERS THEN
     NULL;
 END $$;
 
-CREATE POLICY "Users can view own profile" 
-ON public.profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can view student profiles" 
+ON public.profiles FOR SELECT USING (true);
 
 CREATE POLICY "Users can update own profile" 
 ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
 CREATE POLICY "Users can insert own profile" 
 ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Users can delete own profile" 
+ON public.profiles FOR DELETE USING (auth.uid() = id);
 
 CREATE POLICY "Users can manage own subjects" 
 ON public.subjects FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
@@ -202,11 +245,40 @@ ON public.custom_tables FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.ui
 CREATE POLICY "Users can manage own custom columns" 
 ON public.custom_columns FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 
+CREATE POLICY "Users can view their friend requests" 
+ON public.friend_requests FOR SELECT 
+USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+CREATE POLICY "Users can send friend requests" 
+ON public.friend_requests FOR INSERT 
+WITH CHECK (auth.uid() = sender_id);
+
+CREATE POLICY "Users can update their friend requests" 
+ON public.friend_requests FOR UPDATE 
+USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+CREATE POLICY "Users can delete their friend requests" 
+ON public.friend_requests FOR DELETE 
+USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+
+CREATE POLICY "Users can view their friendships" 
+ON public.friendships FOR SELECT 
+USING (auth.uid() = user_id OR auth.uid() = friend_id);
+
+CREATE POLICY "Users can manage their friendships" 
+ON public.friendships FOR ALL 
+USING (auth.uid() = user_id OR auth.uid() = friend_id) 
+WITH CHECK (auth.uid() = user_id OR auth.uid() = friend_id);
+
 -- ==========================================================
--- 12. AUTOMATIC PROFILE TRIGGER ON SIGNUP
+-- 14. AUTOMATIC PROFILE TRIGGER ON SIGNUP
 -- ==========================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
   INSERT INTO public.profiles (id, name, email)
   VALUES (
@@ -220,7 +292,7 @@ BEGIN
     updated_at = timezone('utc'::text, now());
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
@@ -228,15 +300,19 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ==========================================================
--- 13. SECURE ACCOUNT DELETION RPC
+-- 15. SECURE ACCOUNT DELETION RPC
 -- ==========================================================
 CREATE OR REPLACE FUNCTION public.delete_user_account()
-RETURNS void AS $$
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
   -- Cascades through all public tables with REFERENCES auth.users(id) ON DELETE CASCADE
   DELETE FROM auth.users WHERE id = auth.uid();
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 GRANT EXECUTE ON FUNCTION public.delete_user_account() TO authenticated;
 `;
@@ -486,6 +562,7 @@ export async function fetchUserDataFromSupabase(userId: string) {
       hour: row.hour,
       focusRating: row.focus_rating || 5,
       notes: row.notes || undefined,
+      location: row.location || undefined,
       mode: (row.mode as 'pomodoro' | 'stopwatch') || 'pomodoro',
     }));
 
@@ -509,18 +586,33 @@ export async function fetchUserDataFromSupabase(userId: string) {
 
     const realLogs = rawLogs.filter((r: any) => !r.date.startsWith('__meta_'));
 
-    const dailyLogs: DailyLogEntry[] = realLogs.map((row: any) => ({
-      date: row.date,
-      studyHours: row.study_hours != null ? Number(row.study_hours) : null,
-      attendedClass: Boolean(row.attended_class),
-      pyqsSolved: row.pyqs_solved != null ? Number(row.pyqs_solved) : null,
-      revisionDone: Boolean(row.revision_done),
-      mockTestTaken: Boolean(row.mock_test_taken),
-      sleepHours: row.sleep_hours != null ? Number(row.sleep_hours) : null,
-      focusRating: row.focus_rating != null ? Number(row.focus_rating) : null,
-      notes: row.notes || '',
-      customData: row.custom_data || {},
-    }));
+    const dailyLogs: DailyLogEntry[] = realLogs.map((row: any) => {
+      const customRaw = row.custom_data && typeof row.custom_data === 'object' ? { ...row.custom_data } : {};
+      const tri = customRaw.__tri && typeof customRaw.__tri === 'object' ? customRaw.__tri : null;
+      delete customRaw.__tri;
+      delete customRaw.location;
+
+      const resolveTri = (triVal: unknown, boolVal: unknown): 'yes' | 'no' | 'na' | boolean => {
+        if (triVal === 'yes' || triVal === 'no' || triVal === 'na' || typeof triVal === 'boolean') {
+          return triVal;
+        }
+        return Boolean(boolVal);
+      };
+
+      return {
+        date: row.date,
+        studyHours: row.study_hours != null ? Number(row.study_hours) : null,
+        attendedClass: resolveTri(tri?.attendedClass, row.attended_class),
+        pyqsSolved: row.pyqs_solved != null ? Number(row.pyqs_solved) : null,
+        revisionDone: resolveTri(tri?.revisionDone, row.revision_done),
+        mockTestTaken: resolveTri(tri?.mock_test_taken ?? tri?.mockTestTaken, row.mock_test_taken),
+        sleepHours: row.sleep_hours != null ? Number(row.sleep_hours) : null,
+        focusRating: row.focus_rating != null ? Number(row.focus_rating) : null,
+        notes: row.notes || '',
+        location: row.location || row.custom_data?.location || '',
+        customData: customRaw,
+      };
+    });
 
     // Custom study tables: from dedicated table if available, or from metadata row
     let customTables: CustomStudyTable[] = [];
@@ -626,23 +718,36 @@ export async function dbSaveStudySession(userId: string, session: StudySession) 
   const authed = await ensureSupabaseAuth(userId);
   if (!authed) return;
 
+  const baseRecord = {
+    id: session.id,
+    user_id: userId,
+    subject_id: session.subjectId,
+    subject_name: session.subjectName,
+    chapter_id: session.chapterId || null,
+    chapter_title: session.chapterTitle || null,
+    duration_minutes: session.durationMinutes,
+    focus_rating: session.focusRating,
+    mode: session.mode,
+    notes: session.notes || null,
+    timestamp: session.timestamp,
+    date_string: session.dateString,
+    hour: session.hour,
+  };
+
   try {
     const { error } = await sb.from('study_sessions').upsert({
-      id: session.id,
-      user_id: userId,
-      subject_id: session.subjectId,
-      subject_name: session.subjectName,
-      chapter_id: session.chapterId || null,
-      chapter_title: session.chapterTitle || null,
-      duration_minutes: session.durationMinutes,
-      focus_rating: session.focusRating,
-      mode: session.mode,
-      notes: session.notes || null,
-      timestamp: session.timestamp,
-      date_string: session.dateString,
-      hour: session.hour,
+      ...baseRecord,
+      location: session.location || null,
     });
     if (error) {
+      // Fallback if the remote database schema has not yet added the `location` column
+      if (error.message?.includes('location')) {
+        const { error: retryErr } = await sb.from('study_sessions').upsert(baseRecord);
+        if (retryErr) {
+          console.error('[Supabase dbSaveStudySession Retry Error]:', retryErr.message, retryErr);
+        }
+        return;
+      }
       console.error('[Supabase dbSaveStudySession Error]:', error.message, error);
     }
   } catch (err) {
@@ -693,6 +798,22 @@ export async function dbDeleteTask(userId: string, taskId: string) {
   }
 }
 
+function toSqlBool(val: 'yes' | 'no' | 'na' | boolean | undefined | null): boolean {
+  return val === 'yes' || val === true;
+}
+
+function buildDailyLogCustomData(entry: DailyLogEntry): Record<string, unknown> {
+  return {
+    ...(entry.customData || {}),
+    location: entry.location || '',
+    __tri: {
+      attendedClass: entry.attendedClass,
+      revisionDone: entry.revisionDone,
+      mockTestTaken: entry.mockTestTaken,
+    },
+  };
+}
+
 export async function dbSaveDailyLog(userId: string, entry: DailyLogEntry) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
@@ -705,14 +826,14 @@ export async function dbSaveDailyLog(userId: string, entry: DailyLogEntry) {
         user_id: userId,
         date: entry.date,
         study_hours: entry.studyHours,
-        attended_class: entry.attendedClass,
+        attended_class: toSqlBool(entry.attendedClass),
         pyqs_solved: entry.pyqsSolved,
-        revision_done: entry.revisionDone,
-        mock_test_taken: entry.mockTestTaken,
+        revision_done: toSqlBool(entry.revisionDone),
+        mock_test_taken: toSqlBool(entry.mockTestTaken),
         sleep_hours: entry.sleepHours,
         focus_rating: entry.focusRating,
         notes: entry.notes || null,
-        custom_data: entry.customData || {},
+        custom_data: buildDailyLogCustomData(entry),
       },
       { onConflict: 'user_id,date' }
     );
@@ -735,14 +856,14 @@ export async function dbSaveDailyLogsBatch(userId: string, entries: DailyLogEntr
       user_id: userId,
       date: entry.date,
       study_hours: entry.studyHours,
-      attended_class: entry.attendedClass,
+      attended_class: toSqlBool(entry.attendedClass),
       pyqs_solved: entry.pyqsSolved,
-      revision_done: entry.revisionDone,
-      mock_test_taken: entry.mockTestTaken,
+      revision_done: toSqlBool(entry.revisionDone),
+      mock_test_taken: toSqlBool(entry.mockTestTaken),
       sleep_hours: entry.sleepHours,
       focus_rating: entry.focusRating,
       notes: entry.notes || null,
-      custom_data: entry.customData || {},
+      custom_data: buildDailyLogCustomData(entry),
     }));
 
     // In chunks of 50 to prevent oversized HTTP payloads
@@ -1117,12 +1238,24 @@ export async function uploadAllUserDataToSupabase(
   }
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidUuid(val: string | undefined | null): val is string {
+  return Boolean(val && UUID_REGEX.test(val.trim()));
+}
+
+function sanitizeFriendCode(code: string | undefined | null): string {
+  if (!code) return '';
+  return code.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+}
+
 // Complete Account & Data Deletion from all Database Tables
 export async function dbDeleteAccount(userId: string): Promise<{ success: boolean; error?: string }> {
   const sb = getSupabaseClient();
   if (!sb || !userId) {
     return { success: false, error: 'Database client not connected.' };
   }
+  await ensureSupabaseAuth(userId);
 
   try {
     // 1. Try PostgreSQL RPC function if available (deletes auth.users record which cascades all tables)
@@ -1137,17 +1270,25 @@ export async function dbDeleteAccount(userId: string): Promise<{ success: boolea
     }
 
     // 2. Cascade delete all user records from every database table where user_id = auth.uid()
-    await Promise.allSettled([
-      sb.from('daily_logs').delete().eq('user_id', userId),
-      sb.from('custom_tables').delete().eq('user_id', userId),
-      sb.from('custom_columns').delete().eq('user_id', userId),
-      sb.from('tasks').delete().eq('user_id', userId),
-      sb.from('study_sessions').delete().eq('user_id', userId),
-      sb.from('subjects').delete().eq('user_id', userId),
-      sb.from('exam_countdowns').delete().eq('user_id', userId),
-      sb.from('friendships').delete().or(`user_id.eq.${userId},friend_id.eq.${userId}`),
-      sb.from('profiles').delete().eq('id', userId),
-    ]);
+    const cleanTasks: Promise<unknown>[] = [
+      Promise.resolve(sb.from('daily_logs').delete().eq('user_id', userId)),
+      Promise.resolve(sb.from('custom_tables').delete().eq('user_id', userId)),
+      Promise.resolve(sb.from('custom_columns').delete().eq('user_id', userId)),
+      Promise.resolve(sb.from('tasks').delete().eq('user_id', userId)),
+      Promise.resolve(sb.from('study_sessions').delete().eq('user_id', userId)),
+      Promise.resolve(sb.from('subjects').delete().eq('user_id', userId)),
+      Promise.resolve(sb.from('exam_countdowns').delete().eq('user_id', userId)),
+      Promise.resolve(sb.from('profiles').delete().eq('id', userId)),
+    ];
+
+    if (isValidUuid(userId)) {
+      cleanTasks.push(
+        Promise.resolve(sb.from('friendships').delete().or(`user_id.eq.${userId},friend_id.eq.${userId}`)),
+        Promise.resolve(sb.from('friend_requests').delete().or(`sender_id.eq.${userId},receiver_id.eq.${userId}`))
+      );
+    }
+
+    await Promise.allSettled(cleanTasks);
 
     // Sign out the user
     await sb.auth.signOut().catch(() => {});
@@ -1155,6 +1296,434 @@ export async function dbDeleteAccount(userId: string): Promise<{ success: boolea
   } catch (err: any) {
     console.error('[Supabase dbDeleteAccount Error]:', err);
     return { success: false, error: err?.message || 'Failed to delete account from database.' };
+  }
+}
+
+export interface SearchedStudentPeer {
+  id: string;
+  name: string;
+  email?: string;
+  friendCode: string;
+  streakDays: number;
+  dailyTargetMinutes: number;
+  longestStreak?: number;
+  lastStudiedDate?: string;
+}
+
+// Search student peer by unique 4-5 digit friend code in Supabase
+export async function dbSearchProfileByFriendCode(friendCode: string): Promise<SearchedStudentPeer | null> {
+  const sb = getSupabaseClient();
+  if (!sb) return null;
+  const cleanCode = sanitizeFriendCode(friendCode);
+  if (!cleanCode) return null;
+
+  try {
+    const { data, error } = await sb
+      .from('profiles')
+      .select('id, name, streak_days, daily_target_minutes, longest_streak, last_studied_date, friend_code')
+      .ilike('friend_code', cleanCode)
+      .maybeSingle();
+
+    if (error) {
+      console.warn('[dbSearchProfileByFriendCode query error]:', error.message);
+      return null;
+    }
+
+    if (data && data.name) {
+      return {
+        id: data.id,
+        name: data.name,
+        friendCode: (data.friend_code || cleanCode).toUpperCase(),
+        streakDays: Number(data.streak_days) || 0,
+        dailyTargetMinutes: Number(data.daily_target_minutes) || 360,
+        longestStreak: Number(data.longest_streak) || 0,
+        lastStudiedDate: data.last_studied_date || undefined,
+      };
+    }
+  } catch (err) {
+    console.warn('[dbSearchProfileByFriendCode exception]:', err);
+  }
+  return null;
+}
+
+// ==========================================================
+// REAL-TIME FRIEND REQUESTS & FRIENDSHIPS (SUPABASE BACKEND)
+// ==========================================================
+
+export interface FriendRequestRow {
+  id: string;
+  sender_id: string;
+  sender_code: string;
+  sender_name: string;
+  receiver_id: string;
+  receiver_code: string;
+  status: 'pending' | 'accepted' | 'declined' | 'cancelled';
+  created_at: string;
+  updated_at: string;
+}
+
+// 1. Send Friend Request via Supabase
+export async function dbSendFriendRequest(
+  senderId: string,
+  senderCode: string,
+  senderName: string,
+  receiverCode: string
+): Promise<{ success: boolean; message: string; receiver?: SearchedStudentPeer; requestId?: string }> {
+  const sb = getSupabaseClient();
+  if (!sb || !isValidUuid(senderId)) {
+    return { success: false, message: 'Supabase client is not connected.' };
+  }
+  await ensureSupabaseAuth(senderId);
+
+  const cleanReceiverCode = sanitizeFriendCode(receiverCode);
+  const cleanSenderCode = sanitizeFriendCode(senderCode);
+
+  if (!cleanReceiverCode) {
+    return { success: false, message: 'Please enter a valid student code.' };
+  }
+
+  if (cleanReceiverCode === cleanSenderCode) {
+    return { success: false, message: 'You cannot connect with your own student code!' };
+  }
+
+  try {
+    // A. Verify receiver exists in Supabase profiles
+    const receiver = await dbSearchProfileByFriendCode(cleanReceiverCode);
+    if (!receiver || !isValidUuid(receiver.id)) {
+      return { success: false, message: `No registered student found with code #${cleanReceiverCode}.` };
+    }
+
+    if (receiver.id === senderId) {
+      return { success: false, message: 'You cannot connect with your own account!' };
+    }
+
+    // B. Check if already friends
+    const { data: existingFriendship } = await sb
+      .from('friendships')
+      .select('id')
+      .eq('user_id', senderId)
+      .eq('friend_id', receiver.id)
+      .maybeSingle();
+
+    if (existingFriendship) {
+      return { success: false, message: `${receiver.name} is already in your study circle!` };
+    }
+
+    // C. Check if request already exists
+    const { data: existingRequest } = await sb
+      .from('friend_requests')
+      .select('id, status, sender_id')
+      .or(`and(sender_id.eq.${senderId},receiver_id.eq.${receiver.id}),and(sender_id.eq.${receiver.id},receiver_id.eq.${senderId})`)
+      .maybeSingle();
+
+    if (existingRequest) {
+      if (existingRequest.status === 'pending') {
+        if (existingRequest.sender_id === senderId) {
+          return { success: false, message: `Friend request is already pending for ${receiver.name}.` };
+        } else {
+          // The other user already sent us a request! Auto-accept it.
+          await dbAcceptFriendRequest(existingRequest.id, senderId);
+          return { success: true, message: `Accepted incoming friend request from ${receiver.name}!`, receiver, requestId: existingRequest.id };
+        }
+      }
+      if (existingRequest.status === 'accepted') {
+        return { success: false, message: `${receiver.name} is already in your study circle!` };
+      }
+    }
+
+    // D. Insert / update friend request
+    const { data: inserted, error: insertErr } = await sb
+      .from('friend_requests')
+      .upsert({
+        sender_id: senderId,
+        sender_code: cleanSenderCode,
+        sender_name: senderName,
+        receiver_id: receiver.id,
+        receiver_code: cleanReceiverCode,
+        status: 'pending',
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'sender_id,receiver_id' })
+      .select('id')
+      .single();
+
+    if (insertErr) {
+      console.error('[dbSendFriendRequest Error]:', insertErr);
+      return { success: false, message: insertErr.message || 'Failed to send request on cloud.' };
+    }
+
+    return {
+      success: true,
+      message: `Friend request sent to ${receiver.name} (#${cleanReceiverCode})!`,
+      receiver,
+      requestId: inserted?.id,
+    };
+  } catch (err: any) {
+    console.error('[dbSendFriendRequest Exception]:', err);
+    return { success: false, message: err?.message || 'Unexpected error while sending request.' };
+  }
+}
+
+// 2. Fetch Incoming and Outgoing Friend Requests
+export async function dbFetchFriendRequests(userId: string): Promise<{
+  incoming: FriendRequestRow[];
+  outgoing: FriendRequestRow[];
+}> {
+  const sb = getSupabaseClient();
+  if (!sb || !isValidUuid(userId)) return { incoming: [], outgoing: [] };
+  await ensureSupabaseAuth(userId);
+
+  try {
+    const [incomingRes, outgoingRes] = await Promise.all([
+      sb
+        .from('friend_requests')
+        .select('*')
+        .eq('receiver_id', userId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false }),
+      sb
+        .from('friend_requests')
+        .select('*')
+        .eq('sender_id', userId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false }),
+    ]);
+
+    return {
+      incoming: (incomingRes.data as FriendRequestRow[]) || [],
+      outgoing: (outgoingRes.data as FriendRequestRow[]) || [],
+    };
+  } catch (err) {
+    console.warn('[dbFetchFriendRequests Exception]:', err);
+    return { incoming: [], outgoing: [] };
+  }
+}
+
+// 3. Accept Friend Request
+export async function dbAcceptFriendRequest(
+  requestId: string,
+  userId: string
+): Promise<{ success: boolean; message?: string }> {
+  const sb = getSupabaseClient();
+  if (!sb || !isValidUuid(userId) || !isValidUuid(requestId)) {
+    return { success: false, message: 'Not connected' };
+  }
+  await ensureSupabaseAuth(userId);
+
+  try {
+    // A. Fetch request details
+    const { data: req, error: fetchErr } = await sb
+      .from('friend_requests')
+      .select('*')
+      .eq('id', requestId)
+      .single();
+
+    if (fetchErr || !req) {
+      return { success: false, message: 'Request not found.' };
+    }
+
+    // B. Fetch receiver name
+    const { data: receiverProfile } = await sb
+      .from('profiles')
+      .select('name, friend_code')
+      .eq('id', userId)
+      .maybeSingle();
+
+    const receiverName = receiverProfile?.name || 'Student';
+    const receiverCode = receiverProfile?.friend_code || req.receiver_code;
+
+    // C. Update request status to accepted
+    await sb
+      .from('friend_requests')
+      .update({ status: 'accepted', updated_at: new Date().toISOString() })
+      .eq('id', requestId);
+
+    // D. Upsert reciprocal friendship records (both directions; second one is best-effort if RLS restricts it on legacy schema)
+    await Promise.allSettled([
+      sb.from('friendships').upsert({
+        user_id: req.receiver_id,
+        friend_id: req.sender_id,
+        friend_code: req.sender_code,
+        friend_name: req.sender_name,
+      }, { onConflict: 'user_id,friend_id' }),
+      sb.from('friendships').upsert({
+        user_id: req.sender_id,
+        friend_id: req.receiver_id,
+        friend_code: receiverCode,
+        friend_name: receiverName,
+      }, { onConflict: 'user_id,friend_id' }),
+    ]);
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('[dbAcceptFriendRequest Error]:', err);
+    return { success: false, message: err?.message || 'Failed to accept request.' };
+  }
+}
+
+// 4. Decline Friend Request
+export async function dbDeclineFriendRequest(
+  requestId: string,
+  userId: string
+): Promise<{ success: boolean }> {
+  const sb = getSupabaseClient();
+  if (!sb || !isValidUuid(userId) || !isValidUuid(requestId)) return { success: false };
+  await ensureSupabaseAuth(userId);
+
+  try {
+    const { error } = await sb
+      .from('friend_requests')
+      .update({ status: 'declined', updated_at: new Date().toISOString() })
+      .eq('id', requestId)
+      .eq('receiver_id', userId);
+
+    return { success: !error };
+  } catch (err) {
+    console.error('[dbDeclineFriendRequest Error]:', err);
+    return { success: false };
+  }
+}
+
+// 5. Cancel Outgoing Friend Request
+export async function dbCancelFriendRequest(
+  requestId: string,
+  userId: string
+): Promise<{ success: boolean }> {
+  const sb = getSupabaseClient();
+  if (!sb || !isValidUuid(userId) || !isValidUuid(requestId)) return { success: false };
+  await ensureSupabaseAuth(userId);
+
+  try {
+    const { error } = await sb
+      .from('friend_requests')
+      .delete()
+      .eq('id', requestId)
+      .eq('sender_id', userId);
+
+    return { success: !error };
+  } catch (err) {
+    console.error('[dbCancelFriendRequest Error]:', err);
+    return { success: false };
+  }
+}
+
+// 6. Remove Friend
+export async function dbRemoveFriend(
+  userId: string,
+  friendIdOrCode: string
+): Promise<{ success: boolean }> {
+  const sb = getSupabaseClient();
+  if (!sb || !isValidUuid(userId) || !friendIdOrCode) return { success: false };
+  await ensureSupabaseAuth(userId);
+
+  try {
+    const trimmed = friendIdOrCode.trim();
+    if (isValidUuid(trimmed)) {
+      await Promise.allSettled([
+        sb.from('friendships').delete().eq('user_id', userId).eq('friend_id', trimmed),
+        sb.from('friendships').delete().eq('friend_id', userId).eq('user_id', trimmed),
+        sb.from('friend_requests').delete().or(`and(sender_id.eq.${userId},receiver_id.eq.${trimmed}),and(sender_id.eq.${trimmed},receiver_id.eq.${userId})`),
+      ]);
+    } else {
+      const cleanCode = sanitizeFriendCode(trimmed);
+      if (!cleanCode) return { success: false };
+      // Also look up friend UUID by code if possible so reciprocal rows and requests are cleaned up
+      const peer = await dbSearchProfileByFriendCode(cleanCode);
+      const ops: Promise<unknown>[] = [
+        Promise.resolve(sb.from('friendships').delete().eq('user_id', userId).ilike('friend_code', cleanCode)),
+      ];
+      if (peer && isValidUuid(peer.id)) {
+        ops.push(
+          Promise.resolve(sb.from('friendships').delete().eq('user_id', userId).eq('friend_id', peer.id)),
+          Promise.resolve(sb.from('friendships').delete().eq('friend_id', userId).eq('user_id', peer.id)),
+          Promise.resolve(sb.from('friend_requests').delete().or(`and(sender_id.eq.${userId},receiver_id.eq.${peer.id}),and(sender_id.eq.${peer.id},receiver_id.eq.${userId})`))
+        );
+      }
+      await Promise.allSettled(ops);
+    }
+    return { success: true };
+  } catch (err) {
+    console.error('[dbRemoveFriend Error]:', err);
+    return { success: false };
+  }
+}
+
+// 7. Fetch Live Friends from Supabase
+export async function dbFetchFriends(userId: string): Promise<SearchedStudentPeer[]> {
+  const sb = getSupabaseClient();
+  if (!sb || !isValidUuid(userId)) return [];
+  await ensureSupabaseAuth(userId);
+
+  try {
+    const [directRes, reverseRes, acceptedReqRes] = await Promise.all([
+      sb
+        .from('friendships')
+        .select('friend_id, friend_code, friend_name')
+        .eq('user_id', userId),
+      sb
+        .from('friendships')
+        .select('user_id')
+        .eq('friend_id', userId),
+      sb
+        .from('friend_requests')
+        .select('sender_id, sender_code, sender_name, receiver_id, receiver_code')
+        .eq('status', 'accepted')
+        .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`),
+    ]);
+
+    const friendMetaMap = new Map<string, { code: string; name: string }>();
+
+    for (const f of directRes.data || []) {
+      if (f.friend_id && f.friend_id !== userId) {
+        friendMetaMap.set(f.friend_id, {
+          code: f.friend_code || '',
+          name: f.friend_name || 'Student',
+        });
+      }
+    }
+
+    for (const r of reverseRes.data || []) {
+      if (r.user_id && r.user_id !== userId && !friendMetaMap.has(r.user_id)) {
+        friendMetaMap.set(r.user_id, { code: '', name: 'Student' });
+      }
+    }
+
+    for (const req of acceptedReqRes.data || []) {
+      const peerId = req.sender_id === userId ? req.receiver_id : req.sender_id;
+      const peerCode = req.sender_id === userId ? req.receiver_code : req.sender_code;
+      const peerName = req.sender_id === userId ? 'Student' : req.sender_name;
+      if (peerId && peerId !== userId && !friendMetaMap.has(peerId)) {
+        friendMetaMap.set(peerId, { code: peerCode || '', name: peerName || 'Student' });
+      }
+    }
+
+    const friendIds = Array.from(friendMetaMap.keys());
+    if (friendIds.length === 0) {
+      return [];
+    }
+
+    const { data: profiles } = await sb
+      .from('profiles')
+      .select('id, name, streak_days, daily_target_minutes, longest_streak, last_studied_date, friend_code')
+      .in('id', friendIds);
+
+    const profileMap = new Map((profiles || []).map((p) => [p.id, p]));
+
+    return friendIds.map((friendId) => {
+      const meta = friendMetaMap.get(friendId);
+      const p = profileMap.get(friendId);
+      return {
+        id: friendId,
+        name: p?.name || meta?.name || 'Student',
+        friendCode: (p?.friend_code || meta?.code || '').toUpperCase(),
+        streakDays: Number(p?.streak_days) || 0,
+        dailyTargetMinutes: Number(p?.daily_target_minutes) || 360,
+        longestStreak: Number(p?.longest_streak) || 0,
+        lastStudiedDate: p?.last_studied_date || undefined,
+      };
+    });
+  } catch (err) {
+    console.warn('[dbFetchFriends Error]:', err);
+    return [];
   }
 }
 

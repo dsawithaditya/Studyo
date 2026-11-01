@@ -44,6 +44,7 @@ export interface StudySession {
   hour: number; // 0-23 for peak productivity analysis
   focusRating: number; // 1-5
   notes?: string;
+  location?: string; // Study location or environment
   mode: 'pomodoro' | 'stopwatch';
 }
 
@@ -52,7 +53,7 @@ export interface Task {
   title: string;
   subjectId: string;
   priority: TaskPriority;
-  dueDate: string; // YYYY-MM-DD
+  dueDate?: string; // YYYY-MM-DD
   completed: boolean;
   completedAt?: string;
   estimatedPomodoros: number;
@@ -107,10 +108,14 @@ export interface FriendProfile {
   lastActive: string;
   status: 'accepted' | 'incoming_request' | 'outgoing_request' | 'none';
   requestedAt?: string;
+  requestId?: string;
+  friendId?: string;
   studyLogs: DailyLogEntry[];
   recentSessions?: StudySession[];
   comments: FriendComment[];
 }
+
+export type TriStateStatus = 'yes' | 'no' | 'na';
 
 export type CustomColumnType = 'boolean' | 'number' | 'text' | 'select' | 'rating';
 
@@ -135,13 +140,14 @@ export interface CustomColumn {
 export interface DailyLogEntry {
   date: string; // YYYY-MM-DD
   studyHours?: number | null;
-  attendedClass?: boolean;
+  attendedClass?: TriStateStatus | boolean;
   pyqsSolved?: number | null;
-  revisionDone?: boolean;
-  mockTestTaken?: boolean;
+  revisionDone?: TriStateStatus | boolean;
+  mockTestTaken?: TriStateStatus | boolean;
   sleepHours?: number | null;
   focusRating?: number | null; // 1-5
   notes?: string;
+  location?: string; // Legacy optional field, preserved for data safety
   customData?: Record<string, any>;
 }
 

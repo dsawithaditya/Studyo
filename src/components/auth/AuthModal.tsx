@@ -164,7 +164,7 @@ export const AuthModal: React.FC = () => {
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
+      className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/45 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto"
     >
       <div className="relative w-full max-w-md my-auto">
         {/* Ambient atmospheric orange glow behind the frosted glass card */}

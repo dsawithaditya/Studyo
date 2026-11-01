@@ -1,10 +1,7 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { useStudyStore } from '../store/useStudyStore';
+import React, { useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from 'react';
+import { useStudyStore, getLocalTodayDateString, getUserFirstName } from '../store/useStudyStore';
 import HalftoneWordmarkFooter from './ui/halftone-wordmark-footer';
 import TechText from './ui/TechText';
-import { DailyStudyLog } from './DailyStudyLog';
-import { StudyLogAnalysis } from './StudyLogAnalysis';
-import { FriendsScreen } from './FriendsScreen';
 import { ProfileDropdown } from './ProfileDropdown';
 import { ThemeSwitch } from './ThemeSwitch';
 import { ShinyButton } from './ui/shiny-button';
@@ -13,6 +10,10 @@ import { AuthModal } from './auth/AuthModal';
 import { AccountProfileModal } from './auth/AccountProfileModal';
 import { LogoutConfirmModal } from './auth/LogoutConfirmModal';
 import { FlashNotification } from './auth/FlashNotification';
+
+const DailyStudyLog = lazy(() => import('./DailyStudyLog').then((m) => ({ default: m.DailyStudyLog })));
+const StudyLogAnalysis = lazy(() => import('./StudyLogAnalysis').then((m) => ({ default: m.StudyLogAnalysis })));
+const FriendsScreen = lazy(() => import('./FriendsScreen').then((m) => ({ default: m.FriendsScreen })));
 import {
   Play,
   Pause,
@@ -133,12 +134,15 @@ export const HomeScreen: React.FC = () => {
     deleteDistraction,
     convertDistractionToTask,
     addTask,
+    updateTaskDueDate,
     toggleTask,
     deleteTask,
     enableQuickScratchpad,
     addExamCountdown,
     deleteExamCountdown,
     friends,
+    timerSubMode,
+    setTimerSubMode,
   } = useStudyStore();
 
   const {
@@ -163,9 +167,6 @@ export const HomeScreen: React.FC = () => {
       setRedirectAfterLogin(null);
     }
   }, [currentUser, redirectAfterLogin, setRedirectAfterLogin]);
-
-  // Sub-mode in Timer: 'timer' | 'stopwatch'
-  const [timerSubMode, setTimerSubMode] = useState<'timer' | 'stopwatch'>('timer');
 
   // Real-time live clock (top right corner of timer)
   const [liveClock, setLiveClock] = useState('');
@@ -207,7 +208,7 @@ export const HomeScreen: React.FC = () => {
   const [taskFilter, setTaskFilter] = useState<'today' | 'upcoming' | 'completed'>('today');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<TaskPriority>('high');
-  const [newTaskDate, setNewTaskDate] = useState(new Date().toISOString().split('T')[0]);
+  const [newTaskDate, setNewTaskDate] = useState(getLocalTodayDateString);
 
   // Exam Countdown State
   const [newExamTitle, setNewExamTitle] = useState('');
@@ -297,6 +298,7 @@ export const HomeScreen: React.FC = () => {
   // Finish session
   const handleFinish = () => {
     pauseTimer();
+    pauseStopwatch();
     setShowRating(true);
   };
 
@@ -330,22 +332,8 @@ export const HomeScreen: React.FC = () => {
     }
   };
 
-  // Handle Switch Tab (Guarded routes: studylog, analysis, tasks require login)
+  // Handle Switch Tab (100% offline-first, no login blocker)
   const handleSwitchTab = (tab: 'timer' | 'studylog' | 'analysis' | 'tasks') => {
-    if (tab !== 'timer' && !currentUser) {
-      setRedirectAfterLogin(tab);
-      setAuthModalView('login');
-      const tabNames: Record<string, string> = {
-        studylog: 'Study Log',
-        analysis: 'Analytics & Insights',
-        tasks: 'Task Planner',
-      };
-      setFlashMessage(
-        'info',
-        `Please sign in to access ${tabNames[tab] || 'this page'}. Your study records are protected.`
-      );
-      return;
-    }
     setActiveView(tab);
     window.scrollTo({ top: 0, behavior: 'instant' });
   };
@@ -410,12 +398,12 @@ export const HomeScreen: React.FC = () => {
 
   // Top Main Bar persistent across the whole website
   const mainBar = (
-    <div className="w-full px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3.5 flex flex-wrap lg:grid lg:grid-cols-[1fr_auto_1fr] items-center justify-between gap-x-3 gap-y-2.5">
+    <div className="w-full max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-10 py-3 sm:py-3.5 flex flex-wrap lg:grid lg:grid-cols-[1fr_auto_1fr] items-center justify-between gap-x-4 gap-y-2.5">
       {/* Left: Brand */}
       <div className="flex items-center gap-4 justify-start min-w-0">
         <button
           onClick={scrollToHomeTop}
-          className="text-left group cursor-pointer focus:outline-none flex items-center gap-2.5 px-4 py-2 rounded-full glass-pill hover:border-white/30 transition"
+          className="text-left group cursor-pointer focus:outline-none flex items-center gap-2.5 px-4 py-2 rounded-full glass-pill hover:border-white/30 transition active:scale-95"
           title="Home (Study Hero)"
         >
           <span className="relative flex h-2.5 w-2.5">
@@ -434,7 +422,7 @@ export const HomeScreen: React.FC = () => {
           <button
             onClick={handleTimerTabClick}
             onDoubleClick={handleTimerTabDoubleClick}
-            className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-full transition font-mono whitespace-nowrap cursor-pointer select-none ${activeView === 'timer'
+            className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-full transition-all duration-200 font-mono whitespace-nowrap cursor-pointer select-none active:scale-95 ${activeView === 'timer'
                 ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.35)]'
                 : 'text-stone-700 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-orange-500/10 dark:hover:bg-white/5 border border-transparent hover:border-orange-500/20'
               }`}
@@ -447,7 +435,7 @@ export const HomeScreen: React.FC = () => {
 
           <button
             onClick={() => handleSwitchTab('studylog')}
-            className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-full transition font-mono whitespace-nowrap cursor-pointer ${activeView === 'studylog'
+            className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-full transition-all duration-200 font-mono whitespace-nowrap cursor-pointer active:scale-95 ${activeView === 'studylog'
                 ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.35)]'
                 : 'text-stone-700 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-orange-500/10 dark:hover:bg-white/5 border border-transparent hover:border-orange-500/20'
               }`}
@@ -458,7 +446,7 @@ export const HomeScreen: React.FC = () => {
 
           <button
             onClick={() => handleSwitchTab('analysis')}
-            className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-full transition font-mono whitespace-nowrap cursor-pointer ${activeView === 'analysis'
+            className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-full transition-all duration-200 font-mono whitespace-nowrap cursor-pointer active:scale-95 ${activeView === 'analysis'
                 ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.35)]'
                 : 'text-stone-700 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-orange-500/10 dark:hover:bg-white/5 border border-transparent hover:border-orange-500/20'
               }`}
@@ -469,7 +457,7 @@ export const HomeScreen: React.FC = () => {
 
           <button
             onClick={() => handleSwitchTab('tasks')}
-            className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-full transition font-mono whitespace-nowrap cursor-pointer ${activeView === 'tasks'
+            className={`flex-1 md:flex-none justify-center flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-full transition-all duration-200 font-mono whitespace-nowrap cursor-pointer active:scale-95 ${activeView === 'tasks'
                 ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.35)]'
                 : 'text-stone-700 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-orange-500/10 dark:hover:bg-white/5 border border-transparent hover:border-orange-500/20'
               }`}
@@ -481,7 +469,7 @@ export const HomeScreen: React.FC = () => {
       </div>
 
       {/* Right: Quick Controls — Theme Switch (1st), Student Network (2nd), Profile (3rd) */}
-      <div className="order-2 lg:order-none flex items-center gap-2 text-xs font-mono justify-end min-w-0">
+      <div className="order-2 lg:order-none flex items-center gap-2.5 text-xs font-mono justify-end min-w-0">
 
         {/* 1st: Day / Night Animated Theme Switch */}
         <ThemeSwitch size={13.5} className="shrink-0" id="mainbar-theme-switch" />
@@ -498,12 +486,12 @@ export const HomeScreen: React.FC = () => {
             }
             setActiveView(activeView === 'friends' ? 'timer' : 'friends');
           }}
-          className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full transition-all duration-200 cursor-pointer select-none flex items-center justify-center relative ${
+          className={`w-9 h-9 sm:w-9.5 sm:h-9.5 rounded-full transition-all duration-200 cursor-pointer select-none flex items-center justify-center relative active:scale-95 ${
             activeView === 'friends'
               ? 'bg-gradient-to-tr from-[#ff5f00] to-[#e9762b] text-black font-extrabold shadow-[0_0_16px_rgba(233,118,43,0.45)] ring-2 ring-[#e9762b]/40'
               : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white hover:border-[#e9762b]/50'
           }`}
-          title="Student Network & Study Circle (Unique 5-character code, search friends & study tables)"
+          title="Student Network & Study Circle (Search friends & study tables)"
           aria-label="Student Friends & Network"
         >
           <Users className="w-4 h-4" />
@@ -519,11 +507,14 @@ export const HomeScreen: React.FC = () => {
   );
 
   // Filtered tasks for Tasks view
+  const todayLocalStr = getLocalTodayDateString();
   const filteredTasks = tasks.filter((task) => {
     if (taskFilter === 'completed') return task.completed;
     if (task.completed) return false;
-    if (taskFilter === 'today') return task.dueDate <= new Date().toISOString().split('T')[0];
-    if (taskFilter === 'upcoming') return task.dueDate > new Date().toISOString().split('T')[0];
+    const isToday = !task.dueDate || task.dueDate <= todayLocalStr;
+    const isUpcoming = Boolean(task.dueDate && task.dueDate > todayLocalStr);
+    if (taskFilter === 'today') return isToday;
+    if (taskFilter === 'upcoming') return isUpcoming;
     return true;
   });
 
@@ -599,29 +590,38 @@ export const HomeScreen: React.FC = () => {
           className="relative w-full min-h-[420px] flex flex-col justify-center items-center bg-transparent z-10"
           style={{ height: heroHeight }}
         >
-          <HalftoneWordmarkFooter
-            wordmark="study"
-            label=""
-            meta=""
-            columns={[]}
-            backToTop={false}
-            crop={0}
-            dotGap={7}
-            radius={110}
-            palette={{
-              background: 'transparent',
-              ink: theme === 'light' ? '#18181b' : '#f3ece2',
-              warm: '#ff6200',
+          {/* Halftone Canvas with smooth bottom fade-out to guarantee zero subpixel edge lines */}
+          <div
+            className="w-full h-full relative"
+            style={{
+              WebkitMaskImage: 'linear-gradient(to bottom, black calc(100% - 32px), transparent 100%)',
+              maskImage: 'linear-gradient(to bottom, black calc(100% - 32px), transparent 100%)',
             }}
-            grain={0.15}
-            height={heroHeight}
-            className="relative z-10"
-          />
+          >
+            <HalftoneWordmarkFooter
+              wordmark="study"
+              label=""
+              meta=""
+              columns={[]}
+              backToTop={false}
+              crop={0}
+              dotGap={7}
+              radius={110}
+              palette={{
+                background: 'transparent',
+                ink: theme === 'light' ? '#18181b' : '#f3ece2',
+                warm: '#ff6200',
+              }}
+              grain={0}
+              height={heroHeight}
+              className="relative z-10"
+            />
+          </div>
 
           {/* Smooth Scroll Cue to Timer — Pure Floating Animated Arrow (Only arrow, no white circle) */}
           <button
             onClick={handleGoToTimer}
-            className="absolute bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center p-2 bg-transparent border-none cursor-pointer group transition-transform duration-300 hover:scale-125 active:scale-90 focus:outline-none"
+            className="absolute bottom-5 sm:bottom-7 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center p-2 bg-transparent border-none cursor-pointer group transition-transform duration-300 hover:scale-125 active:scale-90 focus:outline-none"
             title="Scroll down to Focus Timer"
             aria-label="Scroll down to Focus Timer"
           >
@@ -631,7 +631,7 @@ export const HomeScreen: React.FC = () => {
       )}
 
       {/* 3. MAIN CONTENT CONTAINER (Uniform width & rhythm across ALL tabs) */}
-      <main className="w-full flex-1 flex flex-col items-center pt-4 sm:pt-6 pb-8 sm:pb-12 mx-auto max-w-7xl px-4 sm:px-6 relative z-10">
+      <main className="w-full flex-1 flex flex-col items-center pt-5 sm:pt-8 pb-12 sm:pb-16 mx-auto max-w-[1480px] 2xl:max-w-[1600px] px-4 sm:px-6 lg:px-10 relative">
 
         {/* ====================================================== */}
         {/* A. TIMER & STOPWATCH MODULE                             */}
@@ -1058,6 +1058,16 @@ export const HomeScreen: React.FC = () => {
                     RESET
                   </button>
 
+                  {showFinishButton && stopwatchTime > 0 && (
+                    <button
+                      onClick={handleFinish}
+                      className="px-7 sm:px-9 py-3.5 sm:py-4 rounded-full bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/40 text-[#e9762b] font-mono font-bold text-xs sm:text-sm tracking-widest uppercase transition active:scale-95 flex items-center gap-2 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>FINISH</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={() => setZenMode(true)}
                     className="p-3.5 sm:p-4 rounded-full glass-pill hover:border-[#e9762b]/40 dark:hover:border-white/40 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white transition active:scale-95 cursor-pointer"
@@ -1115,7 +1125,17 @@ export const HomeScreen: React.FC = () => {
             <div className="w-full flex flex-col items-center justify-center pt-3 sm:pt-4 pb-6 sm:pb-8 relative overflow-hidden select-none">
               <div className="w-full h-[200px] sm:h-[260px] md:h-[320px] lg:h-[380px] max-w-7xl relative">
                 <TechText
-                  text={user.customWordmarkText || 'studyo'}
+                  text={(() => {
+                    const custom = (user.customWordmarkText || '').trim();
+                    if (custom && custom.toLowerCase() !== 'studyo') {
+                      return custom.slice(0, 11);
+                    }
+                    const userFirst = getUserFirstName(user.name, 11);
+                    if (userFirst && userFirst.toLowerCase() !== 'student') {
+                      return userFirst;
+                    }
+                    return userFirst || 'studyo';
+                  })()}
                   fontFamily="'JetBrains Mono', monospace"
                   fontWeight={700}
                   fontSize={340}
@@ -1145,7 +1165,9 @@ export const HomeScreen: React.FC = () => {
         {/* ====================================================== */}
         {activeView === 'studylog' && (
           <div className="w-full animate-fadeIn">
-            <DailyStudyLog />
+            <Suspense fallback={<div className="p-12 text-center text-xs font-mono text-stone-500">Loading Study Log...</div>}>
+              <DailyStudyLog />
+            </Suspense>
           </div>
         )}
 
@@ -1154,7 +1176,9 @@ export const HomeScreen: React.FC = () => {
         {/* ====================================================== */}
         {activeView === 'analysis' && (
           <div className="w-full animate-fadeIn">
-            <StudyLogAnalysis />
+            <Suspense fallback={<div className="p-12 text-center text-xs font-mono text-stone-500">Loading Analysis...</div>}>
+              <StudyLogAnalysis />
+            </Suspense>
           </div>
         )}
 
@@ -1188,7 +1212,14 @@ export const HomeScreen: React.FC = () => {
                   onChange={(e) => setNewTaskTitle(e.target.value)}
                   className="flex-1 glass-input rounded-xl px-4 py-2.5 text-xs sm:text-sm text-stone-900 dark:text-white placeholder-stone-500 dark:placeholder-slate-600 focus:outline-none"
                 />
-                <div className="flex items-center gap-2.5">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <input
+                    type="date"
+                    value={newTaskDate}
+                    onChange={(e) => setNewTaskDate(e.target.value || getLocalTodayDateString())}
+                    title="Task due date"
+                    className="glass-input text-xs font-bold text-stone-900 dark:text-white rounded-xl px-3 py-2.5 focus:outline-none cursor-pointer font-mono"
+                  />
                   <select
                     value={newTaskPriority}
                     onChange={(e) => setNewTaskPriority(e.target.value as TaskPriority)}
@@ -1200,7 +1231,7 @@ export const HomeScreen: React.FC = () => {
                   </select>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 bg-[#e9762b] text-black font-extrabold rounded-xl text-xs sm:text-sm hover:brightness-110 transition uppercase tracking-wider shadow-[0_0_15px_rgba(233,118,43,0.3)]"
+                    className="px-6 py-2.5 bg-[#e9762b] text-black font-extrabold rounded-xl text-xs sm:text-sm hover:brightness-110 transition uppercase tracking-wider shadow-[0_0_15px_rgba(233,118,43,0.3)] cursor-pointer"
                   >
                     Add
                   </button>
@@ -1242,7 +1273,7 @@ export const HomeScreen: React.FC = () => {
                     <div className="flex items-center gap-3.5 min-w-0">
                       <button
                         onClick={() => toggleTask(task.id)}
-                        className="text-slate-400 hover:text-[#e9762b] flex-shrink-0 transition"
+                        className="text-slate-400 hover:text-[#e9762b] flex-shrink-0 transition cursor-pointer"
                       >
                         {task.completed ? (
                           <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
@@ -1251,14 +1282,32 @@ export const HomeScreen: React.FC = () => {
                         )}
                       </button>
                       <span
-                        className={`truncate ${task.completed ? 'line-through text-slate-500' : 'text-slate-200'
+                        className={`truncate ${task.completed ? 'line-through text-slate-500' : 'text-stone-900 dark:text-slate-200'
                           }`}
                       >
                         {task.title}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-3 flex-shrink-0">
+                    <div className="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
+                      {/* Interactive Due Date Badge / Selector */}
+                      <label 
+                        className="relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold bg-stone-200/70 dark:bg-white/5 text-stone-700 dark:text-slate-300 border border-stone-300/60 dark:border-white/10 hover:border-[#e9762b]/50 cursor-pointer transition select-none group/date"
+                        title="Click to view or change due date"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-[#e9762b] shrink-0" />
+                        <span>{task.dueDate ? (task.dueDate === todayLocalStr ? 'Today' : task.dueDate) : 'Today'}</span>
+                        <input
+                          type="date"
+                          value={task.dueDate || todayLocalStr}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              updateTaskDueDate(task.id, e.target.value);
+                            }
+                          }}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        />
+                      </label>
                       <span
                         className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${task.priority === 'high'
                             ? 'bg-orange-500/20 text-[#e9762b] border border-orange-500/30'
@@ -1271,7 +1320,7 @@ export const HomeScreen: React.FC = () => {
                       </span>
                       <button
                         onClick={() => deleteTask(task.id)}
-                        className="opacity-40 group-hover:opacity-100 hover:text-rose-400 transition p-1"
+                        className="opacity-40 group-hover:opacity-100 hover:text-rose-400 transition p-1 cursor-pointer"
                         title="Delete task"
                       >
                         <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1366,14 +1415,16 @@ export const HomeScreen: React.FC = () => {
         {/* ====================================================== */}
         {activeView === 'friends' && (
           <div className="w-full animate-fadeIn">
-            <FriendsScreen onBackToTimer={handleGoToTimer} />
+            <Suspense fallback={<div className="p-12 text-center text-xs font-mono text-stone-500">Loading Student Network...</div>}>
+              <FriendsScreen onBackToTimer={handleGoToTimer} />
+            </Suspense>
           </div>
         )}
       </main>
 
       {/* 5. POST-SESSION FOCUS RATING MODAL */}
       {showRating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4 backdrop-blur-md animate-fadeIn">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-fadeIn">
           <div className="w-full max-w-md glass-modal p-6 sm:p-7 space-y-6 rounded-2xl">
             <div className="flex items-center justify-between border-b border-stone-200/60 dark:border-white/10 pb-3">
               <h3 className="text-xs uppercase tracking-widest font-bold text-stone-900 dark:text-white flex items-center gap-2">

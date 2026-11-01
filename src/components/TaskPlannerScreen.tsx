@@ -32,6 +32,7 @@ export const TaskPlannerScreen: React.FC<TaskPlannerProps> = ({ onLaunchTimerFor
     subjects, 
     examCountdowns, 
     addTask, 
+    updateTaskDueDate,
     toggleTask, 
     deleteTask, 
     addExamCountdown, 
@@ -84,18 +85,22 @@ export const TaskPlannerScreen: React.FC<TaskPlannerProps> = ({ onLaunchTimerFor
   const filteredTasks = tasks.filter((task) => {
     if (activeTab === 'completed') return task.completed;
     if (task.completed) return false;
-    if (activeTab === 'today') return task.dueDate <= todayStr;
-    if (activeTab === 'upcoming') return task.dueDate > todayStr;
+    const isToday = !task.dueDate || task.dueDate <= todayStr;
+    const isUpcoming = Boolean(task.dueDate && task.dueDate > todayStr);
+    if (activeTab === 'today') return isToday;
+    if (activeTab === 'upcoming') return isUpcoming;
     return true;
   });
 
-  // Sort tasks
+  // Sort tasks safely without crashing on missing dueDate
   const sortedTasks = [...filteredTasks].sort((a, b) => {
     if (sortBy === 'priority') {
       const pMap = { high: 0, med: 1, low: 2 };
       return pMap[a.priority] - pMap[b.priority];
     }
-    return a.dueDate.localeCompare(b.dueDate);
+    const aDate = a.dueDate || todayStr;
+    const bDate = b.dueDate || todayStr;
+    return aDate.localeCompare(bDate);
   });
 
   const handleCreateTask = (e: React.FormEvent) => {
@@ -294,7 +299,7 @@ export const TaskPlannerScreen: React.FC<TaskPlannerProps> = ({ onLaunchTimerFor
                 : 'text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white'
             }`}
           >
-            {t.taskPlanner.tabToday} ({tasks.filter((t) => !t.completed && t.dueDate <= todayStr).length})
+            {t.taskPlanner.tabToday} ({tasks.filter((t) => !t.completed && (!t.dueDate || t.dueDate <= todayStr)).length})
           </button>
           <button
             onClick={() => setActiveTab('upcoming')}
@@ -304,7 +309,7 @@ export const TaskPlannerScreen: React.FC<TaskPlannerProps> = ({ onLaunchTimerFor
                 : 'text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white'
             }`}
           >
-            {t.taskPlanner.tabUpcoming} ({tasks.filter((t) => !t.completed && t.dueDate > todayStr).length})
+            {t.taskPlanner.tabUpcoming} ({tasks.filter((t) => !t.completed && Boolean(t.dueDate && t.dueDate > todayStr)).length})
           </button>
           <button
             onClick={() => setActiveTab('completed')}
@@ -400,10 +405,24 @@ export const TaskPlannerScreen: React.FC<TaskPlannerProps> = ({ onLaunchTimerFor
                         {task.priority === 'high' ? t.taskPlanner.priorityHigh : task.priority === 'med' ? t.taskPlanner.priorityMed : t.taskPlanner.priorityLow}
                       </span>
 
-                      <span className="text-[10px] text-stone-500 dark:text-slate-400 flex items-center gap-1 font-mono-numbers">
-                        <Calendar className="w-3 h-3 text-stone-400 dark:text-slate-500" />
-                        {task.dueDate}
-                      </span>
+                      {/* Interactive Due Date Selector */}
+                      <label 
+                        className="relative inline-flex items-center gap-1.5 text-[10px] text-stone-600 dark:text-slate-300 font-mono-numbers px-2 py-0.5 rounded-lg border border-stone-200 dark:border-white/10 hover:border-indigo-500/50 bg-stone-100 dark:bg-white/5 cursor-pointer transition select-none group/date"
+                        title="Click to view or change due date"
+                      >
+                        <Calendar className="w-3 h-3 text-indigo-500 dark:text-indigo-400 shrink-0" />
+                        <span>{task.dueDate ? (task.dueDate === todayStr ? 'Today' : task.dueDate) : 'Today'}</span>
+                        <input
+                          type="date"
+                          value={task.dueDate || todayStr}
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              updateTaskDueDate(task.id, e.target.value);
+                            }
+                          }}
+                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        />
+                      </label>
 
                       <span className="text-[10px] text-indigo-700 dark:text-indigo-300 bg-indigo-500/10 px-1.5 py-0.5 rounded-full font-mono-numbers">
                         🍅 {task.estimatedPomodoros} {task.estimatedPomodoros === 1 ? 'session' : 'sessions'}
@@ -429,8 +448,9 @@ export const TaskPlannerScreen: React.FC<TaskPlannerProps> = ({ onLaunchTimerFor
                   {/* Delete Task */}
                   <button
                     onClick={() => deleteTask(task.id)}
-                    className="p-1.5 rounded-xl text-stone-400 hover:text-rose-500 hover:bg-rose-500/10 dark:text-slate-500 dark:hover:text-rose-400 transition cursor-pointer"
+                    className="p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded-xl text-stone-400 hover:text-rose-500 hover:bg-rose-500/10 dark:text-slate-500 dark:hover:text-rose-400 transition cursor-pointer"
                     title={t.taskPlanner.deleteTask}
+                    aria-label={`Delete task ${task.title}`}
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -445,7 +465,7 @@ export const TaskPlannerScreen: React.FC<TaskPlannerProps> = ({ onLaunchTimerFor
       {/* 5. ADD TASK MODAL                                        */}
       {/* ======================================================== */}
       {showAddTaskModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 dark:bg-black/80 backdrop-blur-md animate-fadeIn">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/70 dark:bg-black/70 backdrop-blur-sm animate-fadeIn">
           <form onSubmit={handleCreateTask} className="w-full max-w-md rounded-3xl p-6 glass-modal shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-stone-200 dark:border-white/10">
               <h3 className="text-base font-bold text-stone-900 dark:text-white">
@@ -573,7 +593,7 @@ export const TaskPlannerScreen: React.FC<TaskPlannerProps> = ({ onLaunchTimerFor
       {/* 6. ADD EXAM COUNTDOWN MODAL                              */}
       {/* ======================================================== */}
       {showAddExamModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 dark:bg-black/80 backdrop-blur-md animate-fadeIn">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/70 dark:bg-black/70 backdrop-blur-sm animate-fadeIn">
           <form onSubmit={handleCreateExam} className="w-full max-w-md rounded-3xl p-6 glass-modal shadow-2xl space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-stone-200 dark:border-white/10">
               <h3 className="text-base font-bold text-stone-900 dark:text-white">

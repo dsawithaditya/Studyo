@@ -84,8 +84,8 @@ const StyledWrapper = styled.div<{ $size?: string }>`
     --stars-color: #ffdcb0;
     --clouds-color: #fff6ee;
     --back-clouds-color: #f7a772;
-    --transition: .5s cubic-bezier(0, -0.02, 0.4, 1.25);
-    --circle-transition: .3s cubic-bezier(0, -0.02, 0.35, 1.17);
+    --transition: .5s cubic-bezier(0.16, 1, 0.3, 1);
+    --circle-transition: .3s cubic-bezier(0.16, 1, 0.3, 1);
     display: inline-block;
     cursor: pointer;
     line-height: 1;

@@ -755,3 +755,80 @@ html.light ::-webkit-scrollbar-thumb:hover { background: rgba(233, 118, 43, 0.85
 
 
 
+
+
+/* ---------- Shared UI utilities (modals, scrollbars, entrance animation) ---------- */
+@keyframes studyoFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fadeIn {
+  animation: studyoFadeIn 0.18s ease-out;
+}
+
+/* Prevent parent space-y-* utilities from offsetting fixed full-screen overlays */
+.fixed.inset-0 {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+.custom-scrollbar,
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.custom-scrollbar::-webkit-scrollbar,
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.custom-scrollbar::-webkit-scrollbar-track,
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb,
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover,
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(233, 118, 43, 0.5);
+  background-clip: content-box;
+}
+
+/* Accessible High-Contrast Keyboard Focus Ring (WCAG 2.4.7 AA) */
+:focus-visible {
+  outline: 2px solid #e9762b !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8) !important;
+}
+
+/* Accessibility: Intentional Reduced Motion (WCAG 2.3.3 AA) */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeIn {
+    animation: none !important;
+  }
+  .animate-pulse,
+  .animate-pulse-slow,
+  .animate-ping,
+  .animate-spin,
+  .animate-breathing {
+    animation: none !important;
+  }
+  html {
+    scroll-behavior: auto !important;
+  }
+}

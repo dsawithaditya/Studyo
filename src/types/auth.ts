@@ -4,6 +4,7 @@ export interface AuthUser {
   id: string;
   name: string;
   email: string;
+  friendCode?: string;
   passwordHash?: string;
   salt?: string;
   createdAt: string;

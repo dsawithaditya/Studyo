@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, lazy, Suspense } from 'react';
 import HomeScreen from './components/HomeScreen';
 import { useStudyStore } from './store/useStudyStore';
 import { useAuthStore } from './store/useAuthStore';
-import { ZenModeView } from './components/ZenModeView';
 import { BackToTopButton } from './components/BackToTopButton';
+
+const ZenModeView = lazy(() => import('./components/ZenModeView').then((m) => ({ default: m.ZenModeView })));
 
 export const App: React.FC = () => {
   const { zenMode, syncUserData } = useStudyStore();
@@ -31,7 +32,8 @@ export const App: React.FC = () => {
     // Periodic background sync every 15 seconds when online
     const intervalId = setInterval(() => {
       const u = useAuthStore.getState().currentUser;
-      if (u?.id && navigator.onLine) {
+      const s = useAuthStore.getState().session;
+      if (u?.id && u.id !== 'demo-user-1' && s?.token && s.token !== 'demo-token' && navigator.onLine) {
         syncUserData(u.id);
       }
     }, 15000);
@@ -43,7 +45,13 @@ export const App: React.FC = () => {
     };
   }, [syncUserData]);
 
-  if (zenMode) return <ZenModeView />;
+  if (zenMode) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-black flex items-center justify-center text-xs font-mono text-[#e9762b]">Loading Focus Room...</div>}>
+        <ZenModeView />
+      </Suspense>
+    );
+  }
   return (
     <>
       <HomeScreen />

@@ -17,8 +17,10 @@ import {
   Star, 
   Clock, 
   Sliders,
-  Wind
+  Wind,
+  MapPin
 } from 'lucide-react';
+import { DEFAULT_STUDY_LOCATIONS } from '../store/useStudyStore';
 
 export const StudyRoomScreen: React.FC = () => {
   const { 
@@ -53,6 +55,7 @@ export const StudyRoomScreen: React.FC = () => {
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [rating, setRating] = useState(5);
   const [sessionNotes, setSessionNotes] = useState('');
+  const [sessionLocation, setSessionLocation] = useState('Library');
 
   // Custom interval inputs
   const [customWorkMins, setCustomWorkMins] = useState(25);
@@ -82,7 +85,7 @@ export const StudyRoomScreen: React.FC = () => {
   };
 
   const handleSaveRating = () => {
-    logSession(rating, sessionNotes);
+    logSession(rating, sessionNotes, sessionLocation);
     setShowRatingModal(false);
     setSessionNotes('');
   };
@@ -168,11 +171,13 @@ export const StudyRoomScreen: React.FC = () => {
         {/* Subject & Chapter selector dropdowns */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-stone-600 dark:text-slate-400 hidden lg:inline font-medium">Subject:</span>
+            <label htmlFor="active-subject-select" className="text-xs text-stone-600 dark:text-slate-400 hidden lg:inline font-medium">Subject:</label>
             <select
+              id="active-subject-select"
+              aria-label="Select active subject"
               value={timer.activeSubjectId}
               onChange={(e) => setActiveSubject(e.target.value)}
-              className="bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-stone-900 dark:text-white focus:outline-none focus:border-indigo-500 shadow-inner"
+              className="bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-bold text-stone-900 dark:text-white focus:outline-none focus:border-[#e9762b] shadow-inner"
             >
               {subjects.length === 0 ? (
                 <option value="">No subjects yet (create in Syllabus)</option>
@@ -188,9 +193,11 @@ export const StudyRoomScreen: React.FC = () => {
 
           <div className="flex items-center gap-2">
             <select
+              id="active-chapter-select"
+              aria-label="Select chapter"
               value={timer.activeChapterId || ''}
               onChange={(e) => setActiveSubject(timer.activeSubjectId, e.target.value || undefined)}
-              className="bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-medium text-stone-800 dark:text-slate-300 focus:outline-none focus:border-indigo-500 shadow-inner max-w-[220px] truncate"
+              className="bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-white/10 rounded-xl px-3 py-2 text-xs font-medium text-stone-800 dark:text-slate-300 focus:outline-none focus:border-[#e9762b] shadow-inner max-w-[220px] truncate"
             >
               <option value="">{t.studyRoom.noChapter}</option>
               {chapters.map((ch) => (
@@ -204,8 +211,9 @@ export const StudyRoomScreen: React.FC = () => {
           {/* Zen Mode Button */}
           <button
             onClick={() => setZenMode(true)}
-            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 text-xs font-bold transition shadow-sm"
+            className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-[#e9762b] border border-orange-500/30 text-xs font-bold transition shadow-sm"
             title="Launch Fullscreen Zen Mode"
+            aria-label="Launch Fullscreen Zen Mode"
           >
             <Maximize2 className="w-3.5 h-3.5" />
             <span>Zen Mode</span>
@@ -383,8 +391,10 @@ export const StudyRoomScreen: React.FC = () => {
           {/* Volume Slider */}
           {ambientSound !== 'off' && (
             <div className="pt-2 flex items-center gap-3">
-              <span className="text-xs text-stone-600 dark:text-slate-400 font-medium">Volume:</span>
+              <label htmlFor="ambient-volume-slider" className="text-xs text-stone-600 dark:text-slate-400 font-medium">Volume:</label>
               <input
+                id="ambient-volume-slider"
+                aria-label="Ambient sound volume"
                 type="range"
                 min="0"
                 max="1"
@@ -478,7 +488,7 @@ export const StudyRoomScreen: React.FC = () => {
       {/* 4. POST-SESSION FOCUS RATING MODAL (1-5 STARS)           */}
       {/* ======================================================== */}
       {showRatingModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-md rounded-3xl p-6 sm:p-8 glass-modal shadow-2xl space-y-6">
             <div className="text-center space-y-2">
               <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 text-indigo-500 dark:text-indigo-400 flex items-center justify-center mx-auto shadow-inner">
@@ -515,6 +525,37 @@ export const StudyRoomScreen: React.FC = () => {
               <span className="text-xs font-bold text-amber-600 dark:text-amber-300">
                 {t.studyRoom.ratingLabels[rating - 1]}
               </span>
+            </div>
+
+            {/* Study Location Tagging (Unidesk ZEN Style) */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-mono font-bold uppercase tracking-wider text-stone-600 dark:text-slate-400 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-[#e9762b] shrink-0" />
+                  Study Location
+                </span>
+                {sessionLocation && (
+                  <span className="text-[#e9762b] text-[11px] font-bold">
+                    {sessionLocation}
+                  </span>
+                )}
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {DEFAULT_STUDY_LOCATIONS.map((loc) => (
+                  <button
+                    key={loc}
+                    type="button"
+                    onClick={() => setSessionLocation(sessionLocation === loc ? '' : loc)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-mono transition cursor-pointer flex items-center gap-1 ${
+                      sessionLocation === loc
+                        ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/30'
+                        : 'bg-stone-200/80 dark:bg-slate-800/80 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white border border-stone-300/50 dark:border-white/5'
+                    }`}
+                  >
+                    {loc}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Session reflection notes */}

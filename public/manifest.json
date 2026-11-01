@@ -2,14 +2,14 @@
   "name": "Studyo - Deep Analytics & Focus Engine",
   "short_name": "Studyo",
   "description": "Zero-cost, hyper-optimized study analytics app with Pomodoro focus engine, syllabus map, and multilingual support.",
-  "start_url": "/",
+  "start_url": "./",
   "display": "standalone",
-  "background_color": "#090d16",
-  "theme_color": "#4f46e5",
+  "background_color": "#000000",
+  "theme_color": "#e9762b",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.svg",
+      "src": "./favicon.svg",
       "sizes": "192x192 512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"

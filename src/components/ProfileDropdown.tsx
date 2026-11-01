@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useStudyStore } from '../store/useStudyStore';
+import { useStudyStore, getLocalDateString, getUserFirstName } from '../store/useStudyStore';
 import {
   User,
   Users,
@@ -8,7 +8,6 @@ import {
   Bell,
   Download,
   RefreshCw,
-  RotateCcw,
   Copy,
   Sparkles,
   X,
@@ -24,13 +23,14 @@ import {
   Trash2,
   ArrowLeft,
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 import { SoundType } from '../services/soundSynth';
+import confetti from 'canvas-confetti';
 import { ThemeSwitch } from './ThemeSwitch';
 import { ExportConfirmModal } from './ExportConfirmModal';
 import { ImportBackupModal } from './ImportBackupModal';
 import { DeleteAccountModal } from './DeleteAccountModal';
 import { useAuthStore } from '../store/useAuthStore';
+import { normalizeTriState } from './ui/TriStateToggle';
 import {
   LogIn,
   LogOut,
@@ -78,7 +78,6 @@ export const ProfileDropdown: React.FC = () => {
     setActiveTableId,
     updateCustomTable,
     deleteCustomTable,
-    generateNewFriendCode,
   } = useStudyStore();
 
   const { currentUser, setAuthModalView, openLogoutModal, updateProfile } = useAuthStore();
@@ -95,7 +94,6 @@ export const ProfileDropdown: React.FC = () => {
   // Settings tab navigation: 'all' | 'network' | 'tables' | 'general' | 'study' | 'audio'
   const [settingsTab, setSettingsTab] = useState<'all' | 'network' | 'tables' | 'general' | 'study' | 'audio'>('all');
   const [copiedSettingCode, setCopiedSettingCode] = useState(false);
-  const [regenerateSuccessMsg, setRegenerateSuccessMsg] = useState<string | null>(null);
 
   // Scroll ref for horizontal tabs slider
   const settingsTabsRef = useRef<HTMLDivElement>(null);
@@ -121,24 +119,35 @@ export const ProfileDropdown: React.FC = () => {
   const [defaultWorkMin, setDefaultWorkMin] = useState(25);
   const [defaultShortBreakMin, setDefaultShortBreakMin] = useState(5);
   const [defaultLongBreakMin, setDefaultLongBreakMin] = useState(15);
-  const [customWordmarkInput, setCustomWordmarkInput] = useState((user.customWordmarkText || 'studyo').slice(0, 12));
+  const defaultWordmark = useMemo(() => getUserFirstName(user.name, 11) || 'studyo', [user.name]);
+  const [customWordmarkInput, setCustomWordmarkInput] = useState((user.customWordmarkText || defaultWordmark).slice(0, 11));
   const [settingsSuccessMsg, setSettingsSuccessMsg] = useState(false);
 
   // Compute metrics from Analysis tab for customizable profile cards
   const analysisMetrics = useMemo(() => {
     const logs = Array.isArray(dailyLogs) && dailyLogs.length > 0 ? dailyLogs : [];
+    const activeLogs = logs.filter(
+      (l) =>
+        (Number(l.studyHours) || 0) > 0 ||
+        l.attendedClass ||
+        (Number(l.pyqsSolved) || 0) > 0 ||
+        l.revisionDone ||
+        l.mockTestTaken ||
+        (Number(l.focusRating) || 0) > 0 ||
+        Boolean(l.notes && l.notes.trim())
+    );
 
     // Streak calculation
-    const sortedDates = [...new Set(logs.map((l) => l.date))].sort().reverse();
+    const sortedDates = [...new Set(activeLogs.map((l) => l.date))].sort().reverse();
     const d = new Date();
-    const today = d.toISOString().split('T')[0];
+    const today = getLocalDateString(d);
     d.setDate(d.getDate() - 1);
-    const yest = d.toISOString().split('T')[0];
+    const yest = getLocalDateString(d);
     const checkDate = sortedDates.includes(today) ? new Date() : sortedDates.includes(yest) ? d : null;
     let computedStreak = 0;
     if (checkDate) {
       while (true) {
-        const ds = checkDate.toISOString().split('T')[0];
+        const ds = getLocalDateString(checkDate);
         if (sortedDates.includes(ds)) {
           computedStreak++;
           checkDate.setDate(checkDate.getDate() - 1);
@@ -148,9 +157,11 @@ export const ProfileDropdown: React.FC = () => {
       }
     }
 
-    const currentStreakVal = `${user.streakDays || computedStreak || 14}d`;
-    const bestStreakVal = `${user.longestStreak || Math.max(21, user.streakDays || 0)}d`;
-    const daysLoggedVal = `${logs.length}`;
+    const currentStreakNum = Math.max(user.streakDays || 0, computedStreak);
+    const bestStreakNum = Math.max(user.longestStreak || 0, currentStreakNum);
+    const currentStreakVal = `${currentStreakNum}d`;
+    const bestStreakVal = `${bestStreakNum}d`;
+    const daysLoggedVal = `${activeLogs.length}`;
 
     // Total hours
     const totalHours = logs.reduce((acc, l) => acc + (Number(l.studyHours) || 0), 0);
@@ -158,8 +169,8 @@ export const ProfileDropdown: React.FC = () => {
 
     // 7-day and 30-day hours
     const now = new Date();
-    const past7Str = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0];
-    const past30Str = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0];
+    const past7Str = getLocalDateString(new Date(now.getTime() - 7 * 86400000));
+    const past30Str = getLocalDateString(new Date(now.getTime() - 30 * 86400000));
 
     const weekHours = logs
       .filter((l) => l.date >= past7Str)
@@ -172,14 +183,24 @@ export const ProfileDropdown: React.FC = () => {
     const logsWithFocus = logs.filter((l) => l.focusRating && Number(l.focusRating) > 0);
     const avgFocus = logsWithFocus.length
       ? (logsWithFocus.reduce((acc, l) => acc + (Number(l.focusRating) || 0), 0) / logsWithFocus.length).toFixed(1)
-      : '5.0';
+      : '0.0';
 
-    // Habit %
-    const totalDays = logs.length || 1;
-    const revisionPct = Math.round((logs.filter((l) => l.revisionDone).length / totalDays) * 100);
-    const classPct = Math.round((logs.filter((l) => l.attendedClass).length / totalDays) * 100);
-    const mockPct = Math.round((logs.filter((l) => l.mockTestTaken).length / totalDays) * 100);
-    const pyqPct = Math.round((logs.filter((l) => (l.pyqsSolved ?? 0) > 0).length / totalDays) * 100);
+    // Habit % with Tri-State Exclusions (N/A days are NOT penalized)
+    const calcTriRate = (field: 'attendedClass' | 'revisionDone' | 'mockTestTaken') => {
+      let yes = 0, no = 0;
+      logs.forEach((l) => {
+        const val = normalizeTriState(l[field]);
+        if (val === 'yes') yes++;
+        else if (val === 'no') no++;
+      });
+      const denom = yes + no;
+      return denom > 0 ? Math.round((yes / denom) * 100) : 100;
+    };
+
+    const revisionPct = calcTriRate('revisionDone');
+    const classPct = calcTriRate('attendedClass');
+    const mockPct = calcTriRate('mockTestTaken');
+    const pyqPct = Math.round((logs.filter((l) => (l.pyqsSolved ?? 0) > 0).length / (logs.length || 1)) * 100);
     const totalPyqs = logs.reduce((acc, l) => acc + (Number(l.pyqsSolved) || 0), 0);
 
     return {
@@ -333,10 +354,10 @@ export const ProfileDropdown: React.FC = () => {
     if (showSettingsModal) {
       const currentWorkMins = Math.round((timer.initialDuration || 25 * 60) / 60);
       setDefaultWorkMin(currentWorkMins > 0 ? currentWorkMins : 25);
-      setCustomWordmarkInput((user.customWordmarkText || 'studyo').slice(0, 12));
+      setCustomWordmarkInput((user.customWordmarkText || defaultWordmark).slice(0, 11));
       setSettingsSuccessMsg(false);
     }
-  }, [showSettingsModal, timer.initialDuration, user.customWordmarkText]);
+  }, [showSettingsModal, timer.initialDuration, user.customWordmarkText, defaultWordmark]);
 
   const handleSaveProfile = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -367,7 +388,7 @@ export const ProfileDropdown: React.FC = () => {
 
   const handleSaveSettings = () => {
     setTimerDuration(defaultWorkMin * 60);
-    setCustomWordmarkText(customWordmarkInput.trim().slice(0, 12) || 'studyo');
+    setCustomWordmarkText(customWordmarkInput.trim().slice(0, 11) || defaultWordmark);
     setSettingsSuccessMsg(true);
     setTimeout(() => {
       setSettingsSuccessMsg(false);
@@ -984,7 +1005,7 @@ export const ProfileDropdown: React.FC = () => {
 
               {/* Scrollable Content Body */}
               <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-4 min-h-0">
-                {/* Section: Student Network & Code Regeneration */}
+                {/* Section: Student Network & Code */}
                 {(settingsTab === 'all' || settingsTab === 'network') && (
                   <div className="space-y-3.5 p-4 rounded-xl bg-orange-500/5 dark:bg-[#e9762b]/[0.06] border border-[#e9762b]/35 shadow-sm">
                     <div className="flex items-center justify-between">
@@ -1001,7 +1022,7 @@ export const ProfileDropdown: React.FC = () => {
                       </span>
                     </div>
 
-                    {/* Code Display & Action Row */}
+                    {/* Code Display (Read-only) */}
                     <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3.5 rounded-xl bg-white/90 dark:bg-black/40 border border-stone-200 dark:border-white/10 shadow-inner">
                       <div>
                         <span className="text-[10px] uppercase tracking-wider text-stone-500 dark:text-slate-400 block font-bold">
@@ -1009,7 +1030,7 @@ export const ProfileDropdown: React.FC = () => {
                         </span>
                         <div className="flex items-baseline gap-2 mt-0.5">
                           <span className="text-xl sm:text-2xl font-black font-mono tracking-widest text-[#e9762b] select-all">
-                            {user.friendCode || 'A9X4K'}
+                            {user.friendCode || 'STUDY1'}
                           </span>
                           <span className="text-[10px] text-stone-500 dark:text-slate-400 font-mono">
                             ({user.name || 'Student'})
@@ -1017,16 +1038,16 @@ export const ProfileDropdown: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => {
-                            const code = user.friendCode || 'A9X4K';
+                            const code = user.friendCode || 'STUDY1';
                             navigator.clipboard.writeText(code);
                             setCopiedSettingCode(true);
                             setTimeout(() => setCopiedSettingCode(false), 2000);
                           }}
-                          className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-stone-200 dark:bg-white/10 hover:bg-stone-300 dark:hover:bg-white/20 text-stone-800 dark:text-white text-xs font-bold transition cursor-pointer font-mono"
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-stone-200 dark:bg-white/10 hover:bg-stone-300 dark:hover:bg-white/20 text-stone-800 dark:text-white text-xs font-bold transition cursor-pointer font-mono"
                           title="Copy student code"
                         >
                           {copiedSettingCode ? (
@@ -1041,32 +1062,8 @@ export const ProfileDropdown: React.FC = () => {
                             </>
                           )}
                         </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newCode = generateNewFriendCode();
-                            confetti({ particleCount: 35, spread: 60 });
-                            setRegenerateSuccessMsg(newCode);
-                            setTimeout(() => setRegenerateSuccessMsg(null), 5000);
-                          }}
-                          className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-[#e9762b] hover:from-orange-600 hover:to-[#d65914] text-black font-extrabold text-xs transition cursor-pointer font-mono shadow-md shadow-[#e9762b]/30 active:scale-95 whitespace-nowrap"
-                          title="Generate new student code"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          <span>NEW CODE</span>
-                        </button>
                       </div>
                     </div>
-
-                    {regenerateSuccessMsg && (
-                      <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-mono animate-in fade-in">
-                        <Check className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                        <span>
-                          NEW CODE: <strong>#{regenerateSuccessMsg}</strong>
-                        </span>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -1223,20 +1220,20 @@ export const ProfileDropdown: React.FC = () => {
                         </label>
                         <span
                           className={`px-1.5 py-0.5 rounded font-mono text-[10px] font-bold transition-colors ${
-                            customWordmarkInput.length >= 12
+                            customWordmarkInput.length >= 11
                               ? 'bg-[#e9762b]/20 text-[#e9762b] border border-[#e9762b]/30'
                               : 'text-stone-400 dark:text-slate-500 bg-stone-200/50 dark:bg-white/5'
                           }`}
                         >
-                          {customWordmarkInput.length}/12
+                          {customWordmarkInput.length}/11
                         </span>
                       </div>
                       <input
                         type="text"
-                        maxLength={12}
+                        maxLength={11}
                         value={customWordmarkInput}
-                        onChange={(e) => setCustomWordmarkInput(e.target.value.slice(0, 12))}
-                        placeholder="studyo"
+                        onChange={(e) => setCustomWordmarkInput(e.target.value.slice(0, 11))}
+                        placeholder={defaultWordmark}
                         className="w-full glass-input rounded-lg px-3 py-2 text-xs text-stone-900 dark:text-white font-mono tracking-wider focus:outline-none focus:border-[#e9762b]"
                       />
                     </div>

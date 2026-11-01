@@ -57,7 +57,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
       label: t.nav.taskPlanner,
       icon: CheckSquare,
       badge: pendingTasksCount > 0 ? pendingTasksCount : null,
-      badgeColor: 'bg-indigo-500/10 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 dark:border-indigo-500/40',
+      badgeColor: 'bg-orange-500/10 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 border border-orange-500/30 dark:border-orange-500/40',
     },
   ];
 
@@ -83,7 +83,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
                     onClick={() => onTabChange(item.id)}
                     className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl text-sm font-semibold transition-all ${
                       isActive
-                        ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-600/25 border border-indigo-400/30'
+                        ? 'bg-gradient-to-r from-orange-600 to-[#e9762b] text-white shadow-lg shadow-orange-600/25 border border-orange-400/30'
                         : 'text-slate-600 dark:text-slate-300 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5'
                     }`}
                   >
@@ -103,10 +103,10 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
           </div>
 
           {/* Quick study mini widget in sidebar */}
-          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50/80 via-white/80 to-slate-50/60 dark:from-indigo-950/40 dark:via-slate-900/60 dark:to-slate-900 border border-indigo-500/20 shadow-sm">
+          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-orange-50/80 via-white/80 to-slate-50/60 dark:from-orange-950/20 dark:via-slate-900/60 dark:to-slate-900 border border-orange-500/20 shadow-sm">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-indigo-600 dark:text-indigo-300 flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+              <span className="text-xs font-bold text-[#e9762b] flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[#e9762b]" />
                 Focus Status
               </span>
               {timer.isRunning ? (
@@ -159,12 +159,12 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
               <button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
-                className={`relative flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all ${
-                  isActive ? 'text-indigo-600 dark:text-indigo-400 font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                className={`relative flex flex-col items-center justify-center py-1.5 px-2.5 min-h-[48px] min-w-[48px] rounded-xl transition-all ${
+                  isActive ? 'text-[#e9762b] font-bold' : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
                 <div className="relative">
-                  <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110 text-indigo-600 dark:text-indigo-400' : ''}`} />
+                  <Icon className={`w-5 h-5 transition-transform ${isActive ? 'scale-110 text-[#e9762b]' : ''}`} />
                   {item.badge && (
                     <span className="absolute -top-1 -right-2 w-2 h-2 rounded-full bg-emerald-500 dark:bg-emerald-400 ring-2 ring-[#f7f5f0] dark:ring-[#000000] animate-pulse" />
                   )}
@@ -173,7 +173,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange }
                   {item.label}
                 </span>
                 {isActive && (
-                  <span className="absolute bottom-0 w-6 h-0.5 bg-indigo-500 rounded-full" />
+                  <span className="absolute bottom-0.5 w-6 h-0.5 bg-[#e9762b] rounded-full" />
                 )}
               </button>
             );

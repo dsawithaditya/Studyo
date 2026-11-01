@@ -135,6 +135,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSupabaseModal, onOpenHalft
             onClick={() => setZenMode(!zenMode)}
             className="p-2 rounded-xl bg-stone-200/90 dark:bg-slate-800/80 hover:bg-stone-300 dark:hover:bg-slate-700/80 text-stone-700 dark:text-slate-300 hover:text-black dark:hover:text-white border border-stone-300/80 dark:border-white/10 transition shadow-sm cursor-pointer"
             title="Zen Mode (Fullscreen Focus)"
+            aria-label="Zen Mode (Fullscreen Focus)"
           >
             <Maximize2 className="w-4 h-4" />
           </button>
@@ -149,15 +150,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSupabaseModal, onOpenHalft
             }}
             className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium border transition cursor-pointer ${
               isSyncing
-                ? 'bg-indigo-500/10 text-indigo-800 dark:text-indigo-300 border-indigo-500/30'
+                ? 'bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/30'
                 : isCloudSynced
                 ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
                 : 'bg-stone-200/90 dark:bg-slate-800/80 text-stone-700 dark:text-slate-300 border-stone-300 dark:border-white/10 hover:bg-stone-300 dark:hover:bg-slate-700/80'
             }`}
             title={isSyncing ? 'Syncing data with cloud...' : isCloudSynced ? 'Cloud Synced - Click to sync or view settings' : 'Offline Mode - Click to connect cloud'}
+            aria-label={isSyncing ? 'Syncing...' : isCloudSynced ? 'Synced' : 'Offline'}
           >
             {isSyncing ? (
-              <RefreshCw className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
+              <RefreshCw className="w-3.5 h-3.5 text-[#e9762b] animate-spin" />
             ) : (
               <Database className={`w-3.5 h-3.5 ${isCloudSynced ? 'text-emerald-500 dark:text-emerald-400' : 'text-stone-500 dark:text-slate-400'}`} />
             )}

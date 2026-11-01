@@ -1,34 +1,103 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { useStudyStore, getLocalTodayDateString } from '../store/useStudyStore';
-import { 
-  CustomStudyTable, 
-  CustomTableColumn, 
-  CustomTableColumnType, 
-  CustomTableRow 
+import { useStudyStore, getLocalTodayDateString, getLocalDateString } from '../store/useStudyStore';
+import {
+  CustomStudyTable,
+  CustomTableColumn,
+  CustomTableColumnType,
+  CustomTableRow
 } from '../types';
-import { ShinyButton } from './ui/shiny-button';
-import { YesNoToggle } from './ui/YesNoToggle';
 import {
   Plus,
-  Trash2,
+  Search,
+  Settings2,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
   Calendar,
   X,
+  Check,
+  Trash2,
+  Edit3,
+  MoreVertical,
+  Download,
+  Columns,
+  Eye,
+  EyeOff,
+  Sparkles,
+  BarChart3,
+  FileText,
+  Copy,
+  ChevronDown,
+  ChevronUp,
+  ChevronLeft,
+  ChevronRight,
+  Sliders,
+  Table2,
+  Layers,
+  LayoutGrid,
   ArrowLeft,
-  ArrowRight,
-  Hash,
-  Type,
-  List,
+  Star,
   CheckSquare,
-  Star
+  Clock
 } from 'lucide-react';
+import confetti from 'canvas-confetti';
+import { TriStateBadge, TriStatePillSelect, normalizeTriState } from './ui/TriStateToggle';
 
 interface CustomStudyTableViewProps {
   table: CustomStudyTable;
 }
 
+// Helper: Format date like "Oct 25" matching the screenshot design
+const formatDateDisplay = (dateStr: string) => {
+  try {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const [, m, d] = dateStr.split('-').map(Number);
+    if (!m || !d) return dateStr;
+    return `${months[m - 1]} ${String(d).padStart(2, '0')}`;
+  } catch {
+    return dateStr;
+  }
+};
+
+// Helper: Format column header with unit without duplicating units like (%) (%)
+export const formatColumnHeader = (name: string, unit?: string) => {
+  if (!name) return '';
+  const cleanUnit = (unit || '').replace(/[()]/g, '').trim();
+
+  // Strip all repeated occurrences of (%) or ( % ) with or without spaces
+  let baseName = name.replace(/(\s*\(\s*%\s*\))+/gi, ' ').trim();
+
+  if (cleanUnit) {
+    const escaped = cleanUnit.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+    const duplicateUnitRegex = new RegExp(`(\\s*\\(\\s*${escaped}\\s*\\))+`, 'gi');
+    baseName = baseName.replace(duplicateUnitRegex, ' ').trim();
+    return `${baseName} (${cleanUnit})`;
+  }
+
+  // If no unit provided, but original name had (%), preserve exactly one (%)
+  if (/(\s*\(\s*%\s*\))/i.test(name)) {
+    return `${baseName} (%)`;
+  }
+
+  return baseName;
+};
+
 export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ table }) => {
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const tableContainerRef = useRef<HTMLDivElement>(null);
-  const tableSectionRef = useRef<HTMLDivElement>(null);
+
+  const scrollToCenterTable = () => {
+    if (!tableContainerRef.current) return;
+    const rect = tableContainerRef.current.getBoundingClientRect();
+    const tableHeight = rect.height;
+    const windowHeight = window.innerHeight;
+    const targetY = rect.top + window.scrollY;
+    const centerScrollY =
+      tableHeight < windowHeight
+        ? targetY - (windowHeight - tableHeight) / 2
+        : targetY - 24;
+    window.scrollTo({ top: Math.max(0, centerScrollY), behavior: 'smooth' });
+  };
 
   const {
     addCustomTableRow,
@@ -39,1616 +108,1728 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
     updateCustomTableColumn,
     deleteCustomTableColumn,
     reorderCustomTableColumns,
+    updateCustomTable,
     deleteCustomTable,
+    setActiveTableId,
+    showSortArrows,
+    setShowSortArrows,
+    enableClickToCycle = false,
+    setEnableClickToCycle,
+    theme,
   } = useStudyStore();
 
-  const todayStr = getLocalTodayDateString();
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().split('T')[0];
+  const isDark = theme !== 'light';
 
-  // UI state matching DailyStudyLog
-  const [enableTopForm, setEnableTopForm] = useState(false);
-  const [showForm, setShowForm] = useState(false);
-  const [expandedDate, setExpandedDate] = useState<string | null>(null);
-  const [containerWidth, setContainerWidth] = useState<number>(() => {
-    if (typeof window !== 'undefined') {
-      return Math.min(window.innerWidth - 32, 1200);
-    }
-    return 800;
+  const todayStr = getLocalTodayDateString();
+
+  // 1. Search, Filter & Sort State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({
+    key: 'date',
+    direction: 'desc',
   });
 
-  // Keep track of the visible width of the table container so the accordion fits perfectly without clipping
-  useEffect(() => {
-    const el = tableContainerRef.current;
-    if (!el) return;
-
-    const updateWidth = () => {
-      if (tableContainerRef.current) {
-        setContainerWidth(tableContainerRef.current.clientWidth);
-      }
-    };
-
-    updateWidth();
-    window.addEventListener('resize', updateWidth);
-
-    let ro: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(() => {
-        updateWidth();
-      });
-      ro.observe(el);
+  // 2. Modals & Popovers
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showAddEntryModal, setShowAddEntryModal] = useState(false);
+  const [settingsActiveTab, setSettingsActiveTab] = useState<'all' | 'columns' | 'meta' | 'display' | 'export' | 'danger'>('all');
+  const customSettingsTabsRef = useRef<HTMLDivElement>(null);
+  const scrollCustomSettingsTabs = (direction: 'left' | 'right') => {
+    if (customSettingsTabsRef.current) {
+      const scrollAmount = direction === 'left' ? -180 : 180;
+      customSettingsTabsRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
     }
+  };
+  const [activeActionMenuRowId, setActiveActionMenuRowId] = useState<string | null>(null);
 
-    return () => {
-      window.removeEventListener('resize', updateWidth);
-      ro?.disconnect();
-    };
-  }, []);
+  // 3. Hidden Column IDs for user visibility toggles
+  const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (tableContainerRef.current) {
-      setContainerWidth(tableContainerRef.current.clientWidth);
-    }
-  }, [expandedDate]);
-
-  // Filter & Pagination
-  const [selectedMonthYear, setSelectedMonthYear] = useState<string>('all');
-  const [visibleLimit, setVisibleLimit] = useState<number>(20);
-
-  // Modals state
-  const [showAddRowModal, setShowAddRowModal] = useState<boolean>(false);
-  const [showAddColumnModal, setShowAddColumnModal] = useState<boolean>(false);
-
-  // Column Editing Modal (click column header to configure)
-  const [editingColumn, setEditingColumn] = useState<{
-    id: string;
-    name: string;
-    type: CustomTableColumnType;
-    unit: string;
-    options: string;
-    index: number;
-  } | null>(null);
-
-  // Top Quick Add / Edit Form State
-  const [formDate, setFormDate] = useState(todayStr);
-  const [formValues, setFormValues] = useState<Record<string, any>>({});
-  const [formNotes, setFormNotes] = useState<string>('');
-
-  // Accordion editing state for "expand in place"
-  const [accordionState, setAccordionState] = useState<{
-    rowId: string;
-    date: string;
+  // 4. In-line Accordion Row Editing
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [editingRowState, setEditingRowState] = useState<{
     values: Record<string, any>;
     notes: string;
   } | null>(null);
 
-  // Add Column Form State
-  const [newColName, setNewColName] = useState<string>('');
-  const [newColType, setNewColType] = useState<CustomTableColumnType>('text');
-  const [newColUnit, setNewColUnit] = useState<string>('');
-  const [newColOptions, setNewColOptions] = useState<string>('');
-  const [newColOptionInput, setNewColOptionInput] = useState<string>('');
-  const [editColOptionInput, setEditColOptionInput] = useState<string>('');
-
-  // Helper to format Date: "OCT 14" matching DailyStudyLog
-  const formatDateDisplay = (dateStr: string) => {
-    try {
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const [y, m, d] = dateStr.split('-').map(Number);
-      return `${months[m - 1]} ${String(d).padStart(2, '0')}`;
-    } catch {
-      return dateStr;
+  // 5. New Entry Modal Form State
+  const [newEntryDate, setNewEntryDate] = useState(todayStr);
+  const [newEntryValues, setNewEntryValues] = useState<Record<string, any>>({});
+  const [newEntryNotes, setNewEntryNotes] = useState('');
+  const [newEntryTab, setNewEntryTab] = useState<'all' | 'date' | 'metrics' | 'custom' | 'notes'>('all');
+  const newEntryTabsRef = useRef<HTMLDivElement>(null);
+  const scrollNewEntryTabs = (direction: 'left' | 'right') => {
+    if (newEntryTabsRef.current) {
+      const scrollAmount = direction === 'left' ? -180 : 180;
+      newEntryTabsRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
     }
   };
 
-  // Available months extracted from rows
-  const availableMonths = useMemo(() => {
-    const setOfMonths = new Set<string>();
-    table.rows.forEach((r) => {
-      if (r.date && r.date.length >= 7) {
-        setOfMonths.add(r.date.substring(0, 7));
+  // 6. Settings Modal Column & Table Form State
+  const [newColName, setNewColName] = useState('');
+  const [newColType, setNewColType] = useState<CustomTableColumnType>('text');
+  const [newColUnit, setNewColUnit] = useState('');
+  const [newColOptions, setNewColOptions] = useState('High, Medium, Low');
+  const [tableTitleInput, setTableTitleInput] = useState(table.title);
+  const [tableDescInput, setTableDescInput] = useState(table.description || '');
+
+  // Keep table meta inputs in sync with table changes
+  useEffect(() => {
+    setTableTitleInput(table.title);
+    setTableDescInput(table.description || '');
+  }, [table.title, table.description]);
+
+  // Keyboard shortcut '/' to focus search input
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
       }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Click outside to close row action kebab menu
+  useEffect(() => {
+    const handleWindowClick = () => {
+      if (activeActionMenuRowId) {
+        setActiveActionMenuRowId(null);
+      }
+    };
+    window.addEventListener('click', handleWindowClick);
+    return () => window.removeEventListener('click', handleWindowClick);
+  }, [activeActionMenuRowId]);
+
+  // Available visible columns
+  const visibleColumns = useMemo(
+    () => table.columns.filter((col) => !hiddenColumnIds.includes(col.id)),
+    [table.columns, hiddenColumnIds]
+  );
+
+  // Detect semantic columns for live calculations and specialized UI
+  const semanticCols = useMemo(() => {
+    const scoreCol = table.columns.find((c) => /score/i.test(c.name) || /score/i.test(c.id));
+    const totalCol = table.columns.find((c) => /total|max/i.test(c.name) || /total|max/i.test(c.id));
+    const accuracyCol = table.columns.find((c) => /accuracy|acc/i.test(c.name) || c.unit === '%' || /accuracy/i.test(c.id));
+    const difficultyCol = table.columns.find((c) => /difficulty|diff/i.test(c.name) || c.type === 'select');
+    const analyzedCol = table.columns.find((c) => /analyzed|review/i.test(c.name) || c.type === 'boolean');
+    const paperCol = table.columns.find((c) => /paper|title|exam|subject/i.test(c.name) || (c.type === 'text' && c.id !== accuracyCol?.id));
+
+    return { scoreCol, totalCol, accuracyCol, difficultyCol, analyzedCol, paperCol };
+  }, [table.columns]);
+
+  // Available months from existing row data
+  const availableMonths = useMemo(() => {
+    const set = new Set<string>();
+    table.rows.forEach((r) => {
+      if (r.date && r.date.length >= 7) set.add(r.date.substring(0, 7));
     });
-    return Array.from(setOfMonths)
-      .sort((a, b) => b.localeCompare(a))
-      .map((ym) => {
-        const [year, month] = ym.split('-');
-        const d = new Date(parseInt(year), parseInt(month) - 1, 1);
-        return {
-          value: ym,
-          label: d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' }),
-        };
-      });
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
   }, [table.rows]);
 
-  // Filtered rows
-  const filteredRows = useMemo(() => {
-    const sorted = [...table.rows].sort((a, b) => b.date.localeCompare(a.date));
-    if (selectedMonthYear === 'all') return sorted;
-    if (selectedMonthYear === 'last30') {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 30);
-      const cutoffStr = cutoff.toISOString().split('T')[0];
-      return sorted.filter((r) => r.date >= cutoffStr);
-    }
-    return sorted.filter((r) => r.date.startsWith(selectedMonthYear));
-  }, [table.rows, selectedMonthYear]);
-
-  const visibleRows = filteredRows.slice(0, visibleLimit);
-
-  // Smoothly scroll and center a specific row and its editing accordion in view
-  const scrollToRowCenter = (date: string) => {
-    setTimeout(() => {
-      const accordionEl = document.getElementById(`custom-accordion-${date}`);
-      const rowEl = document.getElementById(`custom-row-${date}`);
-      const target = accordionEl || rowEl;
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+  // Column header sort toggle
+  const handleSort = (key: string) => {
+    if (!showSortArrows) return; // Completely OFF by default unless enabled in settings
+    setSortConfig((prev) => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
       }
-    }, 120);
-  };
-
-  // Toggle inline accordion
-  const handleToggleExpand = (row: CustomTableRow) => {
-    if (expandedDate === row.date) {
-      setExpandedDate(null);
-      setAccordionState(null);
-    } else {
-      setExpandedDate(row.date);
-      setAccordionState({
-        rowId: row.id,
-        date: row.date,
-        values: { ...(row.values || {}) },
-        notes: row.notes || '',
-      });
-      if (tableContainerRef.current) {
-        setContainerWidth(tableContainerRef.current.clientWidth);
-        tableContainerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
-      }
-      scrollToRowCenter(row.date);
-    }
-  };
-
-  // Populate top form
-  const handleSelectDayForForm = (row?: CustomTableRow, targetDate?: string) => {
-    const d = row ? row.date : targetDate || todayStr;
-    const existing = row || table.rows.find((r) => r.date === d);
-
-    setFormDate(d);
-    if (existing) {
-      setFormValues({ ...(existing.values || {}) });
-      setFormNotes(existing.notes || '');
-    } else {
-      const initialVals: Record<string, any> = {};
-      table.columns.forEach((col) => {
-        if (col.type === 'boolean') initialVals[col.id] = false;
-        else if (col.type === 'rating') initialVals[col.id] = 5;
-        else initialVals[col.id] = '';
-      });
-      setFormValues(initialVals);
-      setFormNotes('');
-    }
-    setShowForm(true);
-
-    setTimeout(() => {
-      document.getElementById('custom-table-form-container')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 50);
-  };
-
-  // Save top form
-  const handleSaveFormEntry = (e: React.FormEvent) => {
-    e.preventDefault();
-    const existing = table.rows.find((r) => r.date === formDate);
-    if (existing) {
-      // Update existing row
-      Object.entries(formValues).forEach(([colId, val]) => {
-        updateCustomTableCell(table.id, existing.id, colId, val);
-      });
-      updateCustomTableRowNotes(table.id, existing.id, formNotes.trim());
-    } else {
-      // Add new row
-      addCustomTableRow(table.id, formDate, formValues, formNotes.trim());
-    }
-    setShowForm(false);
-  };
-
-  // Save accordion full day edits
-  const handleSaveAccordion = (rowId: string) => {
-    if (!accordionState) return;
-    Object.entries(accordionState.values).forEach(([colId, val]) => {
-      updateCustomTableCell(table.id, rowId, colId, val === '' ? null : val);
+      return { key, direction: 'desc' };
     });
-    updateCustomTableRowNotes(table.id, rowId, accordionState.notes.trim());
-    setExpandedDate(null);
-    setAccordionState(null);
   };
 
-  // Delete row
-  const handleDeleteRow = (rowId: string, date: string) => {
-    if (window.confirm(`Delete entry for ${formatDateDisplay(date)}?`)) {
-      deleteCustomTableRow(table.id, rowId);
-      setExpandedDate(null);
-      setAccordionState(null);
+  // Filtered & Sorted Rows
+  const processedRows = useMemo(() => {
+    let result = [...table.rows];
+
+    // 1. Month Filter
+    if (selectedMonth !== 'all') {
+      result = result.filter((r) => r.date.startsWith(selectedMonth));
     }
-  };
 
-  // Quick Open Add Row Modal
-  const handleOpenAddRowModal = () => {
-    setFormDate(todayStr);
+    // 2. Instant Search Query (matches text across paper name, notes, difficulty, and cell values)
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter((r) => {
+        const dateMatch = r.date.toLowerCase().includes(q);
+        const notesMatch = String(r.notes || '').toLowerCase().includes(q);
+        const valuesMatch = Object.values(r.values || {}).some((v) =>
+          String(v ?? '').toLowerCase().includes(q)
+        );
+        return dateMatch || notesMatch || valuesMatch;
+      });
+    }
+
+    // 3. Sorting (Default OFF: natural reverse chronological order by date)
+    if (!showSortArrows) {
+      return result.sort((a, b) => b.date.localeCompare(a.date));
+    }
+
+    result.sort((a, b) => {
+      let valA: any = sortConfig.key === 'date' ? a.date : a.values?.[sortConfig.key];
+      let valB: any = sortConfig.key === 'date' ? b.date : b.values?.[sortConfig.key];
+
+      if (valA === undefined || valA === null) valA = '';
+      if (valB === undefined || valB === null) valB = '';
+
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+      }
+      return sortConfig.direction === 'asc'
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+
+    return result;
+  }, [table.rows, selectedMonth, searchQuery, sortConfig, showSortArrows]);
+
+  // Live KPI Summary stats for footer bar
+  const stats = useMemo(() => {
+    const totalCount = processedRows.length;
+    if (totalCount === 0) return { avgScore: 0, avgAccuracy: '0.0', analyzedCount: 0 };
+
+    let scoreSum = 0;
+    let scoreCount = 0;
+    let accSum = 0;
+    let accCount = 0;
+    let analyzedCount = 0;
+
+    const { scoreCol, accuracyCol, analyzedCol } = semanticCols;
+
+    processedRows.forEach((r) => {
+      // Score
+      if (scoreCol) {
+        const val = Number(r.values?.[scoreCol.id]);
+        if (!isNaN(val) && val > 0) {
+          scoreSum += val;
+          scoreCount++;
+        }
+      }
+      // Accuracy
+      if (accuracyCol) {
+        const val = Number(r.values?.[accuracyCol.id]);
+        if (!isNaN(val) && val > 0) {
+          accSum += val;
+          accCount++;
+        }
+      }
+      // Analyzed / Boolean
+      if (analyzedCol) {
+        const tri = normalizeTriState(r.values?.[analyzedCol.id]);
+        if (tri === 'yes') {
+          analyzedCount++;
+        }
+      } else {
+        // Fallback: check any boolean column
+        const hasYes = Object.values(r.values || {}).some((v) => normalizeTriState(v) === 'yes');
+        if (hasYes) analyzedCount++;
+      }
+    });
+
+    return {
+      avgScore: scoreCount > 0 ? Math.round(scoreSum / scoreCount) : 0,
+      avgAccuracy: accCount > 0 ? (accSum / accCount).toFixed(1) : '0.0',
+      analyzedCount,
+    };
+  }, [processedRows, semanticCols]);
+
+  // Open New Entry Modal with clean initialized values
+  const handleOpenNewEntryModal = () => {
+    setNewEntryDate(todayStr);
     const initialVals: Record<string, any> = {};
     table.columns.forEach((col) => {
-      if (col.type === 'boolean') initialVals[col.id] = false;
+      if (col.type === 'boolean') initialVals[col.id] = 'na';
       else if (col.type === 'rating') initialVals[col.id] = 5;
-      else if (col.type === 'select' && col.options && col.options.length > 0) initialVals[col.id] = col.options[0];
+      else if (col.type === 'select' && col.options && col.options.length > 0) initialVals[col.id] = col.options[1] || col.options[0];
+      else if (col.id === semanticCols.totalCol?.id) initialVals[col.id] = 180;
       else initialVals[col.id] = '';
     });
-    setFormValues(initialVals);
-    setFormNotes('');
-    setShowAddRowModal(true);
+    setNewEntryValues(initialVals);
+    setNewEntryNotes('');
+    setNewEntryTab('all');
+    setShowAddEntryModal(true);
   };
 
-  // Submit Add Row from Modal
-  const handleSubmitAddRowModal = (e: React.FormEvent) => {
+  // Submit New Entry Modal
+  const handleSubmitNewEntry = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formDate) return;
-    addCustomTableRow(table.id, formDate, formValues, formNotes.trim());
-    if (selectedMonthYear !== 'all') {
-      const entryMonth = formDate.substring(0, 7);
-      if (selectedMonthYear !== entryMonth && selectedMonthYear !== 'last30') {
-        setSelectedMonthYear('all');
+    if (!newEntryDate) return;
+
+    // Clean numerical values
+    const cleanedValues: Record<string, any> = { ...newEntryValues };
+    table.columns.forEach((col) => {
+      if (col.type === 'number' && cleanedValues[col.id] !== '' && cleanedValues[col.id] !== undefined) {
+        cleanedValues[col.id] = Number(cleanedValues[col.id]);
       }
+    });
+
+    addCustomTableRow(table.id, newEntryDate, cleanedValues, newEntryNotes.trim());
+    confetti({ particleCount: 25, spread: 60, origin: { y: 0.8 } });
+    setShowAddEntryModal(false);
+  };
+
+  // Duplicate an existing row
+  const handleDuplicateRow = (row: CustomTableRow) => {
+    addCustomTableRow(table.id, todayStr, { ...(row.values || {}) }, row.notes ? `${row.notes} (Copy)` : '');
+    setActiveActionMenuRowId(null);
+    confetti({ particleCount: 20, spread: 40 });
+  };
+
+  // Delete an existing row
+  const handleDeleteRow = (rowId: string) => {
+    if (window.confirm('Delete this entry permanently?')) {
+      deleteCustomTableRow(table.id, rowId);
+      if (expandedRowId === rowId) setExpandedRowId(null);
+      setActiveActionMenuRowId(null);
     }
-    setShowAddRowModal(false);
   };
 
-  // Add single option to newColOptions
-  const handleAddOptionToNewCol = (optText?: string) => {
-    const textToAdd = (optText !== undefined ? optText : newColOptionInput).trim();
-    if (!textToAdd) return;
-    const currentList = newColOptions
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!currentList.includes(textToAdd)) {
-      currentList.push(textToAdd);
-      setNewColOptions(currentList.join(', '));
-    }
-    setNewColOptionInput('');
+  // Toggle column visibility
+  const handleToggleColumnVisibility = (colId: string) => {
+    setHiddenColumnIds((prev) =>
+      prev.includes(colId) ? prev.filter((id) => id !== colId) : [...prev, colId]
+    );
   };
 
-  // Remove single option from newColOptions
-  const handleRemoveOptionFromNewCol = (optToRemove: string) => {
-    const currentList = newColOptions
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const updated = currentList.filter((o) => o !== optToRemove);
-    setNewColOptions(updated.join(', '));
-  };
-
-  // Add single option to editingColumn.options
-  const handleAddOptionToEditCol = (optText?: string) => {
-    if (!editingColumn) return;
-    const textToAdd = (optText !== undefined ? optText : editColOptionInput).trim();
-    if (!textToAdd) return;
-    const currentList = (editingColumn.options || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!currentList.includes(textToAdd)) {
-      currentList.push(textToAdd);
-      setEditingColumn({ ...editingColumn, options: currentList.join(', ') });
-    }
-    setEditColOptionInput('');
-  };
-
-  // Remove single option from editingColumn.options
-  const handleRemoveOptionFromEditCol = (optToRemove: string) => {
-    if (!editingColumn) return;
-    const currentList = (editingColumn.options || '')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const updated = currentList.filter((o) => o !== optToRemove);
-    setEditingColumn({ ...editingColumn, options: updated.join(', ') });
-  };
-
-  // Submit Add Column
-  const handleSubmitAddColumn = (e: React.FormEvent) => {
+  // Add new column via Settings Modal
+  const handleAddNewColumn = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newColName.trim()) return;
 
     const opts =
       newColType === 'select'
         ? newColOptions
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
         : undefined;
 
     addCustomTableColumn(table.id, {
-      name: newColName.trim(),
+      name: newColName.trim().toUpperCase(),
       type: newColType,
       unit: newColUnit.trim() || undefined,
-      options: opts && opts.length > 0 ? opts : (newColType === 'select' ? ['High', 'Normal', 'Low'] : undefined),
+      options: opts && opts.length > 0 ? opts : (newColType === 'select' ? ['High', 'Medium', 'Low'] : undefined),
     });
 
     setNewColName('');
     setNewColType('text');
     setNewColUnit('');
-    setNewColOptions('');
-    setNewColOptionInput('');
-    setShowAddColumnModal(false);
+    setNewColOptions('High, Medium, Low');
   };
 
-  // Save changes to existing custom column
-  const handleSaveEditColumn = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingColumn || !editingColumn.name.trim()) return;
-    const opts =
-      editingColumn.type === 'select'
-        ? editingColumn.options
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-        : undefined;
+  // Export CSV (with formula injection & quote escaping protection)
+  const escapeCsvCell = (raw: unknown): string => {
+    const str = String(raw ?? '');
+    const safe = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
 
-    updateCustomTableColumn(table.id, editingColumn.id, {
-      name: editingColumn.name.trim(),
-      type: editingColumn.type,
-      unit: editingColumn.unit.trim() || undefined,
-      options: opts && opts.length > 0 ? opts : (editingColumn.type === 'select' ? ['High', 'Normal', 'Low'] : undefined),
+  const handleExportCSV = () => {
+    const headers = ['Date', ...visibleColumns.map((c) => c.name), 'Notes'];
+    const csvLines = [headers.map(escapeCsvCell).join(',')];
+    processedRows.forEach((r) => {
+      const line = [
+        escapeCsvCell(r.date),
+        ...visibleColumns.map((c) => escapeCsvCell(r.values?.[c.id] ?? '')),
+        escapeCsvCell(r.notes ?? ''),
+      ];
+      csvLines.push(line.join(','));
     });
-    setEditingColumn(null);
-  };
-
-  // Delete column
-  const handleDeleteColumn = (id: string, name: string) => {
-    if (window.confirm(`Delete "${name}" column and its tracked values in this table?`)) {
-      deleteCustomTableColumn(table.id, id);
-      setEditingColumn(null);
-    }
-  };
-
-  // Move column left or right
-  const handleMoveColumn = (currentIndex: number, direction: 'left' | 'right') => {
-    const targetIndex = direction === 'left' ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= table.columns.length) return;
-    reorderCustomTableColumns(table.id, currentIndex, targetIndex);
-    if (editingColumn) {
-      setEditingColumn({ ...editingColumn, index: targetIndex });
-    }
+    const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${table.title.toLowerCase().replace(/\s+/g, '_')}_export.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="w-full flex flex-col space-y-6 animate-fadeIn font-mono">
-      {/* 1. Quick Add / Edit Form (Only shown when EDIT FORM switch is ON) */}
-      {enableTopForm && showForm && (
-        <div
-          id="custom-table-form-container"
-          className="w-full p-6 sm:p-8 rounded-2xl glass-panel-glow shadow-2xl space-y-6 animate-fadeIn"
-        >
-          {/* Form Top Title */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-white/10 pb-4">
-            <h2 className="text-lg font-bold text-stone-900 dark:text-white font-mono">
-              Editing – {formatDateDisplay(formDate)}
-            </h2>
+    <div className="w-full flex flex-col space-y-5 animate-fadeIn font-mono text-stone-900 dark:text-stone-100">
+
+      {/* ======================================================== */}
+      {/* 1. TOP TOOLBAR (Clean, Single Line, No Clutter)          */}
+      {/* ======================================================== */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-black/10 dark:border-white/10 select-none">
+
+        {/* Left Side: Table Title, Row Counter Pill Badge, Subtitle */}
+        <div>
+          <div className="flex items-center gap-3.5">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-stone-900 dark:text-white tracking-tight uppercase font-mono">
+              {table.title}
+            </h1>
+            <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-[#e9762b]/15 text-[#e9762b] border border-[#e9762b]/35 uppercase tracking-wider font-mono shadow-sm">
+              {processedRows.length} {processedRows.length === 1 ? 'ENTRY' : 'ENTRIES'}
+            </span>
           </div>
-
-          <form onSubmit={handleSaveFormEntry} className="space-y-6">
-            {/* Row 1: Date Picker */}
-            <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
-              <span className="text-stone-500 dark:text-slate-400 uppercase tracking-widest font-bold">DATE</span>
-              <button
-                type="button"
-                onClick={() => handleSelectDayForForm(undefined, todayStr)}
-                className={`px-3.5 py-1.5 rounded-lg uppercase tracking-wider font-bold transition cursor-pointer ${
-                  formDate === todayStr
-                    ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/20'
-                    : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
-                }`}
-              >
-                Today
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSelectDayForForm(undefined, yesterdayStr)}
-                className={`px-3.5 py-1.5 rounded-lg uppercase tracking-wider font-bold transition cursor-pointer ${
-                  formDate === yesterdayStr
-                    ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/20'
-                    : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
-                }`}
-              >
-                Yesterday
-              </button>
-              <input
-                type="date"
-                value={formDate}
-                onChange={(e) => handleSelectDayForForm(undefined, e.target.value)}
-                className="glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none font-mono"
-              />
-            </div>
-
-            {/* Dynamic Column Inputs in Top Form */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 font-mono">
-              {table.columns.map((col) => (
-                <div key={col.id} className="space-y-1.5 glass-panel p-3 rounded-xl">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
-                    {col.name} {col.unit ? `(${col.unit})` : ''}
-                  </label>
-                  {col.type === 'boolean' && (
-                    <YesNoToggle
-                      value={Boolean(formValues[col.id])}
-                      onChange={(val: boolean) => setFormValues({ ...formValues, [col.id]: val })}
-                    />
-                  )}
-                  {col.type === 'number' && (
-                    <input
-                      type="number"
-                      step="any"
-                      placeholder="--"
-                      value={formValues[col.id] ?? ''}
-                      onChange={(e) =>
-                        setFormValues({
-                          ...formValues,
-                          [col.id]: e.target.value === '' ? '' : Number(e.target.value),
-                        })
-                      }
-                      className="w-full glass-input rounded-lg px-3 py-2 text-stone-900 dark:text-white font-mono text-center focus:outline-none placeholder-stone-400 dark:placeholder-slate-600 font-bold"
-                    />
-                  )}
-                  {col.type === 'text' && (
-                    <input
-                      type="text"
-                      placeholder="Type text..."
-                      value={formValues[col.id] ?? ''}
-                      onChange={(e) =>
-                        setFormValues({ ...formValues, [col.id]: e.target.value })
-                      }
-                      className="w-full glass-input rounded-lg px-3 py-2 text-stone-900 dark:text-white font-mono focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
-                    />
-                  )}
-                  {col.type === 'select' && (
-                    <select
-                      value={formValues[col.id] ?? ''}
-                      onChange={(e) =>
-                        setFormValues({ ...formValues, [col.id]: e.target.value })
-                      }
-                      className="w-full glass-input rounded-lg px-3 py-2 text-stone-900 dark:text-white font-mono focus:outline-none cursor-pointer"
-                    >
-                      <option value="" className="bg-[#f7f5f0] text-slate-500 dark:bg-[#141413] dark:text-slate-500">
-                        -- Select --
-                      </option>
-                      {(col.options || []).map((opt) => (
-                        <option key={opt} value={opt} className="bg-[#f7f5f0] text-stone-900 dark:bg-[#141413] dark:text-white">
-                          {opt}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  {col.type === 'rating' && (
-                    <select
-                      value={formValues[col.id] ?? ''}
-                      onChange={(e) =>
-                        setFormValues({ ...formValues, [col.id]: Number(e.target.value) })
-                      }
-                      className="w-full glass-input rounded-lg px-3 py-2 text-stone-900 dark:text-white font-mono focus:outline-none cursor-pointer text-center font-bold"
-                    >
-                      <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">-- Rating --</option>
-                      <option value="5" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">5/5 (Mastered)</option>
-                      <option value="4" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">4/5 (Good)</option>
-                      <option value="3" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">3/5 (Average)</option>
-                      <option value="2" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">2/5 (Weak)</option>
-                      <option value="1" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">1/5 (Need Review)</option>
-                    </select>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Notes */}
-            <div className="space-y-2">
-              <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 block font-bold">
-                NOTES &amp; OBSERVATIONS
-              </label>
-              <textarea
-                rows={2}
-                value={formNotes}
-                onChange={(e) => setFormNotes(e.target.value)}
-                placeholder="Anything worth remembering about this day..."
-                className="w-full glass-input rounded-xl px-4 py-3 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
-              />
-            </div>
-
-            {/* Form Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="px-5 py-2.5 rounded-full bg-black/5 dark:bg-[#141413] border border-black/10 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:text-black dark:hover:text-white text-xs uppercase font-bold tracking-wider transition cursor-pointer"
-              >
-                Cancel
-              </button>
-              <ShinyButton
-                type="submit"
-                label="Save"
-                className="!px-7 !py-2.5 !text-xs !font-mono !font-extrabold !uppercase !tracking-wider active:scale-95 transition"
-              />
-            </div>
-          </form>
+          {table.description && (
+            <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400 mt-1.5 font-mono">
+              {table.description}
+            </p>
+          )}
         </div>
-      )}
 
-      {/* 2. Table Section (Exact same structure & CSS tokens as Study Log) */}
-      <div className="space-y-4">
-        {/* Table Top Controls */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 font-mono pb-4 border-b border-white/10">
-          <div className="select-none">
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl sm:text-4xl font-extrabold text-stone-900 dark:text-white transition tracking-tight uppercase font-mono">
-                {table.title}
-              </h1>
+        {/* Right Side Action Cluster */}
+        <div className="flex flex-wrap items-center gap-3 text-xs sm:text-[13px]">
+
+          {/* Instant Search Input */}
+          <div className="relative flex items-center">
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search papers, notes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="glass-input rounded-full pl-9 pr-8 py-2.5 text-xs sm:text-[13px] text-stone-900 dark:text-white placeholder-stone-500 focus:outline-none focus:border-[#e9762b] transition w-48 sm:w-64"
+            />
+            <Search className="w-4 h-4 text-stone-500 absolute left-3.5 pointer-events-none" />
+            {searchQuery && (
               <button
                 type="button"
-                onClick={() => {
-                  if (window.confirm(`Delete table "${table.title}" and all its rows?`)) {
-                    deleteCustomTable(table.id);
-                  }
-                }}
-                className="p-1.5 rounded-lg glass-pill hover:bg-red-500/20 text-stone-400 hover:text-red-400 border border-stone-300/40 dark:border-white/10 transition cursor-pointer"
-                title="Delete this entire table"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 text-stone-400 hover:text-stone-900 dark:hover:text-white cursor-pointer"
+                title="Clear search"
               >
-                <Trash2 className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
-            </div>
-            {table.description && (
-              <p className="text-xs text-stone-600 dark:text-slate-400 mt-1 font-mono">
-                {table.description}
-              </p>
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm">
-            {/* Toggle to enable/disable Top Edit Form */}
-            <div className="flex items-center gap-2.5 border-magic-bar px-4 py-2 rounded-full select-none">
-              <span className="text-xs uppercase tracking-wider text-slate-400 font-bold font-mono">
-                EDIT FORM:
-              </span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={enableTopForm}
-                onClick={() => {
-                  const next = !enableTopForm;
-                  setEnableTopForm(next);
-                  if (next) {
-                    setShowForm(true);
-                    handleSelectDayForForm(undefined, formDate || todayStr);
-                  } else {
-                    setShowForm(false);
-                  }
-                }}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
-                  enableTopForm
-                    ? 'bg-[#e9762b] shadow-[0_0_10px_rgba(233,118,43,0.4)]'
-                    : 'bg-[#e0d2c4] dark:bg-[#252524] border border-orange-950/15 dark:border-white/10'
-                }`}
-                title={enableTopForm ? 'Click to disable Top Edit Form' : 'Click to enable Top Edit Form'}
-              >
-                <span
-                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-md transition-transform ${
-                    enableTopForm ? 'translate-x-4' : 'translate-x-1'
-                  }`}
-                />
-              </button>
-              <span className={`text-xs font-mono font-bold uppercase ${enableTopForm ? 'text-[#e9762b]' : 'text-stone-600 dark:text-slate-500'}`}>
-                {enableTopForm ? 'ON' : 'OFF'}
-              </span>
-            </div>
-
-            {/* Month / Year Filter Dropdown */}
-            <div className="flex items-center gap-2 border-magic-bar px-4 py-2 rounded-full">
-              <span className="text-xs uppercase tracking-wider text-stone-600 dark:text-slate-400 font-bold">
-                MONTH:
-              </span>
-              <select
-                value={selectedMonthYear}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedMonthYear(val);
-                  setVisibleLimit(val === 'last30' ? 30 : 20);
-                }}
-                className="bg-transparent text-xs sm:text-sm text-stone-900 dark:text-white focus:outline-none font-bold uppercase cursor-pointer font-mono"
-              >
-                <option value="all" className="bg-[#fff9f5] text-stone-900 dark:bg-[#141413] dark:text-white">ALL MONTHS</option>
-                <option value="last30" className="bg-[#fff9f5] text-stone-900 dark:bg-[#141413] dark:text-white">LAST 30 DAYS</option>
-                {availableMonths.map((m) => (
-                  <option key={m.value} value={m.value} className="bg-[#fff9f5] text-stone-900 dark:bg-[#141413] dark:text-white">
-                    {m.label.toUpperCase()}
+          {/* Month Filter Dropdown */}
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-full glass-pill border border-black/10 dark:border-white/12 text-xs sm:text-[13px]">
+            <span className="text-[10px] text-stone-500 dark:text-slate-400 uppercase font-bold mr-0.5">MONTH:</span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-transparent text-[#e9762b] font-bold focus:outline-none cursor-pointer"
+            >
+              <option value="all" className="bg-white dark:bg-[#141413] text-[#e9762b]">All Months</option>
+              {availableMonths.map((m) => {
+                const [year, month] = m.split('-');
+                const d = new Date(parseInt(year), parseInt(month) - 1, 1);
+                const label = d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+                return (
+                  <option key={m} value={m} className="bg-white dark:bg-[#141413] text-[#e9762b]">
+                    {label}
                   </option>
-                ))}
-              </select>
-            </div>
-
-            {/* + ROW Button */}
-            <button
-              type="button"
-              onClick={handleOpenAddRowModal}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full glass-pill hover:bg-[#e9762b] text-stone-700 dark:text-slate-200 hover:text-black text-xs font-bold uppercase tracking-wider transition border border-orange-950/15 dark:border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm font-mono active:scale-95"
-              title="Add a date row"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>ROW</span>
-            </button>
-
-            {/* + COLUMN Button at top right */}
-            <button
-              type="button"
-              onClick={() => setShowAddColumnModal(true)}
-              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full glass-pill hover:bg-[#e9762b] text-stone-700 dark:text-slate-200 hover:text-black text-xs font-bold uppercase tracking-wider transition border border-orange-950/15 dark:border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm font-mono active:scale-95"
-              title="Add a custom column"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>COLUMN</span>
-            </button>
+                );
+              })}
+            </select>
           </div>
+
+          {/* Dedicated Settings Button */}
+          <button
+            type="button"
+            onClick={() => setShowSettingsModal(true)}
+            className="flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-full glass-pill hover:bg-black/10 dark:hover:bg-white/10 border border-black/10 dark:border-white/12 hover:border-[#e9762b]/50 text-stone-700 dark:text-stone-200 hover:text-black dark:hover:text-white font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-sm"
+            title="Configure table settings, columns, and export"
+          >
+            <Settings2 className="w-4 h-4 text-[#e9762b]" />
+            <span>SETTINGS</span>
+          </button>
+
+          {/* Primary Action: NEW ENTRY Button */}
+          <button
+            type="button"
+            onClick={handleOpenNewEntryModal}
+            className="inline-flex items-center gap-2 px-5 sm:px-6 py-2.5 rounded-full bg-gradient-to-b from-[#f28238] to-[#e9762b] hover:brightness-110 text-black font-mono font-black text-xs sm:text-[13px] uppercase tracking-wider transition-all duration-200 shadow-[0_4px_20px_-2px_rgba(233,118,43,0.45)] border border-orange-300/30 active:scale-95 cursor-pointer shrink-0"
+            title="Log new entry into this table"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>NEW ENTRY</span>
+          </button>
         </div>
+      </div>
 
-        {/* Table Container with Sticky Horizontal & Vertical Scroll (Exact same classes as Study Log) */}
-        <div ref={tableSectionRef} className="w-full rounded-2xl glass-panel overflow-hidden font-mono shadow-2xl scroll-mt-24">
-          <div ref={tableContainerRef} className="overflow-x-auto max-h-[80vh] overflow-y-auto relative scrollbar-thin scrollbar-thumb-white/20">
-            <table className="w-full min-w-full text-left text-xs sm:text-sm border-separate border-spacing-0">
-              {/* Sticky Top Header */}
-              <thead className="sticky top-0 z-40 glass-table-header select-none">
-                <tr className="text-xs text-stone-800 dark:text-slate-200 uppercase tracking-widest font-bold">
-                  {/* Sticky Date Column Header */}
-                  <th className="py-3.5 px-3 sm:px-4 font-bold sticky left-0 top-0 z-50 glass-sticky-th border-r border-white/12 min-w-[110px] w-[110px] sm:min-w-[125px] sm:w-[125px]">
-                    DATE
-                  </th>
+      {/* ======================================================== */}
+      {/* 2. TABLE DATA GRID (Frosted Glassmorphism, JetBrains)    */}
+      {/* ======================================================== */}
+      <div ref={tableContainerRef} className="w-full rounded-2xl sm:rounded-3xl glass-panel overflow-hidden shadow-2xl">
+        <div className="overflow-x-auto max-h-[82vh] overflow-y-auto custom-scrollbar">
+          <table className="w-full min-w-full text-left text-sm border-collapse">
 
-                  {/* Dynamic Custom Column Headers */}
-                  {table.columns.map((col, idx) => (
-                    <th
-                      key={col.id}
-                      className="py-3.5 px-3 sm:px-4 font-bold text-center whitespace-nowrap sticky top-0 z-40 min-w-[80px] sm:min-w-[96px]"
-                    >
+            {/* Sticky Header with real Sorting Affordances */}
+            <thead
+              onClick={scrollToCenterTable}
+              className="sticky top-0 z-30 glass-table-header text-stone-700 dark:text-slate-200 select-none cursor-pointer"
+              title="Click table bar to center table on screen"
+            >
+              <tr className="uppercase tracking-[0.14em] text-xs sm:text-[13px] font-bold">
+
+                {/* Sticky Date Header (First row, first column) */}
+                <th
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    scrollToCenterTable();
+                  }}
+                  className="py-4 sm:py-4.5 px-4 sm:px-5 sticky left-0 z-40 glass-sticky-th border-r border-black/10 dark:border-white/12 cursor-pointer hover:text-stone-900 dark:hover:text-white transition min-w-[132px] w-[132px] sm:min-w-[152px] sm:w-[152px]"
+                  title="Click to center table on screen"
+                >
+                  <div className="flex items-center gap-2">
+                    <span>DATE</span>
+                    {showSortArrows && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setEditingColumn({
-                            id: col.id,
-                            name: col.name,
-                            type: col.type,
-                            unit: col.unit || '',
-                            options: (col.options || []).join(', '),
-                            index: idx,
-                          });
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSort('date');
                         }}
-                        className="text-xs uppercase tracking-wider font-bold text-stone-800 dark:text-slate-200 hover:text-[#e9762b] truncate max-w-[140px] cursor-pointer transition select-none font-mono"
-                        title={`Click to edit "${col.name}" column`}
+                        className="p-1 -m-1 rounded hover:bg-black/10 dark:hover:bg-white/10 text-[#e9762b] transition cursor-pointer"
+                        title="Sort by date"
+                        aria-label="Sort by date"
                       >
-                        {col.name} {col.unit ? `(${col.unit})` : ''}
+                        {sortConfig.key === 'date' ? (
+                          sortConfig.direction === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-[#e9762b]" /> : <ArrowDown className="w-3.5 h-3.5 text-[#e9762b]" />
+                        ) : (
+                          <ArrowUpDown className="w-3.5 h-3.5 text-stone-400 hover:text-white" />
+                        )}
                       </button>
-                    </th>
-                  ))}
+                    )}
+                  </div>
+                </th>
 
-                  {/* NOTES Column - Header */}
-                  <th className="py-3.5 px-3 sm:px-4 font-bold text-center sticky top-0 z-40 min-w-[90px] sm:min-w-[110px]">
-                    NOTES
-                  </th>
+                {/* Dynamic Visible Columns */}
+                {visibleColumns.map((col) => {
+                  const isPaperCol = col.id === semanticCols.paperCol?.id || /paper|title/i.test(col.name);
+                  const isLeftAligned = col.type === 'text' && isPaperCol;
 
-                  {/* DEL Column - Header */}
-                  <th className="py-3.5 px-2 font-bold text-center sticky top-0 z-40 min-w-[50px] w-[50px] text-stone-500 rounded-tr-xl">
-                    DEL
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-white/5">
-                {visibleRows.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={table.columns.length + 3}
-                      className="py-12 text-center text-stone-500 dark:text-slate-400 font-mono text-xs"
+                  return (
+                    <th
+                      key={col.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        scrollToCenterTable();
+                      }}
+                      className={`py-4 sm:py-4.5 px-4 sm:px-5 cursor-pointer hover:text-stone-900 dark:hover:text-white transition whitespace-nowrap min-w-[120px] ${isLeftAligned ? 'text-left' : 'text-center'
+                        }`}
+                      title="Click to center table on screen"
                     >
-                      <div className="flex flex-col items-center justify-center space-y-3">
-                        <Calendar className="w-8 h-8 text-[#e9762b] opacity-60" />
-                        <p>No rows recorded for this period.</p>
-                        <button
-                          type="button"
-                          onClick={handleOpenAddRowModal}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#e9762b] text-black text-xs font-bold uppercase tracking-wider hover:brightness-110 transition shadow-md shadow-orange-500/20 cursor-pointer active:scale-95"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Date Row</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  visibleRows.map((entry) => {
-                    const isExpanded = expandedDate === entry.date;
-                    const hasNote = Boolean(entry.notes && entry.notes.trim().length > 0);
-
-                    return (
-                      <React.Fragment key={entry.id}>
-                        <tr
-                          id={`custom-row-${entry.date}`}
-                          className={`hover:bg-white/[0.04] transition group/row ${
-                            isExpanded ? 'bg-white/[0.04]' : ''
-                          }`}
-                        >
-                          {/* Pinned / Sticky Date Column - Click to open details & edit */}
-                          <td
-                            onClick={() => handleToggleExpand(entry)}
-                            className={`py-3 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap sticky left-0 z-20 glass-sticky-col-cell border-r border-black/10 dark:border-white/10 min-w-[110px] w-[110px] sm:min-w-[125px] sm:w-[125px] cursor-pointer ${
-                              isExpanded ? '!bg-amber-500/15 dark:!bg-[#1a1a18]' : ''
-                            }`}
-                            title="Click date to open details & edit"
+                      <div className={`inline-flex items-center gap-1.5 ${isLeftAligned ? 'justify-start' : 'justify-center'
+                        }`}>
+                        <span>{formatColumnHeader(col.name, col.unit)}</span>
+                        {showSortArrows && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSort(col.id);
+                            }}
+                            className="p-1 -m-1 rounded hover:bg-black/10 dark:hover:bg-white/10 text-[#e9762b] transition cursor-pointer"
+                            title={`Sort by ${col.name}`}
+                            aria-label={`Sort by ${col.name}`}
                           >
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleToggleExpand(entry)}
-                                className={`inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer select-none font-mono ${
-                                  isExpanded
-                                    ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/20'
-                                    : 'text-[#e9762b] bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 hover:border-orange-500/50'
-                                }`}
-                                title="Click date to open details & edit"
-                              >
-                                <span>{formatDateDisplay(entry.date)}</span>
-                              </button>
-                            </div>
-                          </td>
-
-                          {/* Dynamic Custom Column Cells */}
-                          {table.columns.map((col) => {
-                            const val = entry.values?.[col.id];
-
-                            return (
-                              <td
-                                key={col.id}
-                                className="py-3 sm:py-3.5 px-3 sm:px-4 text-center whitespace-nowrap font-mono text-xs sm:text-sm min-w-[80px] sm:min-w-[96px]"
-                              >
-                                {col.type === 'boolean' && (
-                                  <button
-                                    type="button"
-                                    disabled={!enableTopForm}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (!enableTopForm) return;
-                                      updateCustomTableCell(table.id, entry.id, col.id, !val);
-                                    }}
-                                    className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
-                                      enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
-                                    } ${
-                                      val
-                                        ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
-                                        : enableTopForm
-                                          ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
-                                          : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
-                                    }`}
-                                    title={enableTopForm ? `Click to toggle ${col.name}` : "Enable 'EDIT FORM' switch or click date button to edit"}
-                                  >
-                                    {val ? 'YES' : 'NO'}
-                                  </button>
-                                )}
-
-                                {col.type === 'number' && (
-                                  val !== undefined && val !== null && val !== '' ? (
-                                    <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">
-                                      {val}{col.unit ? col.unit : ''}
-                                    </span>
-                                  ) : (
-                                    <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
-                                  )
-                                )}
-
-                                {col.type === 'text' && (
-                                  val && String(val).trim() ? (
-                                    <span
-                                      className="text-stone-800 dark:text-slate-200 text-xs sm:text-sm max-w-[140px] truncate inline-block font-medium"
-                                      title={String(val)}
-                                    >
-                                      {val}
-                                    </span>
-                                  ) : (
-                                    <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
-                                  )
-                                )}
-
-                                {col.type === 'select' && (
-                                  val && String(val).trim() ? (
-                                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 dark:bg-amber-500/15 text-amber-900 dark:text-amber-300 border border-amber-500/40 dark:border-amber-500/30">
-                                      {val}
-                                    </span>
-                                  ) : (
-                                    <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
-                                  )
-                                )}
-
-                                {col.type === 'rating' && (
-                                  val !== undefined && val !== null && Number(val) > 0 ? (
-                                    <span className="text-stone-900 dark:text-slate-200 font-mono font-bold text-xs sm:text-sm">
-                                      {val}/5
-                                    </span>
-                                  ) : (
-                                    <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
-                                  )
-                                )}
-                              </td>
-                            );
-                          })}
-
-                          {/* NOTES Column with Rich Tooltip (Exact same Note badge as Study Table) */}
-                          <td className="py-3 sm:py-3.5 px-3 sm:px-4 text-center min-w-[90px] sm:min-w-[110px]">
-                            {hasNote ? (
-                              <div className="relative inline-flex items-center justify-center group/note">
-                                <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-bold text-orange-950 dark:text-[#e9762b] bg-orange-500/20 dark:bg-orange-500/15 border border-orange-500/40 dark:border-orange-500/30 select-none">
-                                  Note
-                                </span>
-
-                                {/* Hover Tooltip */}
-                                <div className="opacity-0 group-hover/note:opacity-100 pointer-events-none transition-opacity duration-200 absolute bottom-full mb-2 z-40 left-1/2 -translate-x-1/2 glass-modal text-xs px-3.5 py-2 rounded-xl shadow-2xl max-w-sm min-w-[200px] text-left whitespace-normal font-sans">
-                                  <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1 font-mono">
-                                    {formatDateDisplay(entry.date)} Note:
-                                  </span>
-                                  <p className="text-stone-900 dark:text-slate-200 text-xs leading-relaxed break-words">
-                                    {entry.notes}
-                                  </p>
-                                  <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
-                                </div>
-                              </div>
+                            {sortConfig.key === col.id ? (
+                              sortConfig.direction === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-[#e9762b]" /> : <ArrowDown className="w-3.5 h-3.5 text-[#e9762b]" />
                             ) : (
-                              <span className="text-stone-400 dark:text-slate-600 font-mono text-xs">--</span>
+                              <ArrowUpDown className="w-3.5 h-3.5 text-stone-400 hover:text-white" />
                             )}
-                          </td>
+                          </button>
+                        )}
+                      </div>
+                    </th>
+                  );
+                })}
 
-                          {/* DEL Column Cell */}
-                          <td className="py-3 sm:py-3.5 px-2 text-center whitespace-nowrap min-w-[50px] w-[50px]">
+                {/* Notes Column */}
+                <th className="py-4 sm:py-4.5 px-4 sm:px-5 text-left min-w-[220px]">NOTES</th>
+
+                {/* Actions Menu Header */}
+                <th aria-label="Actions" className="py-4 sm:py-4.5 px-3 text-center w-16 text-stone-500">•••</th>
+              </tr>
+            </thead>
+
+            {/* Table Body */}
+            <tbody className="divide-y divide-black/5 dark:divide-white/[0.07]">
+              {processedRows.length === 0 ? (
+                <tr>
+                  <td colSpan={visibleColumns.length + 3} className="py-16 text-center text-stone-500">
+                    <FileText className="w-9 h-9 mx-auto mb-2.5 opacity-40 text-stone-400" />
+                    <p className="text-sm sm:text-base font-bold text-stone-700 dark:text-stone-300">No records found.</p>
+                    <p className="text-xs sm:text-sm mt-1 text-stone-500">Try clearing your search query or click "+ NEW ENTRY" above.</p>
+                  </td>
+                </tr>
+              ) : (
+                processedRows.map((row) => {
+                  const isExpanded = expandedRowId === row.id;
+                  const handleDateToggle = () => {
+                    if (isExpanded) {
+                      setExpandedRowId(null);
+                      setEditingRowState(null);
+                    } else {
+                      const cleanRowValues: Record<string, any> = { ...(row.values || {}) };
+                      Object.keys(cleanRowValues).forEach((k) => {
+                        const v = cleanRowValues[k];
+                        if (typeof v === 'string' && v.includes('|')) {
+                          cleanRowValues[k] = v.split('|').map((s) => s.trim()).filter(Boolean).pop() || v.split('|')[0].trim();
+                        }
+                      });
+                      setExpandedRowId(row.id);
+                      setEditingRowState({
+                        values: cleanRowValues,
+                        notes: row.notes || '',
+                      });
+                    }
+                    requestAnimationFrame(() => {
+                      setTimeout(() => scrollToCenterTable(), 25);
+                    });
+                  };
+
+                  return (
+                    <React.Fragment key={row.id}>
+                      <tr className="even:bg-white/[0.012] hover:bg-black/[0.03] dark:hover:bg-white/[0.04] transition-colors duration-150 group">
+
+                        {/* Sticky Date Pill (OCT 25) with Amber Border */}
+                        <td
+                          onClick={handleDateToggle}
+                          className="py-4 sm:py-4.5 px-4 sm:px-5 sticky left-0 z-20 glass-sticky-col-cell border-r border-black/10 dark:border-white/10 min-w-[132px] w-[132px] sm:min-w-[152px] sm:w-[152px] cursor-pointer"
+                          title="Click to view/edit entry details"
+                        >
+                          <div className="flex items-center gap-2">
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleDeleteRow(entry.id, entry.date);
+                                handleDateToggle();
                               }}
-                              className="p-1.5 rounded-lg text-stone-400 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
-                              title="Delete row"
+                              className={`inline-flex items-center justify-center px-3.5 py-2 rounded-xl text-xs sm:text-[13px] font-extrabold tracking-wide transition-all duration-150 cursor-pointer select-none font-mono uppercase ${isExpanded
+                                  ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/25'
+                                  : 'text-[#e9762b] bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/35 hover:border-orange-500/60'
+                                }`}
+                              title="Click to view/edit entry details"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>{formatDateDisplay(row.date)}</span>
                             </button>
+                          </div>
+                        </td>
+
+                        {/* Dynamic Column Values */}
+                        {visibleColumns.map((col) => {
+                          const val = row.values?.[col.id];
+
+                          // 1. Accuracy (%) with Dynamic Progress Bar (Centered under ACCURACY (%) header)
+                          const isAccuracy = col.id === semanticCols.accuracyCol?.id || /accuracy|acc/i.test(col.name) || col.unit === '%';
+                          if (isAccuracy) {
+                            const hasNumericVal = val !== undefined && val !== null && val !== '' && !Number.isNaN(Number(val));
+                            if (hasNumericVal) {
+                              const numVal = Number(val);
+                              const barColor = numVal >= 75 ? 'bg-[#e9762b]' : numVal >= 60 ? 'bg-amber-400' : 'bg-red-400';
+                              return (
+                                <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center whitespace-nowrap">
+                                  <div className="inline-flex items-center justify-center gap-2.5 mx-auto">
+                                    <div className="w-20 bg-black/10 dark:bg-white/10 rounded-full h-2 overflow-hidden shrink-0">
+                                      <div className={`${barColor} h-2 rounded-full transition-all`} style={{ width: `${Math.min(Math.max(numVal, 0), 100)}%` }} />
+                                    </div>
+                                    <span className="font-bold font-mono-numbers text-stone-900 dark:text-white text-sm sm:text-[15px]">{numVal}%</span>
+                                  </div>
+                                </td>
+                              );
+                            }
+                            return (
+                              <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center font-mono-numbers text-sm sm:text-[15px] whitespace-nowrap">
+                                <span className="text-stone-400/50 dark:text-white/20 font-normal select-none">--</span>
+                              </td>
+                            );
+                          }
+
+                          // 2. Difficulty / Select Color-coded Status Pill (Always single value)
+                          const isDifficulty = col.id === semanticCols.difficultyCol?.id || /difficulty|diff/i.test(col.name);
+                          if ((isDifficulty || col.type === 'select') && val) {
+                            const rawStr = String(val);
+                            const strVal = rawStr.includes('|')
+                              ? rawStr.split('|').map((s) => s.trim()).filter(Boolean).pop() || rawStr.split('|')[0].trim()
+                              : rawStr.trim();
+                            const lower = strVal.toLowerCase();
+                            const badgeClasses =
+                              lower === 'high' || lower === 'hard'
+                                ? 'bg-red-500/15 text-red-500 dark:text-red-400 border-red-500/35'
+                                : lower === 'medium' || lower === 'med' || lower === 'normal'
+                                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/35'
+                                  : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/35';
+                            return (
+                              <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center whitespace-nowrap">
+                                <span className={`px-3 py-1 rounded-full text-xs font-extrabold border ${badgeClasses}`}>
+                                  {strVal}
+                                </span>
+                              </td>
+                            );
+                          }
+
+                          // 3. Analyzed / Boolean Micro Pill Toggle (YES / NO / N/A)
+                          if (col.type === 'boolean') {
+                            return (
+                              <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center whitespace-nowrap">
+                                <TriStateBadge
+                                  value={val}
+                                  onChange={(newVal) => updateCustomTableCell(table.id, row.id, col.id, newVal)}
+                                  cycleEnabled={enableClickToCycle}
+                                  className="mx-auto"
+                                />
+                              </td>
+                            );
+                          }
+
+                          // 4. Rating (1-5 Stars or Badge)
+                          if (col.type === 'rating') {
+                            const numVal = Number(val);
+                            return (
+                              <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center whitespace-nowrap">
+                                {numVal ? (
+                                  <span className="font-bold text-[#e9762b] text-sm sm:text-base">
+                                    {'★'.repeat(Math.min(numVal, 5))}
+                                    <span className="opacity-20">{'★'.repeat(Math.max(5 - numVal, 0))}</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-stone-400/50 dark:text-white/20 text-sm select-none">--</span>
+                                )}
+                              </td>
+                            );
+                          }
+
+                          // 5. Numbers (Centered bold text under centered header)
+                          if (col.type === 'number') {
+                            return (
+                              <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center font-bold font-mono-numbers text-stone-900 dark:text-white text-sm sm:text-[15px] whitespace-nowrap">
+                                {val !== undefined && val !== null && val !== '' ? val : <span className="text-stone-400/50 dark:text-white/20 font-normal">--</span>}
+                              </td>
+                            );
+                          }
+
+                          // 6. Paper / Default Text
+                          const isPaper = col.id === semanticCols.paperCol?.id || /paper|title/i.test(col.name);
+                          return (
+                            <td key={col.id} className={`py-4 sm:py-4.5 px-4 sm:px-5 text-sm sm:text-[15px] ${isPaper ? 'text-left font-bold text-stone-900 dark:text-white' : 'text-center text-stone-700 dark:text-stone-200'}`}>
+                              {val !== undefined && val !== null && val !== '' ? String(val) : <span className="text-stone-400/50 dark:text-white/20 text-sm">--</span>}
+                            </td>
+                          );
+                        })}
+
+                        {/* Notes snippet */}
+                        <td className="py-4 sm:py-4.5 px-4 sm:px-5 text-stone-500 dark:text-stone-400 max-w-xs truncate text-xs sm:text-sm" title={row.notes}>
+                          {row.notes || <span className="text-stone-400/50 dark:text-white/20">--</span>}
+                        </td>
+
+                        {/* Row Action Kebab Menu (⋮) */}
+                        <td className="py-4 sm:py-4.5 px-3 text-center relative" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActiveActionMenuRowId(activeActionMenuRowId === row.id ? null : row.id)
+                            }
+                            className="p-2 rounded-xl hover:bg-black/10 dark:hover:bg-white/10 text-stone-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+                            title="Row actions"
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </button>
+
+                          {/* Dropdown Menu */}
+                          {activeActionMenuRowId === row.id && (
+                            <div className="absolute right-3 top-11 z-50 w-48 rounded-2xl bg-white dark:bg-[#171716] border border-black/10 dark:border-white/12 shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8)] p-1.5 text-[13px] text-left">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setExpandedRowId(row.id);
+                                  setEditingRowState({ values: { ...(row.values || {}) }, notes: row.notes || '' });
+                                  setActiveActionMenuRowId(null);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-stone-700 dark:text-stone-200 transition cursor-pointer"
+                              >
+                                <Edit3 className="w-3.5 h-3.5 text-[#e9762b]" />
+                                <span>Edit Entry</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDuplicateRow(row)}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-stone-700 dark:text-stone-200 transition cursor-pointer"
+                              >
+                                <Sparkles className="w-3.5 h-3.5 text-[#e9762b]" />
+                                <span>Duplicate</span>
+                              </button>
+                              <div className="my-1 border-t border-black/10 dark:border-white/10" />
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteRow(row.id)}
+                                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-red-500/10 text-red-500 dark:text-red-400 transition cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Delete</span>
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Expandable Row Editing Accordion */}
+                      {isExpanded && editingRowState && (
+                        <tr className="bg-stone-50/50 dark:bg-white/[0.02]">
+                          <td colSpan={visibleColumns.length + 3} className="p-4 sm:p-6 border-b border-black/10 dark:border-white/10">
+                            <div className="space-y-4 rounded-xl bg-white dark:bg-black/40 border border-black/10 dark:border-white/10 p-4 sm:p-6 shadow-inner">
+                              <div className="flex items-center justify-between pb-2 border-b border-black/10 dark:border-white/10">
+                                <h3 className="text-sm font-bold text-stone-900 dark:text-white flex items-center gap-2">
+                                  <Edit3 className="w-4 h-4 text-[#e9762b]" />
+                                  <span>Editing Test Entry: {formatDateDisplay(row.date)}</span>
+                                </h3>
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedRowId(null)}
+                                  className="text-stone-400 hover:text-stone-900 dark:hover:text-white cursor-pointer"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                {table.columns.map((col) => (
+                                  <div key={col.id} className="space-y-1">
+                                    <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider">
+                                      {formatColumnHeader(col.name, col.unit)}
+                                    </label>
+
+                                    {col.type === 'boolean' ? (
+                                      <TriStatePillSelect
+                                        size="sm"
+                                        value={editingRowState.values[col.id]}
+                                        onChange={(val) =>
+                                          setEditingRowState({
+                                            ...editingRowState,
+                                            values: {
+                                              ...editingRowState.values,
+                                              [col.id]: val,
+                                            },
+                                          })
+                                        }
+                                      />
+                                    ) : col.type === 'select' ? (
+                                      <select
+                                        value={editingRowState.values[col.id] || ''}
+                                        onChange={(e) =>
+                                          setEditingRowState({
+                                            ...editingRowState,
+                                            values: {
+                                              ...editingRowState.values,
+                                              [col.id]: e.target.value,
+                                            },
+                                          })
+                                        }
+                                        className="w-full bg-stone-100 dark:bg-[#141413] border border-black/10 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-[#e9762b]"
+                                      >
+                                        {(col.options || ['High', 'Medium', 'Low']).map((opt) => (
+                                          <option key={opt} value={opt} className="bg-white dark:bg-[#141413]">
+                                            {opt}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    ) : (
+                                      <input
+                                        type={col.type === 'number' ? 'number' : 'text'}
+                                        step={col.id === semanticCols.accuracyCol?.id ? '0.1' : undefined}
+                                        value={editingRowState.values[col.id] ?? ''}
+                                        onChange={(e) => {
+                                          const nextVal = col.type === 'number'
+                                            ? e.target.value === '' ? '' : Number(e.target.value)
+                                            : e.target.value;
+
+                                          const updatedVals = {
+                                            ...editingRowState.values,
+                                            [col.id]: nextVal,
+                                          };
+
+                                          // Live Auto-calc accuracy if score or total modified
+                                          if (semanticCols.scoreCol && semanticCols.totalCol && semanticCols.accuracyCol) {
+                                            if (col.id === semanticCols.scoreCol.id || col.id === semanticCols.totalCol.id) {
+                                              const sc = col.id === semanticCols.scoreCol.id ? Number(nextVal) : Number(updatedVals[semanticCols.scoreCol.id]);
+                                              const tot = col.id === semanticCols.totalCol.id ? Number(nextVal) : Number(updatedVals[semanticCols.totalCol.id]);
+                                              if (tot > 0) {
+                                                updatedVals[semanticCols.accuracyCol.id] = Number(((sc / tot) * 100).toFixed(1));
+                                              }
+                                            }
+                                          }
+
+                                          setEditingRowState({
+                                            ...editingRowState,
+                                            values: updatedVals,
+                                          });
+                                        }}
+                                        className="w-full bg-stone-100 dark:bg-[#141413] border border-black/10 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-[#e9762b]"
+                                      />
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+
+                              {/* Notes */}
+                              <div className="space-y-1">
+                                <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider">
+                                  Notes &amp; Observations
+                                </label>
+                                <textarea
+                                  rows={2}
+                                  value={editingRowState.notes}
+                                  onChange={(e) =>
+                                    setEditingRowState({ ...editingRowState, notes: e.target.value })
+                                  }
+                                  className="w-full bg-stone-100 dark:bg-[#141413] border border-black/10 dark:border-white/10 rounded-lg p-3 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-[#e9762b]"
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-end gap-3 pt-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedRowId(null)}
+                                  className="px-4 py-2 rounded-full border border-black/10 dark:border-white/10 text-xs text-stone-600 dark:text-stone-400 hover:text-black dark:hover:text-white cursor-pointer"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    Object.entries(editingRowState.values).forEach(([colId, val]) => {
+                                      updateCustomTableCell(table.id, row.id, colId, val === '' ? null : val);
+                                    });
+                                    updateCustomTableRowNotes(table.id, row.id, editingRowState.notes.trim());
+                                    setExpandedRowId(null);
+                                    confetti({ particleCount: 20, spread: 40 });
+                                  }}
+                                  className="px-5 py-2 rounded-full bg-[#e9762b] text-black font-bold text-xs cursor-pointer hover:bg-[#ff5f00] transition active:scale-95"
+                                >
+                                  Save Changes
+                                </button>
+                              </div>
+                            </div>
                           </td>
                         </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
 
-                        {/* Expand in place accordion sub-panel (Exact same design & layout as Study Table) */}
-                        {isExpanded && accordionState && (
-                          <tr
-                            id={`custom-accordion-${entry.date}`}
-                            className="bg-white/[0.02] backdrop-blur-2xl border-b border-white/10"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <td colSpan={table.columns.length + 3} className="p-0 border-b border-white/10">
-                              <div
-                                className="sticky left-0 p-3.5 sm:p-5 md:p-6 space-y-4 sm:space-y-5 box-border overflow-hidden"
-                                style={{
-                                  width: containerWidth ? `${containerWidth}px` : '100%',
-                                  maxWidth: containerWidth ? `${containerWidth}px` : '100%',
-                                }}
-                              >
-                                {/* Accordion Top Header with Delete Button */}
-                                <div className="flex items-center justify-between border-b border-white/10 pb-3 gap-2">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span className="text-[11px] font-mono uppercase tracking-widest text-[#e9762b] font-bold shrink-0">
-                                      DETAILS &amp; EDITING —
-                                    </span>
-                                    <span className="text-sm font-bold text-stone-900 dark:text-white font-mono truncate">
-                                      {formatDateDisplay(entry.date)}
-                                    </span>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteRow(entry.id, entry.date)}
-                                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 dark:text-red-400 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-xs font-mono font-bold transition cursor-pointer"
-                                    title="Delete this row"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
-                                    <span>DELETE ROW</span>
-                                  </button>
-                                </div>
-
-                                {/* Form Inputs for Columns */}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 font-mono">
-                                  {table.columns.map((col) => (
-                                    <div key={col.id} className="glass-panel p-3 rounded-xl space-y-1.5">
-                                      <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
-                                        {col.name} {col.unit ? `(${col.unit})` : ''}
-                                      </label>
-                                      {col.type === 'boolean' && (
-                                        <YesNoToggle
-                                          size="sm"
-                                          value={Boolean(accordionState.values[col.id])}
-                                          onChange={(val: boolean) =>
-                                            setAccordionState({
-                                              ...accordionState,
-                                              values: { ...accordionState.values, [col.id]: val },
-                                            })
-                                          }
-                                        />
-                                      )}
-                                      {col.type === 'number' && (
-                                        <div className="flex items-center gap-2">
-                                          <input
-                                            type="number"
-                                            step="any"
-                                            placeholder="--"
-                                            value={accordionState.values[col.id] ?? ''}
-                                            onChange={(e) =>
-                                              setAccordionState({
-                                                ...accordionState,
-                                                values: {
-                                                  ...accordionState.values,
-                                                  [col.id]: e.target.value === '' ? '' : Number(e.target.value),
-                                                },
-                                              })
-                                            }
-                                            className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-bold text-center focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
-                                          />
-                                          {col.unit && (
-                                            <span className="text-xs text-stone-600 dark:text-slate-400 font-bold lowercase">
-                                              {col.unit}
-                                            </span>
-                                          )}
-                                        </div>
-                                      )}
-                                      {col.type === 'text' && (
-                                        <input
-                                          type="text"
-                                          placeholder="Type text..."
-                                          value={accordionState.values[col.id] ?? ''}
-                                          onChange={(e) =>
-                                            setAccordionState({
-                                              ...accordionState,
-                                              values: {
-                                                ...accordionState.values,
-                                                [col.id]: e.target.value,
-                                              },
-                                            })
-                                          }
-                                          className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
-                                        />
-                                      )}
-                                      {col.type === 'select' && (
-                                        <select
-                                          value={accordionState.values[col.id] ?? ''}
-                                          onChange={(e) =>
-                                            setAccordionState({
-                                              ...accordionState,
-                                              values: {
-                                                ...accordionState.values,
-                                                [col.id]: e.target.value,
-                                              },
-                                            })
-                                          }
-                                          className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
-                                        >
-                                          <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">-- Select --</option>
-                                          {(col.options || []).map((opt) => (
-                                            <option key={opt} value={opt} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
-                                              {opt}
-                                            </option>
-                                          ))}
-                                        </select>
-                                      )}
-                                      {col.type === 'rating' && (
-                                        <select
-                                          value={accordionState.values[col.id] ?? ''}
-                                          onChange={(e) =>
-                                            setAccordionState({
-                                              ...accordionState,
-                                              values: {
-                                                ...accordionState.values,
-                                                [col.id]: Number(e.target.value),
-                                              },
-                                            })
-                                          }
-                                          className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-stone-900 dark:text-white font-bold text-center focus:outline-none cursor-pointer"
-                                        >
-                                          <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">-- Rating --</option>
-                                          <option value="5" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">5/5 (Mastered)</option>
-                                          <option value="4" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">4/5 (Good)</option>
-                                          <option value="3" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">3/5 (Average)</option>
-                                          <option value="2" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">2/5 (Weak)</option>
-                                          <option value="1" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">1/5 (Need Review)</option>
-                                        </select>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-
-                                {/* Notes Input */}
-                                <div className="space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                                    NOTES
-                                  </label>
-                                  <textarea
-                                    rows={2}
-                                    value={accordionState.notes}
-                                    onChange={(e) =>
-                                      setAccordionState({
-                                        ...accordionState,
-                                        notes: e.target.value,
-                                      })
-                                    }
-                                    placeholder="Key takeaways, mistakes made, or formulas to review..."
-                                    className="w-full glass-input rounded-xl px-4 py-3 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
-                                  />
-                                </div>
-
-                                {/* Accordion Footer Buttons */}
-                                <div className="flex items-center justify-end gap-3 pt-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setExpandedDate(null);
-                                      setAccordionState(null);
-                                    }}
-                                    className="px-4 py-2 rounded-lg bg-stone-200/90 hover:bg-stone-300 dark:bg-white/5 dark:hover:bg-white/10 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white border border-stone-300/80 dark:border-white/10 uppercase font-bold text-xs transition cursor-pointer shadow-sm"
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleSaveAccordion(entry.id)}
-                                    className="px-6 py-2 rounded-lg bg-[#e9762b] text-black font-extrabold uppercase text-xs tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-md shadow-orange-500/20"
-                                  >
-                                    Save Day
-                                  </button>
-                                </div>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+        {/* ======================================================== */}
+        {/* 5. FOOTER METRICS BAR (Row Counter & Live KPI Chips)    */}
+        {/* ======================================================== */}
+        <div className="px-5 py-4 bg-white/[0.02] backdrop-blur-xl border-t border-black/10 dark:border-white/10 flex flex-wrap items-center justify-between gap-4 text-xs sm:text-[13px] text-stone-600 dark:text-stone-400 font-mono">
+          <div className="uppercase tracking-wider text-xs">
+            SHOWING <b className="text-stone-900 dark:text-white font-mono-numbers">{processedRows.length}</b> OF <b className="text-stone-900 dark:text-white font-mono-numbers">{table.rows.length}</b> ROWS
           </div>
 
-          {/* Table Footer */}
-          <div className="py-2.5 px-4 border-t border-white/10 flex items-center justify-end text-[10px] text-slate-500 font-mono">
-            <span>{visibleRows.length} OF {table.rows.length} ROWS DISPLAYED</span>
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs">
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.03] border border-black/[0.08] dark:border-white/[0.08]">
+              <BarChart3 className="w-3.5 h-3.5 text-[#e9762b]" />
+              <span className="text-stone-600 dark:text-slate-400 uppercase tracking-wider text-[11px]">AVG SCORE:</span>
+              <b className="text-stone-900 dark:text-white font-extrabold font-mono-numbers text-xs sm:text-[13px]">{stats.avgScore} pts</b>
+            </div>
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-orange-500/10 border border-orange-500/25">
+              <span className="text-stone-700 dark:text-orange-300/80 uppercase tracking-wider text-[11px]">AVG ACCURACY:</span>
+              <b className="text-[#e9762b] font-extrabold font-mono-numbers text-xs sm:text-[13px]">{stats.avgAccuracy}%</b>
+            </div>
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.03] border border-black/[0.08] dark:border-white/[0.08]">
+              <span className="text-stone-600 dark:text-slate-400 uppercase tracking-wider text-[11px]">ANALYZED:</span>
+              <b className="text-emerald-600 dark:text-emerald-400 font-extrabold font-mono-numbers text-xs sm:text-[13px]">{stats.analyzedCount}/{processedRows.length}</b>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 3. Modal: Add Date Row */}
-      {showAddRowModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-lg glass-modal rounded-2xl p-6 sm:p-8 space-y-6 border border-orange-950/15 dark:border-white/15 shadow-2xl font-mono max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-4">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-[#e9762b]" />
-                <h3 className="text-lg font-bold text-stone-900 dark:text-white tracking-wide uppercase">
-                  Add Date Row
+      {/* ======================================================== */}
+      {/* 2. MODAL: DEDICATED SETTINGS MODAL (Columns, Meta, Export)*/}
+      {/* ======================================================== */}
+      {showSettingsModal && (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-fadeIn"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowSettingsModal(false); }}
+        >
+          <div
+            className="relative w-full max-w-xl max-h-[90vh] flex flex-col rounded-3xl border font-mono overflow-hidden transition-all duration-200"
+            style={{
+              backgroundColor: isDark ? 'rgba(18, 18, 17, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+              backdropFilter: 'blur(36px)',
+              WebkitBackdropFilter: 'blur(36px)',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.16)' : 'rgba(0, 0, 0, 0.12)',
+              boxShadow: isDark
+                ? '0 30px 90px -10px rgba(0,0,0,0.95), 0 0 60px -20px rgba(233,118,43,0.25)'
+                : '0 30px 80px rgba(0, 0, 0, 0.14), inset 0 1px 1px rgba(255, 255, 255, 0.95)',
+            }}
+          >
+            {/* Clean Compact Header */}
+            <div className={`flex items-center justify-between border-b px-5 sm:px-6 py-4 shrink-0 transition-colors ${isDark ? 'bg-[#141413] border-white/10' : 'bg-[#f4f0e8] border-stone-200'
+              }`}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-[#e9762b] flex items-center justify-center border border-orange-500/40 shadow-inner">
+                  <Settings2 className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm sm:text-base font-bold text-stone-900 dark:text-white uppercase tracking-wider font-mono">
+                  SETTINGS — {table.title}
                 </h3>
               </div>
               <button
                 type="button"
-                onClick={() => setShowAddRowModal(false)}
-                className="p-1 rounded-full hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitAddRowModal} className="space-y-5">
-              {/* Date Selector */}
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  SELECT DATE (TODAY OR ANY PAST DATE)
-                </label>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setFormDate(todayStr)}
-                    className={`px-3 py-1.5 rounded-lg text-xs uppercase font-bold transition cursor-pointer ${
-                      formDate === todayStr
-                        ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/20'
-                        : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
-                    }`}
-                  >
-                    Today
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormDate(yesterdayStr)}
-                    className={`px-3 py-1.5 rounded-lg text-xs uppercase font-bold transition cursor-pointer ${
-                      formDate === yesterdayStr
-                        ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/20'
-                        : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
-                    }`}
-                  >
-                    Yesterday
-                  </button>
-                  <input
-                    type="date"
-                    value={formDate}
-                    onChange={(e) => setFormDate(e.target.value)}
-                    className="glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none flex-1 font-mono"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Dynamic Column Inputs */}
-              <div className="space-y-4 pt-2 border-t border-orange-950/10 dark:border-white/10">
-                <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
-                  Column Values
-                </span>
-
-                {table.columns.length === 0 ? (
-                  <p className="text-xs text-stone-500 dark:text-slate-400">
-                    No custom columns in this table yet. Click &quot;COLUMN&quot; at the top to add tracking fields.
-                  </p>
-                ) : (
-                  table.columns.map((col) => (
-                    <div key={col.id} className="space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <label className="text-xs text-stone-700 dark:text-slate-300 uppercase tracking-wider font-bold">
-                          {col.name}
-                        </label>
-                        {col.unit && (
-                          <span className="text-[10px] text-[#e9762b] font-mono lowercase font-bold">
-                            {col.unit}
-                          </span>
-                        )}
-                      </div>
-
-                      {col.type === 'boolean' && (
-                        <YesNoToggle
-                          value={Boolean(formValues[col.id])}
-                          onChange={(val: boolean) => setFormValues({ ...formValues, [col.id]: val })}
-                        />
-                      )}
-
-                      {col.type === 'number' && (
-                        <input
-                          type="number"
-                          step="any"
-                          value={formValues[col.id] ?? ''}
-                          onChange={(e) =>
-                            setFormValues({
-                              ...formValues,
-                              [col.id]: e.target.value === '' ? '' : Number(e.target.value),
-                            })
-                          }
-                          placeholder={`Enter ${col.name}...`}
-                          className="w-full glass-input rounded-xl px-3 py-2 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-[#e9762b] placeholder-stone-400 dark:placeholder-slate-600"
-                        />
-                      )}
-
-                      {col.type === 'text' && (
-                        <input
-                          type="text"
-                          value={formValues[col.id] ?? ''}
-                          onChange={(e) =>
-                            setFormValues({ ...formValues, [col.id]: e.target.value })
-                          }
-                          placeholder={`Enter ${col.name}...`}
-                          className="w-full glass-input rounded-xl px-3 py-2 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-[#e9762b] placeholder-stone-400 dark:placeholder-slate-600"
-                        />
-                      )}
-
-                      {col.type === 'select' && (
-                        <select
-                          value={formValues[col.id] ?? ''}
-                          onChange={(e) =>
-                            setFormValues({ ...formValues, [col.id]: e.target.value })
-                          }
-                          className="w-full glass-input rounded-xl px-3 py-2 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-[#e9762b] cursor-pointer"
-                        >
-                          <option value="" className="bg-[#f7f5f0] text-slate-500 dark:bg-[#141413] dark:text-slate-500">
-                            -- Select Option --
-                          </option>
-                          {(col.options || []).map((opt) => (
-                            <option key={opt} value={opt} className="bg-[#f7f5f0] text-stone-900 dark:bg-[#141413] dark:text-white">
-                              {opt}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-
-                      {col.type === 'rating' && (
-                        <select
-                          value={formValues[col.id] ?? ''}
-                          onChange={(e) =>
-                            setFormValues({ ...formValues, [col.id]: Number(e.target.value) })
-                          }
-                          className="w-full glass-input rounded-xl px-3 py-2 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-[#e9762b] cursor-pointer font-bold text-center"
-                        >
-                          <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">-- Rating --</option>
-                          <option value="5" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">5/5 (Mastered)</option>
-                          <option value="4" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">4/5 (Good)</option>
-                          <option value="3" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">3/5 (Average)</option>
-                          <option value="2" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">2/5 (Weak)</option>
-                          <option value="1" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">1/5 (Need Review)</option>
-                        </select>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-1.5 pt-2 border-t border-orange-950/10 dark:border-white/10">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  NOTES &amp; OBSERVATIONS
-                </label>
-                <textarea
-                  rows={2}
-                  value={formNotes}
-                  onChange={(e) => setFormNotes(e.target.value)}
-                  placeholder="Key learnings, question breakdown, or reminders..."
-                  className="w-full glass-input rounded-xl p-3 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-orange-950/10 dark:border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setShowAddRowModal(false)}
-                  className="px-5 py-2.5 rounded-full border border-stone-300 dark:border-white/10 text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white text-xs uppercase font-bold tracking-wider transition cursor-pointer hover:bg-stone-100 dark:hover:bg-white/5"
-                >
-                  Cancel
-                </button>
-                <ShinyButton
-                  type="submit"
-                  label="Add Row"
-                  className="!px-6 !py-2.5 !text-xs !font-mono !font-extrabold !uppercase !tracking-wider"
-                />
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 4. Modal: Add New Column */}
-      {showAddColumnModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-md glass-modal rounded-2xl p-6 sm:p-8 space-y-6 border border-orange-950/15 dark:border-white/15 shadow-2xl font-mono">
-            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-4">
-              <div className="flex items-center gap-2">
-                <Plus className="w-5 h-5 text-[#e9762b]" />
-                <h3 className="text-lg font-bold text-stone-900 dark:text-white tracking-wide uppercase">
-                  Add Column
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAddColumnModal(false)}
-                className="p-1 rounded-full hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitAddColumn} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  COLUMN NAME
-                </label>
-                <input
-                  type="text"
-                  value={newColName}
-                  onChange={(e) => setNewColName(e.target.value)}
-                  placeholder="e.g. Accuracy %, Difficulty, Solved"
-                  className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  TYPE
-                </label>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {[
-                    { type: 'boolean' as CustomTableColumnType, label: 'Yes/No', desc: 'Clickable yes/no' },
-                    { type: 'number' as CustomTableColumnType, label: 'Number', desc: 'Numeric value' },
-                    { type: 'text' as CustomTableColumnType, label: 'Text', desc: 'Free text' },
-                    { type: 'select' as CustomTableColumnType, label: 'Dropdown', desc: 'Pick from your options' },
-                    { type: 'rating' as CustomTableColumnType, label: 'Rating', desc: 'Score from 1 to 5' },
-                  ].map((item) => (
-                    <button
-                      key={item.type}
-                      type="button"
-                      onClick={() => setNewColType(item.type)}
-                      aria-pressed={newColType === item.type}
-                      title={item.desc}
-                      className={`py-2.5 px-1 rounded-xl border text-center transition cursor-pointer ${
-                        newColType === item.type
-                          ? 'bg-orange-500/10 border-[#e9762b] shadow-sm shadow-orange-500/20'
-                          : 'glass-panel border-stone-200 dark:border-white/10 text-stone-700 dark:text-slate-300 hover:border-stone-400 dark:hover:border-white/20'
-                      }`}
-                    >
-                      <span className="font-bold text-stone-900 dark:text-white text-[10px] leading-none">{item.label}</span>
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[10px] text-stone-500 dark:text-slate-500">
-                  {{
-                    boolean: 'Clickable yes/no',
-                    number: 'Numeric value',
-                    text: 'Free text',
-                    select: 'Pick from your options',
-                    rating: 'Score from 1 to 5',
-                  }[newColType] ?? ''}
-                </p>
-              </div>
-
-              {newColType === 'number' && (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                    UNIT (OPTIONAL)
-                  </label>
-                  <input
-                    type="text"
-                    value={newColUnit}
-                    onChange={(e) => setNewColUnit(e.target.value)}
-                    placeholder="e.g. %, marks, hrs, mins, count"
-                    className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
-                  />
-                </div>
-              )}
-
-              {newColType === 'select' && (() => {
-                const optList = newColOptions.split(',').map((s) => s.trim()).filter(Boolean);
-                return (
-                  <div className="space-y-2.5 animate-fadeIn">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                        OPTIONS
-                      </label>
-                      <span className="text-[10px] text-stone-500 dark:text-slate-500 font-mono">{optList.length}</span>
-                    </div>
-
-                    <div className="flex flex-wrap gap-1.5 min-h-[40px] max-h-28 overflow-y-auto p-2 rounded-xl bg-stone-100/60 dark:bg-white/[0.03] border border-stone-200 dark:border-white/10 items-center">
-                      {optList.length > 0 ? (
-                        optList.map((opt) => (
-                          <span
-                            key={opt}
-                            className="inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-bold bg-orange-500/15 text-[#e9762b] border border-orange-500/30 animate-fadeIn"
-                          >
-                            <span>{opt}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveOptionFromNewCol(opt)}
-                              className="w-4 h-4 rounded-full hover:bg-orange-500/30 flex items-center justify-center transition cursor-pointer hover:text-red-400"
-                              aria-label={`Remove ${opt}`}
-                            >
-                              <X className="w-2.5 h-2.5" />
-                            </button>
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-[11px] text-stone-400 dark:text-slate-500 px-1">No options yet</span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={newColOptionInput}
-                        onChange={(e) => setNewColOptionInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleAddOptionToNewCol();
-                          }
-                        }}
-                        placeholder="Add option, press Enter"
-                        className="flex-1 min-w-0 glass-input rounded-xl px-3.5 py-2 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleAddOptionToNewCol()}
-                        disabled={!newColOptionInput.trim()}
-                        aria-label="Add option"
-                        className="w-9 h-9 rounded-xl bg-[#e9762b] text-black flex items-center justify-center hover:brightness-110 active:scale-95 transition cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {[
-                        { label: 'Status', opts: ['Done', 'In Progress', 'Pending'] },
-                        { label: 'Priority', opts: ['High', 'Medium', 'Low'] },
-                        { label: 'Quality', opts: ['Good', 'Okay', 'Bad'] },
-                        { label: 'Level', opts: ['Easy', 'Medium', 'Hard'] },
-                      ].map((preset) => (
-                        <button
-                          key={preset.label}
-                          type="button"
-                          title={preset.opts.join(', ')}
-                          onClick={() => setNewColOptions(Array.from(new Set([...optList, ...preset.opts])).join(', '))}
-                          className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-stone-200/60 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 border border-stone-300/80 dark:border-white/10 transition cursor-pointer"
-                        >
-                          + {preset.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-orange-950/10 dark:border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setShowAddColumnModal(false)}
-                  className="px-5 py-2.5 rounded-full border border-stone-300 dark:border-white/10 text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white text-xs uppercase font-bold tracking-wider transition cursor-pointer hover:bg-stone-100 dark:hover:bg-white/5"
-                >
-                  Cancel
-                </button>
-                <ShinyButton
-                  type="submit"
-                  label="Create Column"
-                  className="!px-6 !py-2.5 !text-xs !font-mono !font-extrabold !uppercase !tracking-wider"
-                />
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 5. Modal: Column Configuration & Reordering (Opened when clicking Column Header) */}
-      {editingColumn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-md glass-modal rounded-2xl p-6 shadow-2xl font-mono space-y-6">
-            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-3">
-              <h3 className="text-base font-bold text-stone-900 dark:text-white uppercase tracking-tight">
-                Configure Column
-              </h3>
-              <button
-                type="button"
-                onClick={() => setEditingColumn(null)}
-                className="p-1 rounded-lg hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+                onClick={() => setShowSettingsModal(false)}
+                className="p-1.5 rounded-lg hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+                title="Close (Esc)"
+                aria-label="Close settings"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEditColumn} className="space-y-4 text-xs">
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  COLUMN NAME
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={editingColumn.name}
-                  onChange={(e) =>
-                    setEditingColumn({ ...editingColumn, name: e.target.value })
-                  }
-                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none"
-                />
+            {/* Scrollable Body */}
+            <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-3.5 min-h-0 custom-scrollbar text-xs">
+
+              {/* 1. TABLE DETAILS */}
+              <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                }`}>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono block">
+                  TABLE DETAILS
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-wider text-stone-500 dark:text-stone-400 font-bold block">
+                      NAME
+                    </label>
+                    <input
+                      type="text"
+                      value={tableTitleInput}
+                      onChange={(e) => setTableTitleInput(e.target.value)}
+                      placeholder="Table Name"
+                      className={`w-full border focus:border-[#e9762b] rounded-xl px-3.5 py-2.5 text-xs focus:outline-none transition ${isDark ? 'bg-[#121211] border-white/10 text-white placeholder-stone-600' : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                        }`}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-wider text-stone-500 dark:text-stone-400 font-bold block">
+                      SUBTITLE
+                    </label>
+                    <input
+                      type="text"
+                      value={tableDescInput}
+                      onChange={(e) => setTableDescInput(e.target.value)}
+                      placeholder="Optional subtitle"
+                      className={`w-full border focus:border-[#e9762b] rounded-xl px-3.5 py-2.5 text-xs focus:outline-none transition ${isDark ? 'bg-[#121211] border-white/10 text-white placeholder-stone-600' : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                        }`}
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  COLUMN TYPE
-                </label>
-                <select
-                  value={editingColumn.type}
-                  onChange={(e) =>
-                    setEditingColumn({
-                      ...editingColumn,
-                      type: e.target.value as CustomTableColumnType,
-                    })
-                  }
-                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
-                >
-                  <option value="boolean" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">YES / NO</option>
-                  <option value="number" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">NUMBER</option>
-                  <option value="text" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">SHORT TEXT</option>
-                  <option value="select" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">DROPDOWN</option>
-                  <option value="rating" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">RATING (1-5)</option>
-                </select>
+              {/* 2. OPTIONS */}
+              <div className={`p-4 rounded-2xl border shadow-sm space-y-2.5 transition-colors ${isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                }`}>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono block">
+                  OPTIONS
+                </span>
+
+                <div className="space-y-2">
+                  {/* Sort Arrows */}
+                  <div className="flex items-center justify-between gap-3 py-1">
+                    <span className="text-[11px] uppercase tracking-wider font-bold text-stone-700 dark:text-stone-300">
+                      SORT ARROWS
+                    </span>
+                    <div className={`flex items-center gap-1 p-1 rounded-xl border shrink-0 ${isDark ? 'bg-[#121211] border-white/10' : 'bg-stone-100 border-stone-300'
+                      }`}>
+                      <button
+                        type="button"
+                        onClick={() => setShowSortArrows(true)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${showSortArrows
+                            ? 'bg-[#e9762b] text-white shadow-sm font-extrabold'
+                            : 'text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                          }`}
+                      >
+                        ON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowSortArrows(false)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${!showSortArrows
+                            ? isDark
+                              ? 'bg-white/10 text-white font-extrabold'
+                              : 'bg-white text-stone-900 shadow-sm font-extrabold'
+                            : 'text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                          }`}
+                      >
+                        OFF
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Click-to-Cycle */}
+                  <div className="flex items-center justify-between gap-3 py-1">
+                    <span className="text-[11px] uppercase tracking-wider font-bold text-stone-700 dark:text-stone-300">
+                      CLICK-TO-CYCLE (YES / NO)
+                    </span>
+                    <div className={`flex items-center gap-1 p-1 rounded-xl border shrink-0 ${isDark ? 'bg-[#121211] border-white/10' : 'bg-stone-100 border-stone-300'
+                      }`}>
+                      <button
+                        type="button"
+                        onClick={() => setEnableClickToCycle(true)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${enableClickToCycle
+                            ? 'bg-[#e9762b] text-white shadow-sm font-extrabold'
+                            : 'text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                          }`}
+                      >
+                        ON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEnableClickToCycle(false)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${!enableClickToCycle
+                            ? isDark
+                              ? 'bg-white/10 text-white font-extrabold'
+                              : 'bg-white text-stone-900 shadow-sm font-extrabold'
+                            : 'text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                          }`}
+                      >
+                        OFF
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              {editingColumn.type === 'number' && (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                    UNIT (OPTIONAL)
-                  </label>
-                  <input
-                    type="text"
-                    value={editingColumn.unit}
-                    onChange={(e) =>
-                      setEditingColumn({ ...editingColumn, unit: e.target.value })
-                    }
-                    placeholder="e.g. %, marks, hrs"
-                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none"
-                  />
+              {/* 3. COLUMNS */}
+              <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                }`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono">
+                    COLUMNS
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-lg bg-orange-500/15 text-[#e9762b] border border-orange-500/30 text-[10px] font-bold uppercase tracking-wider font-mono">
+                    {table.columns.length} TOTAL
+                  </span>
                 </div>
-              )}
 
-              {editingColumn.type === 'select' && (
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                    OPTIONS (COMMA SEPARATED)
-                  </label>
-                  <input
-                    type="text"
-                    value={editingColumn.options}
-                    onChange={(e) =>
-                      setEditingColumn({ ...editingColumn, options: e.target.value })
-                    }
-                    placeholder="e.g. High, Normal, Low"
-                    className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none"
-                  />
+                <div className={`divide-y rounded-xl border overflow-hidden max-h-48 overflow-y-auto custom-scrollbar ${isDark ? 'divide-white/5 border-white/10 bg-[#121211]' : 'divide-stone-200 border-stone-200 bg-[#faf6f0]'
+                  }`}>
+                  {table.columns.map((col, idx) => {
+                    const isHidden = hiddenColumnIds.includes(col.id);
+                    return (
+                      <div
+                        key={col.id}
+                        className="flex items-center justify-between px-3 py-2.5 gap-2 hover:bg-black/5 dark:hover:bg-white/[0.02] transition"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`font-bold text-xs truncate ${isHidden ? 'line-through text-stone-400 dark:text-stone-500' : 'text-stone-900 dark:text-white'}`}>
+                            {col.name}
+                          </span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-stone-200/80 dark:bg-white/10 text-stone-500 dark:text-stone-400 uppercase font-bold">
+                            {col.type}
+                          </span>
+                          {col.unit && <span className="text-[10px] text-[#e9762b] font-bold">({col.unit})</span>}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => reorderCustomTableColumns(table.id, idx, idx - 1)}
+                            className="p-1 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-white/10 disabled:opacity-20 cursor-pointer"
+                            title="Move Up"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === table.columns.length - 1}
+                            onClick={() => reorderCustomTableColumns(table.id, idx, idx + 1)}
+                            className="p-1 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-white/10 disabled:opacity-20 cursor-pointer"
+                            title="Move Down"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleColumnVisibility(col.id)}
+                            className="p-1 rounded-lg text-stone-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/60 dark:hover:bg-white/10 cursor-pointer"
+                            title={isHidden ? 'Show' : 'Hide'}
+                          >
+                            {isHidden ? <EyeOff className="w-3.5 h-3.5 text-stone-400" /> : <Eye className="w-3.5 h-3.5 text-[#e9762b]" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Delete column "${col.name}"?`)) {
+                                deleteCustomTableColumn(table.id, col.id);
+                              }
+                            }}
+                            className="p-1 rounded-lg text-stone-400 hover:text-red-500 hover:bg-red-500/10 cursor-pointer"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
 
-              {/* Position Reordering */}
-              <div className="space-y-1.5 pt-2 border-t border-orange-950/10 dark:border-white/10">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  POSITION
-                </label>
-                <div className="grid grid-cols-2 gap-2">
+                {/* Add Column Compact Inline Form */}
+                <form onSubmit={handleAddNewColumn} className="space-y-2 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input
+                      type="text"
+                      placeholder="New column name"
+                      value={newColName}
+                      onChange={(e) => setNewColName(e.target.value)}
+                      className={`border focus:border-[#e9762b] rounded-xl px-3 py-2 text-xs focus:outline-none transition ${isDark ? 'bg-[#121211] border-white/10 text-white placeholder-stone-600' : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                        }`}
+                    />
+                    <select
+                      value={newColType}
+                      onChange={(e) => setNewColType(e.target.value as CustomTableColumnType)}
+                      className={`border focus:border-[#e9762b] rounded-xl px-3 py-2 text-xs focus:outline-none cursor-pointer transition ${isDark ? 'bg-[#121211] border-white/10 text-white' : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                        }`}
+                    >
+                      <option value="text" className={isDark ? 'bg-[#141413] text-white' : 'bg-white text-stone-900'}>Text</option>
+                      <option value="number" className={isDark ? 'bg-[#141413] text-white' : 'bg-white text-stone-900'}>Number</option>
+                      <option value="boolean" className={isDark ? 'bg-[#141413] text-white' : 'bg-white text-stone-900'}>Yes / No</option>
+                      <option value="select" className={isDark ? 'bg-[#141413] text-white' : 'bg-white text-stone-900'}>Dropdown</option>
+                      <option value="rating" className={isDark ? 'bg-[#141413] text-white' : 'bg-white text-stone-900'}>Rating (1-5)</option>
+                    </select>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Unit"
+                        value={newColUnit}
+                        onChange={(e) => setNewColUnit(e.target.value)}
+                        className={`w-full border focus:border-[#e9762b] rounded-xl px-3 py-2 text-xs focus:outline-none transition ${isDark ? 'bg-[#121211] border-white/10 text-white placeholder-stone-600' : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                          }`}
+                      />
+                      <button
+                        type="submit"
+                        disabled={!newColName.trim()}
+                        className="px-3.5 py-2 rounded-xl bg-[#e9762b] text-white font-bold text-xs uppercase hover:brightness-110 active:scale-95 transition cursor-pointer shrink-0 disabled:opacity-40"
+                        title="Add Column"
+                      >
+                        + ADD
+                      </button>
+                    </div>
+                  </div>
+                  {newColType === 'select' && (
+                    <input
+                      type="text"
+                      value={newColOptions}
+                      onChange={(e) => setNewColOptions(e.target.value)}
+                      placeholder="Options (comma separated, e.g. High, Medium, Low)"
+                      className={`w-full border focus:border-[#e9762b] rounded-xl px-3 py-2 text-xs focus:outline-none transition ${isDark ? 'bg-[#121211] border-white/10 text-white placeholder-stone-600' : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                        }`}
+                    />
+                  )}
+                </form>
+              </div>
+
+              {/* 4. DATA & ACTIONS */}
+              <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                }`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono">
+                    DATA &amp; ACTIONS
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 font-mono">
+                    {table.rows.length} {table.rows.length === 1 ? 'ROW' : 'ROWS'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <button
                     type="button"
-                    disabled={editingColumn.index === 0}
-                    onClick={() => handleMoveColumn(editingColumn.index, 'left')}
-                    className="inline-flex items-center justify-center gap-1.5 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 disabled:opacity-30 text-stone-700 dark:text-slate-300 text-xs font-bold uppercase transition cursor-pointer border border-stone-300/80 dark:border-white/10"
+                    onClick={handleExportCSV}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition cursor-pointer active:scale-95 ${isDark
+                        ? 'bg-[#121211] border-white/10 text-white hover:border-[#e9762b]'
+                        : 'bg-white border-stone-300 text-stone-800 hover:border-[#e9762b] shadow-sm'
+                      }`}
                   >
-                    <ArrowLeft className="w-3.5 h-3.5" />
-                    <span>Move Left</span>
+                    <Download className="w-3.5 h-3.5 text-[#e9762b]" />
+                    <span>EXPORT CSV</span>
                   </button>
+
                   <button
                     type="button"
-                    disabled={editingColumn.index === table.columns.length - 1}
-                    onClick={() => handleMoveColumn(editingColumn.index, 'right')}
-                    className="inline-flex items-center justify-center gap-1.5 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 disabled:opacity-30 text-stone-700 dark:text-slate-300 text-xs font-bold uppercase transition cursor-pointer border border-stone-300/80 dark:border-white/10"
+                    disabled={table.rows.length === 0}
+                    onClick={() => {
+                      if (window.confirm(`Clear all ${table.rows.length} rows in "${table.title}"?`)) {
+                        table.rows.forEach((r) => deleteCustomTableRow(table.id, r.id));
+                      }
+                    }}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${isDark
+                        ? 'bg-[#121211] border-white/10 text-stone-300 hover:text-red-400 hover:border-red-500/40'
+                        : 'bg-white border-stone-300 text-stone-700 hover:text-red-600 hover:border-red-400 shadow-sm'
+                      }`}
                   >
-                    <span>Move Right</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                    <span>CLEAR ROWS</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm(`Permanently delete table "${table.title}"?`)) {
+                        deleteCustomTable(table.id);
+                        setShowSettingsModal(false);
+                        setActiveTableId('main');
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 border border-red-500/25 text-[11px] font-bold uppercase tracking-wider transition cursor-pointer active:scale-95"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>DELETE TABLE</span>
                   </button>
                 </div>
               </div>
 
-              {/* Danger Zone: Delete Column */}
-              <div className="pt-2">
+            </div>
+
+            {/* Clean Footer */}
+            <div className={`flex items-center justify-between border-t px-5 sm:px-6 py-3.5 shrink-0 transition-colors ${isDark ? 'bg-[#141413] border-white/10' : 'bg-[#f4f0e8] border-stone-200'
+              }`}>
+              <div className="flex items-center gap-2 text-[11px] text-stone-500 dark:text-stone-400 font-mono">
+                <span className="w-2 h-2 rounded-full bg-[#e9762b]" />
+                <span className="uppercase tracking-wider font-bold text-stone-700 dark:text-stone-300">STUDYO</span>
+              </div>
+              <div className="flex items-center gap-2.5">
                 <button
                   type="button"
-                  onClick={() => handleDeleteColumn(editingColumn.id, editingColumn.name)}
-                  className="w-full inline-flex items-center justify-center gap-2 py-2 rounded-lg bg-red-500/10 text-red-500 dark:text-red-400 hover:bg-red-500/20 border border-red-500/30 text-[11px] font-bold uppercase tracking-wider transition cursor-pointer"
+                  onClick={() => setShowSettingsModal(false)}
+                  className={`px-5 py-2.5 rounded-full border text-xs font-bold uppercase tracking-wider transition cursor-pointer active:scale-95 ${isDark
+                      ? 'bg-[#1c1c1b] border-white/10 text-slate-300 hover:text-white'
+                      : 'bg-stone-200 border-stone-300 text-stone-800 hover:text-black'
+                    }`}
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete Column</span>
+                  CLOSE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (tableTitleInput.trim()) {
+                      updateCustomTable(table.id, {
+                        title: tableTitleInput.trim(),
+                        description: tableDescInput.trim() || undefined,
+                      });
+                    }
+                    setShowSettingsModal(false);
+                  }}
+                  className="px-6 py-2.5 rounded-full bg-[#e9762b] text-white text-xs font-mono font-black uppercase tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-lg shadow-orange-500/25"
+                >
+                  SAVE
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-orange-950/10 dark:border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setEditingColumn(null)}
-                  className="px-4 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white uppercase font-bold text-xs transition cursor-pointer border border-stone-300/80 dark:border-white/10"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2 rounded-lg bg-[#e9762b] text-black font-extrabold uppercase text-xs tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-md shadow-orange-500/20"
-                >
-                  Save
-                </button>
+      {/* ======================================================== */}
+      {/* 3. MODAL: NEW ENTRY MODAL (With Live Auto-Calculation)   */}
+      {/* ======================================================== */}
+      {showAddEntryModal && (
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-fadeIn"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowAddEntryModal(false); }}
+        >
+          <div
+            className="relative w-full max-w-xl max-h-[90vh] flex flex-col rounded-3xl border font-mono overflow-hidden transition-all duration-200"
+            style={{
+              backgroundColor: isDark ? 'rgba(18, 18, 17, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+              backdropFilter: 'blur(36px)',
+              WebkitBackdropFilter: 'blur(36px)',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.16)' : 'rgba(0, 0, 0, 0.12)',
+              boxShadow: isDark
+                ? '0 30px 90px -10px rgba(0,0,0,0.95), 0 0 60px -20px rgba(233,118,43,0.25)'
+                : '0 30px 80px rgba(0, 0, 0, 0.14), inset 0 1px 1px rgba(255, 255, 255, 0.95)',
+            }}
+          >
+            {/* Modal Header */}
+            <div className={`flex items-center justify-between border-b px-5 sm:px-6 py-4 shrink-0 transition-colors ${isDark ? 'bg-[#141413] border-white/10' : 'bg-[#f4f0e8] border-stone-200'
+              }`}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-[#e9762b] flex items-center justify-center border border-orange-500/40 shadow-inner">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-stone-900 dark:text-white uppercase tracking-wider">
+                    NEW ENTRY — {table.title.toUpperCase()}
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddEntryModal(false)}
+                className="p-1.5 rounded-lg hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+                title="Close modal (Esc)"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitNewEntry} className="flex flex-col flex-1 min-h-0">
+              <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-3.5 min-h-0 custom-scrollbar text-xs">
+
+                {/* 1. DATE SELECTOR */}
+                <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                  }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono">
+                      DATE
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded font-extrabold uppercase border bg-orange-500/15 text-[#e9762b] border-orange-500/30">
+                      {formatDateDisplay(newEntryDate)}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewEntryDate(todayStr)}
+                      className={`px-4 py-2 rounded-xl text-xs uppercase font-extrabold transition cursor-pointer ${newEntryDate === todayStr
+                          ? 'bg-[#e9762b] text-white shadow-md shadow-orange-500/25'
+                          : isDark
+                            ? 'bg-white/5 hover:bg-white/10 text-stone-300 border border-white/10'
+                            : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-300/80 shadow-sm'
+                        }`}
+                    >
+                      Today
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const d = new Date();
+                        d.setDate(d.getDate() - 1);
+                        setNewEntryDate(getLocalDateString(d));
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs uppercase font-extrabold transition cursor-pointer ${newEntryDate !== todayStr
+                          ? 'bg-[#e9762b] text-white shadow-md shadow-orange-500/25'
+                          : isDark
+                            ? 'bg-white/5 hover:bg-white/10 text-stone-300 border border-white/10'
+                            : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-300/80 shadow-sm'
+                        }`}
+                    >
+                      Yesterday
+                    </button>
+                    <input
+                      type="date"
+                      value={newEntryDate}
+                      onChange={(e) => setNewEntryDate(e.target.value)}
+                      className={`border focus:border-[#e9762b] rounded-xl px-3.5 py-2 text-xs focus:outline-none flex-1 min-w-[140px] font-mono font-bold cursor-pointer transition ${isDark
+                          ? 'bg-[#121211] border-white/10 text-white'
+                          : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                        }`}
+                      required
+                    />
+                  </div>
+                </div>
+
+                {/* 2. PAPER & DIFFICULTY */}
+                {(semanticCols.paperCol || semanticCols.difficultyCol) && (
+                  <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                    }`}>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono block">
+                      TEST DETAILS
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {semanticCols.paperCol && (
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider block truncate">
+                            {semanticCols.paperCol.name}
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Mock Test #1"
+                            value={newEntryValues[semanticCols.paperCol.id] ?? ''}
+                            onChange={(e) =>
+                              setNewEntryValues({
+                                ...newEntryValues,
+                                [semanticCols.paperCol!.id]: e.target.value,
+                              })
+                            }
+                            className={`w-full border focus:border-[#e9762b] rounded-xl px-3.5 py-2 text-xs focus:outline-none transition ${isDark
+                                ? 'bg-[#121211] border-white/10 text-white'
+                                : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                              }`}
+                          />
+                        </div>
+                      )}
+
+                      {semanticCols.difficultyCol && (
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider block truncate">
+                            {semanticCols.difficultyCol.name}
+                          </label>
+                          <select
+                            value={newEntryValues[semanticCols.difficultyCol.id] ?? 'Medium'}
+                            onChange={(e) =>
+                              setNewEntryValues({
+                                ...newEntryValues,
+                                [semanticCols.difficultyCol!.id]: e.target.value,
+                              })
+                            }
+                            className={`w-full border focus:border-[#e9762b] rounded-xl px-3.5 py-2 text-xs focus:outline-none cursor-pointer transition ${isDark
+                                ? 'bg-[#121211] border-white/10 text-white'
+                                : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                              }`}
+                          >
+                            {(semanticCols.difficultyCol.options || ['High', 'Medium', 'Low']).map((opt) => (
+                              <option key={opt} value={opt} className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. SCORES, TOTAL & ACCURACY */}
+                {(semanticCols.scoreCol || semanticCols.totalCol || semanticCols.accuracyCol) && (
+                  <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                    }`}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono">
+                        SCORES &amp; ACCURACY
+                      </span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-extrabold border border-emerald-500/30">
+                        LIVE CALC
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {semanticCols.scoreCol && (
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider block truncate">
+                            {semanticCols.scoreCol.name}
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="135"
+                            value={newEntryValues[semanticCols.scoreCol.id] ?? ''}
+                            onChange={(e) => {
+                              const score = Number(e.target.value);
+                              const totalKey = semanticCols.totalCol?.id || 'col_total';
+                              const accKey = semanticCols.accuracyCol?.id || 'col_accuracy';
+                              const total = Number(newEntryValues[totalKey]) || 180;
+                              const acc = total > 0 ? Number(((score / total) * 100).toFixed(1)) : 0;
+                              setNewEntryValues({
+                                ...newEntryValues,
+                                [semanticCols.scoreCol!.id]: e.target.value === '' ? '' : score,
+                                ...(semanticCols.accuracyCol ? { [accKey]: acc } : {}),
+                              });
+                            }}
+                            className={`w-full border focus:border-[#e9762b] rounded-xl px-3 py-2 font-mono text-sm font-bold text-center focus:outline-none transition ${isDark
+                                ? 'bg-[#121211] border-white/10 text-white'
+                                : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                              }`}
+                          />
+                        </div>
+                      )}
+
+                      {semanticCols.totalCol && (
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider block truncate">
+                            {semanticCols.totalCol.name}
+                          </label>
+                          <input
+                            type="number"
+                            placeholder="180"
+                            value={newEntryValues[semanticCols.totalCol.id] ?? ''}
+                            onChange={(e) => {
+                              const total = Number(e.target.value);
+                              const scoreKey = semanticCols.scoreCol?.id || 'col_score';
+                              const accKey = semanticCols.accuracyCol?.id || 'col_accuracy';
+                              const score = Number(newEntryValues[scoreKey]) || 0;
+                              const acc = total > 0 ? Number(((score / total) * 100).toFixed(1)) : 0;
+                              setNewEntryValues({
+                                ...newEntryValues,
+                                [semanticCols.totalCol!.id]: e.target.value === '' ? '' : total,
+                                ...(semanticCols.accuracyCol ? { [accKey]: acc } : {}),
+                              });
+                            }}
+                            className={`w-full border focus:border-[#e9762b] rounded-xl px-3 py-2 font-mono text-sm font-bold text-center focus:outline-none transition ${isDark
+                                ? 'bg-[#121211] border-white/10 text-white'
+                                : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                              }`}
+                          />
+                        </div>
+                      )}
+
+                      {semanticCols.accuracyCol && (
+                        <div className="space-y-1.5">
+                          <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider block truncate">
+                            {formatColumnHeader(semanticCols.accuracyCol.name, semanticCols.accuracyCol.unit)}
+                          </label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            placeholder="75.0"
+                            value={newEntryValues[semanticCols.accuracyCol.id] ?? ''}
+                            onChange={(e) =>
+                              setNewEntryValues({
+                                ...newEntryValues,
+                                [semanticCols.accuracyCol!.id]: e.target.value === '' ? '' : Number(e.target.value),
+                              })
+                            }
+                            className={`w-full border focus:border-[#e9762b] rounded-xl px-3 py-2 font-mono text-sm font-bold text-[#e9762b] text-center focus:outline-none transition ${isDark
+                                ? 'bg-[#121211] border-white/10'
+                                : 'bg-white border-stone-300 shadow-sm'
+                              }`}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. OTHER CUSTOM COLUMNS */}
+                {table.columns.filter(
+                  (c) =>
+                    c.id !== semanticCols.paperCol?.id &&
+                    c.id !== semanticCols.difficultyCol?.id &&
+                    c.id !== semanticCols.scoreCol?.id &&
+                    c.id !== semanticCols.totalCol?.id &&
+                    c.id !== semanticCols.accuracyCol?.id
+                ).length > 0 && (
+                    <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                      }`}>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono block">
+                        CUSTOM FIELDS
+                      </span>
+                      <div className="space-y-3">
+                        {table.columns
+                          .filter(
+                            (c) =>
+                              c.id !== semanticCols.paperCol?.id &&
+                              c.id !== semanticCols.difficultyCol?.id &&
+                              c.id !== semanticCols.scoreCol?.id &&
+                              c.id !== semanticCols.totalCol?.id &&
+                              c.id !== semanticCols.accuracyCol?.id
+                          )
+                          .map((col) => (
+                            <div key={col.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                              <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider truncate">
+                                {formatColumnHeader(col.name, col.unit)}
+                              </label>
+                              <div className="w-full sm:w-56 shrink-0">
+                                {col.type === 'boolean' ? (
+                                  <TriStatePillSelect
+                                    size="sm"
+                                    value={newEntryValues[col.id]}
+                                    onChange={(val) =>
+                                      setNewEntryValues({
+                                        ...newEntryValues,
+                                        [col.id]: val,
+                                      })
+                                    }
+                                  />
+                                ) : col.type === 'select' ? (
+                                  <select
+                                    value={newEntryValues[col.id] || ''}
+                                    onChange={(e) =>
+                                      setNewEntryValues({
+                                        ...newEntryValues,
+                                        [col.id]: e.target.value,
+                                      })
+                                    }
+                                    className={`w-full border focus:border-[#e9762b] rounded-xl px-3 py-2 text-xs focus:outline-none cursor-pointer transition ${isDark
+                                        ? 'bg-[#121211] border-white/10 text-white'
+                                        : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                                      }`}
+                                  >
+                                    {(col.options || []).map((opt) => (
+                                      <option key={opt} value={opt} className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>
+                                        {opt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : col.type === 'rating' ? (
+                                  <select
+                                    value={newEntryValues[col.id] ?? ''}
+                                    onChange={(e) =>
+                                      setNewEntryValues({
+                                        ...newEntryValues,
+                                        [col.id]: e.target.value === '' ? '' : Number(e.target.value),
+                                      })
+                                    }
+                                    className={`w-full border focus:border-[#e9762b] rounded-xl px-3 py-2 text-xs font-bold text-center focus:outline-none cursor-pointer transition ${isDark ? 'bg-[#121211] border-white/10 text-white' : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                                      }`}
+                                  >
+                                    <option value="" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>-- Rating --</option>
+                                    <option value="5" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>5 ★ (Mastered)</option>
+                                    <option value="4" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>4 ★ (Good)</option>
+                                    <option value="3" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>3 ★ (Average)</option>
+                                    <option value="2" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>2 ★ (Weak)</option>
+                                    <option value="1" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>1 ★ (Review)</option>
+                                  </select>
+                                ) : (
+                                  <input
+                                    type={col.type === 'number' ? 'number' : 'text'}
+                                    placeholder={col.type === 'number' ? '0' : 'Enter value...'}
+                                    value={newEntryValues[col.id] ?? ''}
+                                    onChange={(e) =>
+                                      setNewEntryValues({
+                                        ...newEntryValues,
+                                        [col.id]: col.type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value,
+                                      })
+                                    }
+                                    className={`w-full border focus:border-[#e9762b] rounded-xl px-3 py-2 text-xs focus:outline-none transition ${isDark
+                                        ? 'bg-[#121211] border-white/10 text-white'
+                                        : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                                      }`}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                {/* 5. NOTES */}
+                <div className={`p-4 rounded-2xl border shadow-sm space-y-2 transition-colors ${isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                  }`}>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono block">
+                    NOTES
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Add notes, key formulas, or milestones..."
+                    value={newEntryNotes}
+                    onChange={(e) => setNewEntryNotes(e.target.value)}
+                    className={`w-full border focus:border-[#e9762b] rounded-xl px-3.5 py-2.5 text-xs focus:outline-none transition leading-relaxed resize-none custom-scrollbar ${isDark
+                        ? 'bg-[#121211] border-white/10 text-white placeholder-stone-500'
+                        : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                      }`}
+                  />
+                </div>
+
+              </div>
+
+              {/* Sticky Modal Footer (Settings style) */}
+              <div className={`flex items-center justify-between px-6 py-3.5 border-t shrink-0 transition-colors ${isDark ? 'bg-[#141413] border-white/10' : 'bg-[#f4f0e8] border-stone-200'
+                }`}>
+                <span className="text-[11px] font-mono text-stone-500 dark:text-stone-400 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#e9762b] animate-pulse" />
+                  <span className="hidden sm:inline">STUDYO • </span>
+                  <span>{formatDateDisplay(newEntryDate)}</span>
+                </span>
+                <div className="flex items-center gap-3 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddEntryModal(false)}
+                    className={`px-5 py-2.5 rounded-full border text-xs font-bold uppercase tracking-wider transition cursor-pointer active:scale-95 ${isDark
+                        ? 'bg-[#1c1c1b] border-white/10 text-slate-300 hover:text-white'
+                        : 'bg-stone-200 border-stone-300 text-stone-800 hover:text-black'
+                      }`}
+                  >
+                    CLOSE
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-7 py-2.5 rounded-full bg-[#e9762b] text-white text-xs font-mono font-black uppercase tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-lg shadow-orange-500/25"
+                  >
+                    SAVE ENTRY
+                  </button>
+                </div>
               </div>
             </form>
           </div>

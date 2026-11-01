@@ -148,7 +148,7 @@ const HWF_CSS = `
   position: relative; width: 100%; overflow: hidden; isolation: isolate;
   background: var(--hwf-bg, transparent); color: var(--hwf-ink); -webkit-font-smoothing: antialiased;
 }
-.hwf-root canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; max-width: none; }
+.hwf-root canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; max-width: none; border: none; outline: none; }
 .hwf-top {
   position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1.25fr) repeat(auto-fit, minmax(120px, 1fr));
   gap: 24px; padding: clamp(22px, 3.4vw, 40px) clamp(20px, 3.4vw, 44px) 0;
@@ -281,8 +281,13 @@ export default function HalftoneWordmarkFooter({
       const gap = Math.max(3, o.dotGap)
       const cols = Math.ceil(w / gap)
       const rows = Math.ceil(h / gap)
+      const bottomSafetyMargin = Math.max(16, gap * 2)
       const tmp = []
       for (let gy = 0; gy < rows; gy++) {
+        const hy = gy * gap + gap / 2
+        // Never generate dots right on or past the bottom edge safety margin
+        if (hy >= h - bottomSafetyMargin) continue
+
         for (let gx = 0; gx < cols; gx++) {
           // Coverage: average alpha over a 3×3 sample of the cell.
           let sum = 0
@@ -296,7 +301,6 @@ export default function HalftoneWordmarkFooter({
           const cov = sum / (9 * 255)
           if (cov < 0.06) continue
           const hx = gx * gap + gap / 2
-          const hy = gy * gap + gap / 2
           tmp.push(hx, hy, 0, 0, hx, hy, hwfRadius(cov, gap))
         }
       }
@@ -322,8 +326,13 @@ export default function HalftoneWordmarkFooter({
 
     const draw = (now: number) => {
       const o = opts.current
+      // Always cleanly clear the physical canvas backing store to prevent subpixel edge lines
+      ctx.save()
+      ctx.resetTransform()
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.restore()
+
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      ctx.clearRect(0, 0, w, h)
       if (o.colors.background && o.colors.background !== "transparent") {
         ctx.fillStyle = o.colors.background
         ctx.fillRect(0, 0, w, h)
@@ -383,7 +392,7 @@ export default function HalftoneWordmarkFooter({
         ctx.fill()
       }
 
-      if (grainTile && o.grain > 0) {
+      if (grainTile && o.grain > 0 && o.colors.background && o.colors.background !== "transparent") {
         ctx.globalAlpha = Math.min(1, o.grain) * 0.09
         ctx.globalCompositeOperation = "overlay"
         const pattern = ctx.createPattern(grainTile, "repeat")

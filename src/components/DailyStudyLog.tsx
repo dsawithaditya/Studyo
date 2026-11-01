@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { 
-  useStudyStore, 
-  getLocalTodayDateString, 
-  ensureDailyLogsDateWise 
+import {
+  useStudyStore,
+  getLocalTodayDateString,
+  ensureDailyLogsDateWise
 } from '../store/useStudyStore';
 import { DailyLogEntry, CustomColumn, CustomColumnType, CustomTableColumnType, DefaultTableColumnKey } from '../types';
 import { ShinyButton } from './ui/shiny-button';
 import { YesNoToggle } from './ui/YesNoToggle';
-import { CustomStudyTableView } from './CustomStudyTableView';
+import { CustomStudyTableView, formatColumnHeader } from './CustomStudyTableView';
 import {
   Plus,
   Check,
@@ -35,8 +35,21 @@ import {
   EyeOff,
   RefreshCw,
   Star,
+  Search,
+  Download,
+  MoreVertical,
+  BarChart3,
+  Copy,
+  ArrowUpDown,
+  ChevronLeft,
+  Sliders,
+  LayoutGrid,
+  Columns,
+  Clock,
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
+import { TriStateBadge, TriStatePillSelect, normalizeTriState } from './ui/TriStateToggle';
+import type { TriStateStatus } from '../types';
 
 const DEFAULT_COLUMNS_CONFIG: {
   key: DefaultTableColumnKey;
@@ -45,15 +58,15 @@ const DEFAULT_COLUMNS_CONFIG: {
   title?: string;
   description: string;
 }[] = [
-  { key: 'studyHours', label: 'HOURS', minWidth: 'min-w-[78px] sm:min-w-[92px]', description: 'Study duration in hours' },
-  { key: 'attendedClass', label: 'CLASS', minWidth: 'min-w-[72px] sm:min-w-[84px]', description: 'Attended lecture/class' },
-  { key: 'pyqsSolved', label: 'PYQS', minWidth: 'min-w-[74px] sm:min-w-[86px]', description: 'Past year questions solved count' },
-  { key: 'revisionDone', label: 'REV', minWidth: 'min-w-[72px] sm:min-w-[84px]', title: 'Revision Done', description: 'Revision completed status' },
-  { key: 'mockTestTaken', label: 'MOCK', minWidth: 'min-w-[72px] sm:min-w-[84px]', title: 'Mock Test Taken', description: 'Mock exam or test taken' },
-  { key: 'sleepHours', label: 'SLEEP', minWidth: 'min-w-[74px] sm:min-w-[86px]', description: 'Sleep duration in hours' },
-  { key: 'notes', label: 'NOTES', minWidth: 'min-w-[72px] sm:min-w-[84px]', description: 'Daily summary notes' },
-  { key: 'focusRating', label: 'FOCUS', minWidth: 'min-w-[78px] sm:min-w-[92px]', description: 'Focus rating (1-5)' },
-];
+    { key: 'studyHours', label: 'HOURS', minWidth: 'min-w-[100px] sm:min-w-[120px]', description: 'Study duration in hours' },
+    { key: 'attendedClass', label: 'CLASS', minWidth: 'min-w-[96px] sm:min-w-[114px]', description: 'Attended lecture/class' },
+    { key: 'pyqsSolved', label: 'PYQS', minWidth: 'min-w-[96px] sm:min-w-[114px]', description: 'Past year questions solved count' },
+    { key: 'revisionDone', label: 'REV', minWidth: 'min-w-[96px] sm:min-w-[114px]', title: 'Revision Done', description: 'Revision completed status' },
+    { key: 'mockTestTaken', label: 'MOCK', minWidth: 'min-w-[96px] sm:min-w-[114px]', title: 'Mock Test Taken', description: 'Mock exam or test taken' },
+    { key: 'sleepHours', label: 'SLEEP', minWidth: 'min-w-[96px] sm:min-w-[114px]', description: 'Sleep duration in hours' },
+    { key: 'notes', label: 'NOTES', minWidth: 'min-w-[104px] sm:min-w-[124px]', description: 'Daily summary notes' },
+    { key: 'focusRating', label: 'FOCUS', minWidth: 'min-w-[100px] sm:min-w-[120px]', description: 'Focus rating (1-5)' },
+  ];
 
 export const DailyStudyLog: React.FC = () => {
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -81,10 +94,21 @@ export const DailyStudyLog: React.FC = () => {
     isDefaultTableDeleted = false,
     deleteDefaultTable,
     restoreDefaultTable,
+    showSortArrows = false,
+    setShowSortArrows,
+    enableClickToCycle = false,
+    setEnableClickToCycle,
+    mainTableTitle = 'Study Log',
+    setMainTableTitle,
+    mainTableDescription = 'Daily Habit, Hours & Performance Tracker',
+    setMainTableDescription,
     syncUserData,
     isSyncing,
     syncError,
+    theme,
   } = useStudyStore();
+
+  const isDark = theme !== 'light';
 
   const todayStr = getLocalTodayDateString();
   const yesterday = new Date();
@@ -117,9 +141,10 @@ export const DailyStudyLog: React.FC = () => {
     ensureTodayDailyLog();
     if (!hasMountedSyncRef.current) {
       hasMountedSyncRef.current = true;
-      const uid = useAuthStore.getState().currentUser?.id;
-      if (uid) {
-        syncUserData(uid);
+      const u = useAuthStore.getState().currentUser;
+      const s = useAuthStore.getState().session;
+      if (u?.id && u.id !== 'demo-user-1' && s?.token && s.token !== 'demo-token') {
+        syncUserData(u.id);
       }
     }
   }, [ensureTodayDailyLog, syncUserData]);
@@ -193,10 +218,10 @@ export const DailyStudyLog: React.FC = () => {
   const [showAddRowModal, setShowAddRowModal] = useState(false);
   const [addRowDate, setAddRowDate] = useState(todayStr);
   const [addRowStudyHours, setAddRowStudyHours] = useState<number | ''>('');
-  const [addRowAttendedClass, setAddRowAttendedClass] = useState<boolean>(false);
+  const [addRowAttendedClass, setAddRowAttendedClass] = useState<TriStateStatus>('na');
   const [addRowPyqs, setAddRowPyqs] = useState<number | ''>('');
-  const [addRowRevisionDone, setAddRowRevisionDone] = useState<boolean>(false);
-  const [addRowMockTest, setAddRowMockTest] = useState<boolean>(false);
+  const [addRowRevisionDone, setAddRowRevisionDone] = useState<TriStateStatus>('na');
+  const [addRowMockTest, setAddRowMockTest] = useState<TriStateStatus>('na');
   const [addRowSleepHours, setAddRowSleepHours] = useState<number | ''>('');
   const [addRowRating, setAddRowRating] = useState<number | null>(null);
   const [addRowNotes, setAddRowNotes] = useState<string>('');
@@ -214,12 +239,47 @@ export const DailyStudyLog: React.FC = () => {
 
   // Modal to manage & delete/restore columns
   const [showColumnsManagerModal, setShowColumnsManagerModal] = useState(false);
+  const [mainSettingsTab, setMainSettingsTab] = useState<'all' | 'columns' | 'meta' | 'display' | 'export' | 'danger'>('all');
+  const mainSettingsTabsRef = useRef<HTMLDivElement>(null);
+  const scrollMainSettingsTabs = (direction: 'left' | 'right') => {
+    if (mainSettingsTabsRef.current) {
+      const scrollAmount = direction === 'left' ? -180 : 180;
+      mainSettingsTabsRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+  const [mainSearchQuery, setMainSearchQuery] = useState('');
+  const mainSearchInputRef = useRef<HTMLInputElement>(null);
+  const [mainActiveActionMenuDate, setMainActiveActionMenuDate] = useState<string | null>(null);
+  const [mainSortField, setMainSortField] = useState<string>('date');
+  const [mainSortAsc, setMainSortAsc] = useState<boolean>(false);
+
+  const handleMainSort = (field: string) => {
+    if (!showSortArrows) return; // Completely OFF by default unless enabled in settings
+    if (mainSortField === field) {
+      setMainSortAsc((prev) => !prev);
+    } else {
+      setMainSortField(field);
+      setMainSortAsc(false);
+    }
+  };
+
+  // Keyboard shortcut '/' to focus search input
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        mainSearchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const activeDefaultColsCount = useMemo(() => {
     return DEFAULT_COLUMNS_CONFIG.filter((c) => !deletedDefaultColumns.includes(c.key)).length;
   }, [deletedDefaultColumns]);
 
-  const totalDefaultTableCols = 1 + activeDefaultColsCount + customColumns.length + 1; // 1 for DATE, 1 for DEL
+  const totalDefaultTableCols = 1 + activeDefaultColsCount + customColumns.length + 1; // 1 for DATE, 1 for Actions
 
   const handleCreateTable = (e: React.FormEvent) => {
     e.preventDefault();
@@ -230,10 +290,10 @@ export const DailyStudyLog: React.FC = () => {
     if (selectedTemplate === 'mock') {
       initialCols = [
         { name: 'PAPER', type: 'text' },
-        { name: 'SCORE', type: 'number' },
-        { name: 'TOTAL', type: 'number' },
+        { name: 'SCORE', type: 'number', unit: 'pts' },
+        { name: 'TOTAL', type: 'number', unit: 'pts' },
         { name: 'ACCURACY', type: 'number', unit: '%' },
-        { name: 'DIFFICULTY', type: 'select', options: ['High', 'Normal', 'Low'] },
+        { name: 'DIFFICULTY', type: 'select', options: ['High', 'Medium', 'Low'] },
         { name: 'ANALYZED', type: 'boolean' },
       ];
     } else if (selectedTemplate === 'pyq') {
@@ -275,10 +335,10 @@ export const DailyStudyLog: React.FC = () => {
   // Form State
   const [formDate, setFormDate] = useState(todayStr);
   const [studyHours, setStudyHours] = useState<number | ''>('');
-  const [attendedClass, setAttendedClass] = useState<boolean>(false);
+  const [attendedClass, setAttendedClass] = useState<TriStateStatus>('na');
   const [pyqsSolved, setPyqsSolved] = useState<number | ''>('');
-  const [revisionDone, setRevisionDone] = useState<boolean>(false);
-  const [mockTestTaken, setMockTestTaken] = useState<boolean>(false);
+  const [revisionDone, setRevisionDone] = useState<TriStateStatus>('na');
+  const [mockTestTaken, setMockTestTaken] = useState<TriStateStatus>('na');
   const [sleepHours, setSleepHours] = useState<number | ''>('');
   const [focusRating, setFocusRating] = useState<number | null>(null);
   const [notes, setNotes] = useState<string>('');
@@ -288,10 +348,10 @@ export const DailyStudyLog: React.FC = () => {
   const [accordionState, setAccordionState] = useState<{
     date: string;
     studyHours: number | '';
-    attendedClass: boolean;
+    attendedClass: TriStateStatus;
     pyqsSolved: number | '';
-    revisionDone: boolean;
-    mockTestTaken: boolean;
+    revisionDone: TriStateStatus;
+    mockTestTaken: TriStateStatus;
     sleepHours: number | '';
     focusRating: number | null;
     notes: string;
@@ -317,20 +377,20 @@ export const DailyStudyLog: React.FC = () => {
     setFormDate(d);
     if (existing) {
       setStudyHours(existing.studyHours != null && existing.studyHours > 0 ? existing.studyHours : '');
-      setAttendedClass(existing.attendedClass ?? false);
+      setAttendedClass(normalizeTriState(existing.attendedClass));
       setPyqsSolved(existing.pyqsSolved != null && existing.pyqsSolved > 0 ? existing.pyqsSolved : '');
-      setRevisionDone(existing.revisionDone ?? false);
-      setMockTestTaken(existing.mockTestTaken ?? false);
+      setRevisionDone(normalizeTriState(existing.revisionDone));
+      setMockTestTaken(normalizeTriState(existing.mockTestTaken));
       setSleepHours(existing.sleepHours != null && existing.sleepHours > 0 ? existing.sleepHours : '');
       setFocusRating(existing.focusRating && existing.focusRating > 0 ? existing.focusRating : null);
       setNotes(existing.notes || '');
       setFormCustomData({ ...(existing.customData || {}) });
     } else {
       setStudyHours('');
-      setAttendedClass(false);
+      setAttendedClass('na');
       setPyqsSolved('');
-      setRevisionDone(false);
-      setMockTestTaken(false);
+      setRevisionDone('na');
+      setMockTestTaken('na');
       setSleepHours('');
       setFocusRating(null);
       setNotes('');
@@ -352,25 +412,30 @@ export const DailyStudyLog: React.FC = () => {
     const windowHeight = window.innerHeight;
     const targetY = rect.top + window.scrollY;
 
-    // Center table vertically if it fits within screen height with padding, otherwise align to top
-    if (tableHeight < windowHeight - 90) {
-      const centerScrollY = targetY - (windowHeight - tableHeight) / 2;
-      window.scrollTo({ top: Math.max(0, centerScrollY), behavior: 'smooth' });
-    } else {
-      window.scrollTo({ top: Math.max(0, targetY - 80), behavior: 'smooth' });
-    }
+    // Center table vertically in the viewport
+    const centerScrollY =
+      tableHeight < windowHeight
+        ? targetY - (windowHeight - tableHeight) / 2
+        : targetY - 24;
+    window.scrollTo({ top: Math.max(0, centerScrollY), behavior: 'smooth' });
   };
 
-  // Smoothly scroll and center a specific row and its editing accordion in view
+  // Smoothly scroll the table to the center of the screen and ensure the row is visible inside the table
   const scrollToRowCenter = (date: string) => {
     setTimeout(() => {
+      scrollToCenterTable();
+      const container = tableContainerRef.current;
       const accordionEl = document.getElementById(`log-accordion-${date}`);
       const rowEl = document.getElementById(`log-row-${date}`);
       const target = accordionEl || rowEl;
-      if (target) {
-        target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      if (container && target && container.scrollHeight > container.clientHeight) {
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const offsetTop = targetRect.top - containerRect.top + container.scrollTop;
+        const desiredScrollTop = offsetTop - (container.clientHeight - targetRect.height) / 2;
+        container.scrollTo({ top: Math.max(0, desiredScrollTop), behavior: 'smooth' });
       }
-    }, 120);
+    }, 90);
   };
 
   // Toggle expand in place for a specific entry
@@ -378,15 +443,18 @@ export const DailyStudyLog: React.FC = () => {
     if (expandedDate === entry.date) {
       setExpandedDate(null);
       setAccordionState(null);
+      requestAnimationFrame(() => {
+        setTimeout(() => scrollToCenterTable(), 25);
+      });
     } else {
       setExpandedDate(entry.date);
       setAccordionState({
         date: entry.date,
         studyHours: entry.studyHours != null && entry.studyHours > 0 ? entry.studyHours : '',
-        attendedClass: entry.attendedClass ?? false,
+        attendedClass: normalizeTriState(entry.attendedClass),
         pyqsSolved: entry.pyqsSolved != null && entry.pyqsSolved > 0 ? entry.pyqsSolved : '',
-        revisionDone: entry.revisionDone ?? false,
-        mockTestTaken: entry.mockTestTaken ?? false,
+        revisionDone: normalizeTriState(entry.revisionDone),
+        mockTestTaken: normalizeTriState(entry.mockTestTaken),
         sleepHours: entry.sleepHours != null && entry.sleepHours > 0 ? entry.sleepHours : '',
         focusRating: entry.focusRating && entry.focusRating > 0 ? entry.focusRating : null,
         notes: entry.notes || '',
@@ -396,6 +464,9 @@ export const DailyStudyLog: React.FC = () => {
         setContainerWidth(tableContainerRef.current.clientWidth);
         tableContainerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
       }
+      requestAnimationFrame(() => {
+        setTimeout(() => scrollToCenterTable(), 25);
+      });
       scrollToRowCenter(entry.date);
     }
   };
@@ -442,9 +513,9 @@ export const DailyStudyLog: React.FC = () => {
       });
   }, [dailyLogs]);
 
-  // Filter logs based on Month/Year / Last 30 Days selection
+  // Filter logs based on Month/Year / Last 30 Days selection + Instant Search Query
   const filteredDailyLogs = useMemo(() => {
-    if (selectedMonthYear === 'all') return dailyLogs;
+    let logs = dailyLogs;
     if (selectedMonthYear === 'last30') {
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 30);
@@ -452,13 +523,157 @@ export const DailyStudyLog: React.FC = () => {
       const m = String(cutoff.getMonth() + 1).padStart(2, '0');
       const d = String(cutoff.getDate()).padStart(2, '0');
       const cutoffStr = `${y}-${m}-${d}`;
-      return dailyLogs.filter((l) => l.date >= cutoffStr && l.date <= todayStr);
+      logs = dailyLogs.filter((l) => l.date >= cutoffStr && l.date <= todayStr);
+    } else if (selectedMonthYear !== 'all') {
+      logs = dailyLogs.filter((l) => l.date.startsWith(selectedMonthYear));
     }
-    return dailyLogs.filter((l) => l.date.startsWith(selectedMonthYear));
-  }, [dailyLogs, selectedMonthYear, todayStr]);
+
+    if (mainSearchQuery.trim()) {
+      const q = mainSearchQuery.toLowerCase();
+      logs = logs.filter((l) => {
+        if (l.date.toLowerCase().includes(q)) return true;
+        if (l.notes && l.notes.toLowerCase().includes(q)) return true;
+        if (l.customData && Object.values(l.customData).some((v) => String(v).toLowerCase().includes(q))) return true;
+        return false;
+      });
+    }
+
+    // If sorting is OFF (default), keep natural chronological order (latest date first)
+    if (!showSortArrows) {
+      return [...logs].sort((a, b) => b.date.localeCompare(a.date));
+    }
+
+    return [...logs].sort((a, b) => {
+      let valA: any;
+      let valB: any;
+      if (mainSortField === 'date') {
+        valA = a.date;
+        valB = b.date;
+      } else if (mainSortField in a) {
+        valA = (a as any)[mainSortField];
+        valB = (b as any)[mainSortField];
+      } else {
+        valA = a.customData?.[mainSortField];
+        valB = b.customData?.[mainSortField];
+      }
+
+      if (valA === valB) return 0;
+      if (valA == null || valA === '') return mainSortAsc ? -1 : 1;
+      if (valB == null || valB === '') return mainSortAsc ? 1 : -1;
+
+      // Handle Boolean & TriState Status sorting
+      const isTriA = typeof valA === 'boolean' || valA === 'yes' || valA === 'no' || valA === 'na';
+      const isTriB = typeof valB === 'boolean' || valB === 'yes' || valB === 'no' || valB === 'na';
+      if (isTriA && isTriB) {
+        const score = (v: any) => {
+          const s = normalizeTriState(v);
+          return s === 'yes' ? 2 : s === 'no' ? 1 : 0;
+        };
+        return mainSortAsc ? score(valA) - score(valB) : score(valB) - score(valA);
+      }
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return mainSortAsc ? valA - valB : valB - valA;
+      }
+      return mainSortAsc
+        ? String(valA).localeCompare(String(valB))
+        : String(valB).localeCompare(String(valA));
+    });
+  }, [dailyLogs, selectedMonthYear, todayStr, mainSearchQuery, mainSortField, mainSortAsc, showSortArrows]);
 
   // Paginated/Chunked visible logs
   const visibleLogs = filteredDailyLogs.slice(0, visibleLimit);
+
+  // Summary statistics for the footer metrics bar with proper Tri-State attendance rate
+  const mainStats = useMemo(() => {
+    const total = visibleLogs.length;
+    if (total === 0) {
+      return {
+        avgHours: 0,
+        classPercent: 0,
+        avgSleep: 0,
+        totalHours: 0,
+        classBreakdown: '0 Attended • 0 Missed • 0 No Class (N/A)',
+      };
+    }
+    let hoursSum = 0;
+    let sleepSum = 0;
+    let classYes = 0;
+    let classNo = 0;
+    let classNa = 0;
+
+    visibleLogs.forEach((l) => {
+      if (l.studyHours) hoursSum += Number(l.studyHours);
+      if (l.sleepHours) sleepSum += Number(l.sleepHours);
+      const st = normalizeTriState(l.attendedClass);
+      if (st === 'yes') classYes++;
+      else if (st === 'no') classNo++;
+      else classNa++;
+    });
+
+    const scheduledDays = classYes + classNo;
+    const classPercent = scheduledDays > 0 ? Math.round((classYes / scheduledDays) * 100) : 100;
+
+    return {
+      totalHours: Number(hoursSum.toFixed(1)),
+      avgHours: Number((hoursSum / total).toFixed(1)),
+      classPercent,
+      avgSleep: Number((sleepSum / total).toFixed(1)),
+      classBreakdown: `${classYes} Attended • ${classNo} Missed • ${classNa} No Class (N/A)`,
+      classYes,
+      classNo,
+      classNa,
+    };
+  }, [visibleLogs]);
+
+  // Export Daily Logs to CSV (with formula injection & quote escaping protection)
+  const escapeCsvCell = (raw: unknown): string => {
+    const str = String(raw ?? '');
+    const safe = /^[=+\-@\t\r]/.test(str) ? `'${str}` : str;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
+
+  const handleExportCSV = () => {
+    const activeDefault = DEFAULT_COLUMNS_CONFIG.filter((c) => !deletedDefaultColumns.includes(c.key));
+    const headers = ['Date', ...activeDefault.map((c) => c.label), ...customColumns.map((c) => c.name), 'Notes'];
+    const csvLines = [headers.map(escapeCsvCell).join(',')];
+    visibleLogs.forEach((entry) => {
+      const line = [
+        escapeCsvCell(entry.date),
+        ...activeDefault.map((c) => {
+          if (c.key === 'attendedClass') {
+            const st = normalizeTriState(entry.attendedClass);
+            return escapeCsvCell(st === 'yes' ? 'YES' : st === 'no' ? 'NO' : 'N/A');
+          }
+          if (c.key === 'revisionDone') {
+            const st = normalizeTriState(entry.revisionDone);
+            return escapeCsvCell(st === 'yes' ? 'YES' : st === 'no' ? 'NO' : 'N/A');
+          }
+          if (c.key === 'mockTestTaken') {
+            const st = normalizeTriState(entry.mockTestTaken);
+            return escapeCsvCell(st === 'yes' ? 'YES' : st === 'no' ? 'NO' : 'N/A');
+          }
+          return escapeCsvCell((entry as any)[c.key] ?? '');
+        }),
+        ...customColumns.map((c) => {
+          const val = entry.customData?.[c.id];
+          if (c.type === 'boolean') {
+            const st = normalizeTriState(val);
+            return escapeCsvCell(st === 'yes' ? 'YES' : st === 'no' ? 'NO' : 'N/A');
+          }
+          return escapeCsvCell(val ?? '');
+        }),
+        escapeCsvCell(entry.notes ?? ''),
+      ];
+      csvLines.push(line.join(','));
+    });
+    const blob = new Blob([csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `studyo_study_log_export.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // Row click dispatcher: opens the form on top ONLY if enableTopForm is true; otherwise toggles inline accordion
   const handleRowClick = (entry: DailyLogEntry) => {
@@ -495,26 +710,26 @@ export const DailyStudyLog: React.FC = () => {
     const existing = dailyLogs.find((l) => l.date === d);
     if (existing) {
       setAddRowStudyHours(existing.studyHours != null && existing.studyHours > 0 ? existing.studyHours : '');
-      setAddRowAttendedClass(existing.attendedClass ?? false);
+      setAddRowAttendedClass(normalizeTriState(existing.attendedClass));
       setAddRowPyqs(existing.pyqsSolved != null && existing.pyqsSolved > 0 ? existing.pyqsSolved : '');
-      setAddRowRevisionDone(existing.revisionDone ?? false);
-      setAddRowMockTest(existing.mockTestTaken ?? false);
+      setAddRowRevisionDone(normalizeTriState(existing.revisionDone));
+      setAddRowMockTest(normalizeTriState(existing.mockTestTaken));
       setAddRowSleepHours(existing.sleepHours != null && existing.sleepHours > 0 ? existing.sleepHours : '');
       setAddRowRating(existing.focusRating && existing.focusRating > 0 ? existing.focusRating : null);
       setAddRowNotes(existing.notes || '');
       setAddRowCustomData({ ...(existing.customData || {}) });
     } else {
       setAddRowStudyHours('');
-      setAddRowAttendedClass(false);
+      setAddRowAttendedClass('na');
       setAddRowPyqs('');
-      setAddRowRevisionDone(false);
-      setAddRowMockTest(false);
+      setAddRowRevisionDone('na');
+      setAddRowMockTest('na');
       setAddRowSleepHours('');
       setAddRowRating(null);
       setAddRowNotes('');
       const initCustom: Record<string, any> = {};
       customColumns.forEach((col) => {
-        if (col.type === 'boolean') initCustom[col.id] = false;
+        if (col.type === 'boolean') initCustom[col.id] = 'na';
         else if (col.type === 'select' && col.options && col.options.length > 0) initCustom[col.id] = col.options[0];
         else initCustom[col.id] = '';
       });
@@ -529,10 +744,10 @@ export const DailyStudyLog: React.FC = () => {
     const existing = dailyLogs.find((l) => l.date === newDate);
     if (existing) {
       setAddRowStudyHours(existing.studyHours != null && existing.studyHours > 0 ? existing.studyHours : '');
-      setAddRowAttendedClass(existing.attendedClass ?? false);
+      setAddRowAttendedClass(normalizeTriState(existing.attendedClass));
       setAddRowPyqs(existing.pyqsSolved != null && existing.pyqsSolved > 0 ? existing.pyqsSolved : '');
-      setAddRowRevisionDone(existing.revisionDone ?? false);
-      setAddRowMockTest(existing.mockTestTaken ?? false);
+      setAddRowRevisionDone(normalizeTriState(existing.revisionDone));
+      setAddRowMockTest(normalizeTriState(existing.mockTestTaken));
       setAddRowSleepHours(existing.sleepHours != null && existing.sleepHours > 0 ? existing.sleepHours : '');
       setAddRowRating(existing.focusRating && existing.focusRating > 0 ? existing.focusRating : null);
       setAddRowNotes(existing.notes || '');
@@ -575,10 +790,10 @@ export const DailyStudyLog: React.FC = () => {
     const updatedEntry: DailyLogEntry = {
       date,
       studyHours: accordionState.studyHours === '' ? null : Math.max(0, Number(accordionState.studyHours)),
-      attendedClass: Boolean(accordionState.attendedClass),
+      attendedClass: accordionState.attendedClass,
       pyqsSolved: accordionState.pyqsSolved === '' ? null : Math.max(0, Number(accordionState.pyqsSolved)),
-      revisionDone: Boolean(accordionState.revisionDone),
-      mockTestTaken: Boolean(accordionState.mockTestTaken),
+      revisionDone: accordionState.revisionDone,
+      mockTestTaken: accordionState.mockTestTaken,
       sleepHours: accordionState.sleepHours === '' ? null : Math.max(0, Number(accordionState.sleepHours)),
       focusRating: accordionState.focusRating ?? null,
       notes: accordionState.notes.trim(),
@@ -648,9 +863,9 @@ export const DailyStudyLog: React.FC = () => {
     const opts =
       newColType === 'select'
         ? newColOptions
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
         : undefined;
 
     addCustomColumn({
@@ -673,9 +888,9 @@ export const DailyStudyLog: React.FC = () => {
     const opts =
       editingColumn.type === 'select'
         ? editingColumn.options
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
         : undefined;
 
     updateCustomColumn(editingColumn.id, {
@@ -714,21 +929,20 @@ export const DailyStudyLog: React.FC = () => {
   };
 
   return (
-    <div className="w-full flex flex-col space-y-6 animate-fadeIn">
+    <div className="w-full flex flex-col space-y-7 pb-[30vh] animate-fadeIn">
       {/* 0. Multi-Table Capsule Switcher Dock */}
-      <div className="flex items-center justify-between gap-3 overflow-x-auto pb-2 scrollbar-none border-b border-white/10">
-        <div className="flex items-center gap-2 overflow-x-auto py-1">
+      <div className="flex items-center justify-between gap-4 overflow-x-auto pb-3.5 scrollbar-none border-b border-white/10">
+        <div className="flex items-center gap-2.5 overflow-x-auto py-1">
           {/* Main Daily Study Log Tab */}
           <button
             type="button"
             onClick={() => setActiveTableId('main')}
-            className={`px-4 py-2 rounded-full text-xs font-mono font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${
-              activeTableId === 'main'
-                ? 'bg-[#e9762b] text-black font-extrabold shadow-md shadow-orange-500/20'
-                : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border border-stone-300/80 dark:border-white/10'
-            }`}
+            className={`px-4 sm:px-5 py-2.5 rounded-full text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${activeTableId === 'main'
+              ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.3)]'
+              : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border border-stone-300/80 dark:border-white/12'
+              }`}
           >
-            <Calendar className="w-3.5 h-3.5" />
+            <Calendar className="w-4 h-4" />
             <span>Study Log</span>
             {isDefaultTableDeleted && (
               <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-400 font-bold uppercase">
@@ -743,21 +957,13 @@ export const DailyStudyLog: React.FC = () => {
               key={tbl.id}
               type="button"
               onClick={() => setActiveTableId(tbl.id)}
-              className={`px-4 py-2 rounded-full text-xs font-mono font-bold uppercase tracking-wider transition cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${
-                activeTableId === tbl.id
-                  ? 'bg-[#e9762b] text-black font-extrabold shadow-md shadow-orange-500/20'
-                  : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border border-stone-300/80 dark:border-white/10'
-              }`}
-            >
-              <Table2 className="w-3.5 h-3.5" />
-              <span>{tbl.title}</span>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                  activeTableId === tbl.id ? 'bg-black/20 text-black font-extrabold' : 'bg-stone-200/80 dark:bg-white/10 text-stone-700 dark:text-slate-400'
+              className={`px-4 sm:px-5 py-2.5 rounded-full text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${activeTableId === tbl.id
+                ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.3)]'
+                : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border border-stone-300/80 dark:border-white/12'
                 }`}
-              >
-                {tbl.rows.length}
-              </span>
+            >
+              <Table2 className="w-4 h-4" />
+              <span>{tbl.title}</span>
             </button>
           ))}
 
@@ -770,30 +976,36 @@ export const DailyStudyLog: React.FC = () => {
               setSelectedTemplate('mock');
               setShowCreateTableModal(true);
             }}
-            className="px-3.5 py-2 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white text-xs font-mono font-bold uppercase tracking-wider transition border border-dashed border-stone-300/80 dark:border-white/20 hover:border-[#e9762b] cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95"
+            className="px-4 py-2.5 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-dashed border-stone-300/80 dark:border-white/20 hover:border-[#e9762b] cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95"
             title="Create a new custom table"
           >
-            <Plus className="w-3.5 h-3.5 text-[#e9762b]" />
+            <Plus className="w-4 h-4 text-[#e9762b]" />
             <span>Add Table</span>
           </button>
+        </div>
 
-          {/* Cloud Sync Button */}
+        {/* Right: Cloud Sync Button */}
+        <div className="flex items-center gap-2 shrink-0 py-1">
           <button
             type="button"
             onClick={() => {
               const u = useAuthStore.getState().currentUser;
-              if (u?.id) syncUserData(u.id, true);
+              const s = useAuthStore.getState().session;
+              if (u?.id && u.id !== 'demo-user-1' && s?.token && s.token !== 'demo-token') {
+                syncUserData(u.id, true);
+              } else {
+                useAuthStore.getState().setAuthModalView('login');
+              }
             }}
             disabled={isSyncing}
-            className={`px-3.5 py-2 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-xs font-mono font-bold uppercase tracking-wider transition border cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95 ${
-              isSyncing
-                ? 'opacity-70 animate-pulse text-[#e9762b] border-[#e9762b]/50'
-                : syncError
-                ? 'text-red-400 border-red-500/50 bg-red-500/10'
+            className={`px-4 py-2.5 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 border cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${isSyncing
+              ? 'opacity-70 animate-pulse text-[#e9762b] border-[#e9762b]/50'
+              : syncError
+                ? 'text-red-400 border-red-500/50 bg-red-500/10 hover:bg-red-500/20'
                 : justSynced
-                ? 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10'
-                : 'text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border-stone-300/80 dark:border-white/20 hover:border-[#e9762b]'
-            }`}
+                  ? 'text-emerald-400 border-emerald-500/50 bg-emerald-500/10'
+                  : 'text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border-stone-300/80 dark:border-white/15 hover:border-[#e9762b]'
+              }`}
             title={syncError || 'Sync study log with cloud'}
           >
             {isSyncing ? (
@@ -819,1546 +1031,1755 @@ export const DailyStudyLog: React.FC = () => {
             )}
           </button>
           {syncError && (
-            <span className="text-[10px] font-mono text-red-400 max-w-[240px] leading-tight">{syncError}</span>
+            <button
+              type="button"
+              onClick={() => useAuthStore.getState().setAuthModalView('login')}
+              className="text-[10px] font-mono text-red-400 hover:text-red-300 hover:underline max-w-[240px] leading-tight text-left cursor-pointer"
+              title="Click to sign in"
+            >
+              {syncError}
+            </button>
           )}
-
         </div>
       </div>
 
       {activeTableId !== 'main' && activeCustomTable ? (
-            <CustomStudyTableView table={activeCustomTable} />
-          ) : (
-            <>
-              {/* 3. Log an Entry (Quick Add / Edit Form) - ONLY SHOWN WHEN ENABLED VIA TOGGLE */}
-              {enableTopForm && showForm && (
-        <div
-          id="log-form-container"
-          className="w-full p-6 sm:p-8 rounded-2xl glass-panel-glow shadow-2xl space-y-6 animate-fadeIn"
-        >
-          {/* Form Top Title */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-orange-950/10 dark:border-white/10 pb-4">
-            <h2 className="text-lg font-bold text-stone-900 dark:text-white font-mono">
-              Editing – {formatDateDisplay(formDate)}
-            </h2>
-          </div>
-
-          <form onSubmit={handleSaveEntry} className="space-y-6">
-            {/* Row 1: Date Picker */}
-            <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
-              <span className="text-stone-500 dark:text-slate-400 uppercase tracking-widest font-bold">DATE</span>
-              <button
-                type="button"
-                onClick={() => handleSelectDayForForm(undefined, todayStr)}
-                className={`px-3.5 py-1.5 rounded-lg uppercase tracking-wider font-bold transition cursor-pointer ${
-                  formDate === todayStr
-                    ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/20'
-                    : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
-                }`}
-              >
-                TODAY
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSelectDayForForm(undefined, yesterdayStr)}
-                className={`px-3.5 py-1.5 rounded-lg uppercase tracking-wider font-bold transition cursor-pointer ${
-                  formDate === yesterdayStr
-                    ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/20'
-                    : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
-                }`}
-              >
-                YESTERDAY
-              </button>
-              <input
-                type="date"
-                value={formDate}
-                onChange={(e) => handleSelectDayForForm(undefined, e.target.value)}
-                className="glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
-              />
-            </div>
-
-            {/* Row 1: Numerical & Rating Fields (Study Hours, PYQs, Sleep Hours, Focus Rating) - 4 in a row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-mono">
-              {/* Study Hours */}
-              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
-                  STUDY HOURS
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    max="24"
-                    placeholder="--"
-                    value={studyHours}
-                    onChange={(e) => setStudyHours(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)))}
-                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-mono text-center font-bold focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
-                  />
-                  <span className="text-xs text-slate-400 font-bold">hrs</span>
-                </div>
+        <CustomStudyTableView table={activeCustomTable} />
+      ) : (
+        <>
+          {/* 3. Log an Entry (Quick Add / Edit Form) - ONLY SHOWN WHEN ENABLED VIA TOGGLE */}
+          {enableTopForm && showForm && (
+            <div
+              id="log-form-container"
+              className="w-full p-6 sm:p-8 rounded-2xl glass-panel-glow shadow-2xl space-y-6 animate-fadeIn"
+            >
+              {/* Form Top Title */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-orange-950/10 dark:border-white/10 pb-4">
+                <h2 className="text-lg font-bold text-stone-900 dark:text-white font-mono">
+                  Editing – {formatDateDisplay(formDate)}
+                </h2>
               </div>
 
-              {/* PYQs Solved */}
-              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
-                  PYQS SOLVED
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="0"
-                    step="1"
-                    placeholder="--"
-                    value={pyqsSolved}
-                    onChange={(e) => setPyqsSolved(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value)))}
-                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-mono text-center font-bold focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
-                  />
-                  <span className="text-xs text-slate-400 font-bold">ques</span>
-                </div>
-              </div>
-
-              {/* Sleep Hours */}
-              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
-                  SLEEP HOURS
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    max="24"
-                    placeholder="--"
-                    value={sleepHours}
-                    onChange={(e) => setSleepHours(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)))}
-                    className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-mono text-center font-bold focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
-                  />
-                  <span className="text-xs text-slate-400 font-bold">hrs</span>
-                </div>
-              </div>
-
-              {/* Focus Rating */}
-              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
-                  FOCUS ({focusRating ? `${focusRating}/5` : '--'})
-                </label>
-                <div className="grid grid-cols-5 gap-1 pt-1 w-full min-w-0">
-                  {[1, 2, 3, 4, 5].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setFocusRating(focusRating === val ? null : val)}
-                      className={`h-7 w-full min-w-0 rounded-md text-xs font-bold transition cursor-pointer flex items-center justify-center p-0 ${
-                        focusRating === val
-                          ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/30'
-                          : 'glass-pill text-stone-600 dark:text-slate-400 hover:text-black dark:hover:text-white'
+              <form onSubmit={handleSaveEntry} className="space-y-6">
+                {/* Row 1: Date Picker */}
+                <div className="flex flex-wrap items-center gap-3 text-xs font-mono">
+                  <span className="text-stone-500 dark:text-slate-400 uppercase tracking-widest font-bold">DATE</span>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectDayForForm(undefined, todayStr)}
+                    className={`px-3.5 py-1.5 rounded-lg uppercase tracking-wider font-bold transition cursor-pointer ${formDate === todayStr
+                      ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/20'
+                      : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
                       }`}
-                    >
-                      {val}
-                    </button>
-                  ))}
+                  >
+                    TODAY
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectDayForForm(undefined, yesterdayStr)}
+                    className={`px-3.5 py-1.5 rounded-lg uppercase tracking-wider font-bold transition cursor-pointer ${formDate === yesterdayStr
+                      ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/20'
+                      : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
+                      }`}
+                  >
+                    YESTERDAY
+                  </button>
+                  <input
+                    type="date"
+                    value={formDate}
+                    onChange={(e) => handleSelectDayForForm(undefined, e.target.value)}
+                    className="glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
+                  />
                 </div>
-              </div>
-            </div>
 
-            {/* Row 2: Habit Indicators (Class, Revision, Mock + Custom Yes/No Trackers) - 4 in a row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 font-mono text-xs">
-              {/* Attended Class */}
-              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
-                  ATTENDED CLASS?
-                </label>
-                <YesNoToggle
-                  size="sm"
-                  value={attendedClass}
-                  onChange={setAttendedClass}
-                />
-              </div>
-
-              {/* Revision Done */}
-              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
-                  REVISION DONE?
-                </label>
-                <YesNoToggle
-                  size="sm"
-                  value={revisionDone}
-                  onChange={setRevisionDone}
-                />
-              </div>
-
-              {/* Mock Test Taken */}
-              <div className="space-y-1.5 glass-panel p-3 rounded-xl">
-                <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
-                  MOCK TEST?
-                </label>
-                <YesNoToggle
-                  size="sm"
-                  value={mockTestTaken}
-                  onChange={setMockTestTaken}
-                />
-              </div>
-
-              {/* Custom Yes/No Trackers in Top Form */}
-              {customColumns
-                .filter((col) => col.type === 'boolean')
-                .map((col) => (
-                  <div key={col.id} className="space-y-1.5 glass-panel p-3 rounded-xl">
+                {/* Row 1: Numerical & Rating Fields (Study Hours, PYQs, Sleep Hours, Focus Rating) - 4 in a row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-mono">
+                  {/* Study Hours */}
+                  <div className="space-y-1.5 glass-panel p-3 rounded-xl">
                     <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
-                      {col.name.toUpperCase()}?
+                      STUDY HOURS
                     </label>
-                    <YesNoToggle
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="24"
+                        placeholder="--"
+                        value={studyHours}
+                        onChange={(e) => setStudyHours(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)))}
+                        className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-mono text-center font-bold focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
+                      />
+                      <span className="text-xs text-slate-400 font-bold">hrs</span>
+                    </div>
+                  </div>
+
+                  {/* PYQs Solved */}
+                  <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                    <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
+                      PYQS SOLVED
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        placeholder="--"
+                        value={pyqsSolved}
+                        onChange={(e) => setPyqsSolved(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value)))}
+                        className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-mono text-center font-bold focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
+                      />
+                      <span className="text-xs text-slate-400 font-bold">ques</span>
+                    </div>
+                  </div>
+
+                  {/* Sleep Hours */}
+                  <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                    <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
+                      SLEEP HOURS
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="24"
+                        placeholder="--"
+                        value={sleepHours}
+                        onChange={(e) => setSleepHours(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)))}
+                        className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-mono text-center font-bold focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
+                      />
+                      <span className="text-xs text-slate-400 font-bold">hrs</span>
+                    </div>
+                  </div>
+
+                  {/* Focus Rating */}
+                  <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                    <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
+                      FOCUS ({focusRating ? `${focusRating}/5` : '--'})
+                    </label>
+                    <div className="grid grid-cols-5 gap-1 pt-1 w-full min-w-0">
+                      {[1, 2, 3, 4, 5].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setFocusRating(focusRating === val ? null : val)}
+                          className={`h-7 w-full min-w-0 rounded-md text-xs font-bold transition cursor-pointer flex items-center justify-center p-0 ${focusRating === val
+                            ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/30'
+                            : 'glass-pill text-stone-600 dark:text-slate-400 hover:text-black dark:hover:text-white'
+                            }`}
+                        >
+                          {val}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Row 2: Habit Indicators (Class, Revision, Mock + Custom Tri-State Trackers) - 4 in a row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 font-mono text-xs">
+                  {/* Attended Class */}
+                  <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                    <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
+                      ATTENDED CLASS?
+                    </label>
+                    <TriStatePillSelect
                       size="sm"
-                      value={Boolean(formCustomData[col.id])}
-                      onChange={(val: boolean) =>
-                        setFormCustomData({ ...formCustomData, [col.id]: val })
-                      }
+                      value={attendedClass}
+                      onChange={setAttendedClass}
                     />
                   </div>
-                ))}
 
-              {/* Quick Add Custom Habit/Tracker in 4th slot if no boolean columns exist */}
-              {customColumns.filter((col) => col.type === 'boolean').length === 0 && (
-                <div className="space-y-1.5 glass-panel p-3 rounded-xl flex flex-col justify-between border border-dashed border-stone-300 dark:border-white/20 hover:border-[#e9762b] dark:hover:border-[#e9762b] transition-all">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-500 dark:text-slate-400 block font-bold truncate">
-                    CUSTOM TRACKER
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewColType('boolean');
-                      setShowAddColumnModal(true);
-                    }}
-                    className="w-full h-8 rounded-lg bg-orange-500/10 hover:bg-[#e9762b] text-[#e9762b] hover:text-black font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
-                    title="Add a custom Yes/No tracker column"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>+ TRACKER</span>
-                  </button>
-                </div>
-              )}
-            </div>
+                  {/* Revision Done */}
+                  <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                    <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
+                      REVISION DONE?
+                    </label>
+                    <TriStatePillSelect
+                      size="sm"
+                      value={revisionDone}
+                      onChange={setRevisionDone}
+                    />
+                  </div>
 
-            {/* Row 3: Notes */}
-            <div className="space-y-1.5 font-mono">
-              <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold">
-                NOTES &amp; OBSERVATIONS <span className="opacity-60">(optional)</span>
-              </label>
-              <input
-                id="log-form-notes"
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Anything worth remembering about today..."
-                className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
-              />
-            </div>
+                  {/* Mock Test Taken */}
+                  <div className="space-y-1.5 glass-panel p-3 rounded-xl">
+                    <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
+                      MOCK TEST?
+                    </label>
+                    <TriStatePillSelect
+                      size="sm"
+                      value={mockTestTaken}
+                      onChange={setMockTestTaken}
+                    />
+                  </div>
 
-            {/* Row 4: Additional Custom Trackers (Numbers, Select, Text) */}
-            {customColumns.some((col) => col.type !== 'boolean') && (
-              <div className="space-y-3 pt-3 border-t border-white/10 font-mono">
-                <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
-                  ADDITIONAL CUSTOM TRACKERS
-                </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                  {/* Custom Tri-State Trackers in Top Form */}
                   {customColumns
-                    .filter((col) => col.type !== 'boolean')
+                    .filter((col) => col.type === 'boolean')
                     .map((col) => (
                       <div key={col.id} className="space-y-1.5 glass-panel p-3 rounded-xl">
-                        <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
-                          {col.name}
+                        <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold truncate">
+                          {col.name.toUpperCase()}?
                         </label>
-                        {col.type === 'number' && (
-                          <input
-                            type="number"
-                            step="any"
-                            value={formCustomData[col.id] ?? ''}
-                            onChange={(e) =>
-                              setFormCustomData({
-                                ...formCustomData,
-                                [col.id]: e.target.value === '' ? '' : Number(e.target.value),
-                              })
-                            }
-                            placeholder="Enter number..."
-                            className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#e9762b]"
-                          />
-                        )}
-                        {col.type === 'text' && (
-                          <input
-                            type="text"
-                            value={formCustomData[col.id] ?? ''}
-                            onChange={(e) =>
-                              setFormCustomData({ ...formCustomData, [col.id]: e.target.value })
-                            }
-                            placeholder="Enter text..."
-                            className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#e9762b]"
-                          />
-                        )}
-                        {col.type === 'select' && (
-                          <select
-                            value={formCustomData[col.id] ?? ''}
-                            onChange={(e) =>
-                              setFormCustomData({ ...formCustomData, [col.id]: e.target.value })
-                            }
-                            className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-[#e9762b] cursor-pointer"
-                          >
-                            <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
-                              -- Select --
-                            </option>
-                            {(col.options || []).map((opt) => (
-                              <option key={opt} value={opt} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
-                        )}
+                        <TriStatePillSelect
+                          size="sm"
+                          value={formCustomData[col.id]}
+                          onChange={(val) =>
+                            setFormCustomData({ ...formCustomData, [col.id]: val })
+                          }
+                        />
                       </div>
                     ))}
+
+                  {/* Quick Add Custom Habit/Tracker in 4th slot if no boolean columns exist */}
+                  {customColumns.filter((col) => col.type === 'boolean').length === 0 && (
+                    <div className="space-y-1.5 glass-panel p-3 rounded-xl flex flex-col justify-between border border-dashed border-stone-300 dark:border-white/20 hover:border-[#e9762b] dark:hover:border-[#e9762b] transition-all">
+                      <label className="text-[10px] uppercase tracking-widest text-stone-500 dark:text-slate-400 block font-bold truncate">
+                        CUSTOM TRACKER
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewColType('boolean');
+                          setShowAddColumnModal(true);
+                        }}
+                        className="w-full h-8 rounded-lg bg-orange-500/10 hover:bg-[#e9762b] text-[#e9762b] hover:text-black font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                        title="Add a custom Yes/No/NA tracker column"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>ADD TRACKER</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
 
-            {/* Form Action Buttons */}
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="px-5 py-2.5 rounded-full bg-stone-200/90 hover:bg-stone-300 dark:bg-[#141413] dark:hover:bg-[#1f1f1e] border border-stone-300/80 dark:border-white/10 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white text-xs uppercase font-bold tracking-wider transition cursor-pointer shadow-sm"
-              >
-                Cancel
-              </button>
-              <ShinyButton
-                type="submit"
-                label="Save"
-                className="!px-7 !py-2.5 !text-xs !font-mono !font-extrabold !uppercase !tracking-wider active:scale-95 transition"
-              />
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* 4. Study Log Table Section */}
-      <div className="space-y-4">
-        {isDefaultTableDeleted ? (
-          <div className="w-full p-8 sm:p-12 rounded-2xl glass-panel text-center space-y-4 border border-dashed border-red-500/40 animate-fadeIn">
-            <div className="w-14 h-14 rounded-2xl bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center mx-auto shadow-inner">
-              <Trash2 className="w-7 h-7" />
-            </div>
-            <div className="space-y-1">
-              <h2 className="text-xl sm:text-2xl font-bold font-mono text-stone-900 dark:text-white uppercase tracking-tight">
-                Default Study Log Table Deleted
-              </h2>
-              <p className="text-xs sm:text-sm font-mono text-stone-600 dark:text-slate-400 max-w-md mx-auto">
-                This table is hidden. All your previous logs remain safely saved in your account and can be restored anytime.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={restoreDefaultTable}
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#e9762b] text-black font-mono font-bold text-xs uppercase tracking-wider hover:brightness-110 transition shadow-lg shadow-orange-500/20 active:scale-95 cursor-pointer"
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>Restore Study Log Table</span>
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* Table Top Controls */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 font-mono pb-4 border-b border-white/10">
-              <div className="select-none flex items-center gap-3">
-                <div 
-                  onClick={scrollToCenterTable}
-                  className="cursor-pointer group/title"
-                  title="Click to center table on screen"
-                >
-                  <h1 className="text-3xl sm:text-4xl font-extrabold text-stone-900 dark:text-white group-hover/title:text-[#e9762b] transition tracking-tight uppercase font-mono">
-                    Study Log
-                  </h1>
+                {/* Row 3: Notes */}
+                <div className="space-y-1.5 font-mono">
+                  <label className="text-[10px] uppercase tracking-widest text-slate-400 block font-bold">
+                    NOTES &amp; OBSERVATIONS <span className="opacity-60">(optional)</span>
+                  </label>
+                  <input
+                    id="log-form-notes"
+                    type="text"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Anything worth remembering about today..."
+                    className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
+                  />
                 </div>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (window.confirm('Delete the default Study Log table? (You can restore it anytime)')) {
-                      deleteDefaultTable();
-                    }
-                  }}
-                  className="p-1.5 rounded-lg glass-pill hover:bg-red-500/20 text-stone-400 hover:text-red-400 border border-stone-300/40 dark:border-white/10 transition cursor-pointer"
-                  title="Delete default Study Log table"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
 
-              <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm">
-                {/* Toggle to enable/disable Top Edit Form */}
-                <div className="flex items-center gap-2.5 border-magic-bar px-4 py-2 rounded-full select-none">
-                  <span className="text-xs uppercase tracking-wider text-slate-400 font-bold font-mono">
-                    EDIT FORM:
-                  </span>
+                {/* Row 4: Additional Custom Trackers (Numbers, Select, Text) */}
+                {customColumns.some((col) => col.type !== 'boolean') && (
+                  <div className="space-y-3 pt-3 border-t border-white/10 font-mono">
+                    <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
+                      ADDITIONAL CUSTOM TRACKERS
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                      {customColumns
+                        .filter((col) => col.type !== 'boolean')
+                        .map((col) => (
+                          <div key={col.id} className="space-y-1.5 glass-panel p-3 rounded-xl">
+                            <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
+                              {col.name}
+                            </label>
+                            {col.type === 'number' && (
+                              <input
+                                type="number"
+                                step="any"
+                                value={formCustomData[col.id] ?? ''}
+                                onChange={(e) =>
+                                  setFormCustomData({
+                                    ...formCustomData,
+                                    [col.id]: e.target.value === '' ? '' : Number(e.target.value),
+                                  })
+                                }
+                                placeholder="Enter number..."
+                                className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#e9762b]"
+                              />
+                            )}
+                            {col.type === 'text' && (
+                              <input
+                                type="text"
+                                value={formCustomData[col.id] ?? ''}
+                                onChange={(e) =>
+                                  setFormCustomData({ ...formCustomData, [col.id]: e.target.value })
+                                }
+                                placeholder="Enter text..."
+                                className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#e9762b]"
+                              />
+                            )}
+                            {col.type === 'select' && (
+                              <select
+                                value={formCustomData[col.id] ?? ''}
+                                onChange={(e) =>
+                                  setFormCustomData({ ...formCustomData, [col.id]: e.target.value })
+                                }
+                                className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none focus:border-[#e9762b] cursor-pointer"
+                              >
+                                <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
+                                  -- Select --
+                                </option>
+                                {(col.options || []).map((opt) => (
+                                  <option key={opt} value={opt} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
+                                    {opt}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            {col.type === 'rating' && (
+                              <select
+                                value={formCustomData[col.id] ?? ''}
+                                onChange={(e) =>
+                                  setFormCustomData({
+                                    ...formCustomData,
+                                    [col.id]: e.target.value === '' ? '' : Number(e.target.value),
+                                  })
+                                }
+                                className="w-full glass-input rounded-xl px-3 py-1.5 text-xs text-stone-900 dark:text-white font-bold text-center focus:outline-none focus:border-[#e9762b] cursor-pointer"
+                              >
+                                <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">-- Rating --</option>
+                                <option value="5" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">5/5 (Mastered)</option>
+                                <option value="4" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">4/5 (Good)</option>
+                                <option value="3" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">3/5 (Average)</option>
+                                <option value="2" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">2/5 (Weak)</option>
+                                <option value="1" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">1/5 (Need Review)</option>
+                              </select>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Form Action Buttons */}
+                <div className="flex items-center justify-end gap-3 pt-2">
                   <button
                     type="button"
-                    role="switch"
-                    aria-checked={enableTopForm}
-                    onClick={() => {
-                      const next = !enableTopForm;
-                      setEnableTopForm(next);
-                      if (next) {
-                        setShowForm(true);
-                        handleSelectDayForForm(undefined, formDate || todayStr);
-                      } else {
-                        setShowForm(false);
-                      }
-                    }}
-                    className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
-                      enableTopForm
-                        ? 'bg-[#e9762b] shadow-[0_0_10px_rgba(233,118,43,0.4)]'
-                        : 'bg-[#e0d2c4] dark:bg-[#252524] border border-orange-950/15 dark:border-white/10'
-                    }`}
-                    title={enableTopForm ? 'Click to disable Top Edit Form' : 'Click to enable Top Edit Form'}
+                    onClick={() => setShowForm(false)}
+                    className="px-5 py-2.5 rounded-full bg-stone-200/90 hover:bg-stone-300 dark:bg-[#141413] dark:hover:bg-[#1f1f1e] border border-stone-300/80 dark:border-white/10 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white text-xs uppercase font-bold tracking-wider transition cursor-pointer shadow-sm"
                   >
-                    <span
-                      className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-md transition-transform ${
-                        enableTopForm ? 'translate-x-4' : 'translate-x-1'
-                      }`}
-                    />
+                    Cancel
                   </button>
-                  <span className={`text-xs font-mono font-bold uppercase ${enableTopForm ? 'text-[#e9762b]' : 'text-stone-600 dark:text-slate-500'}`}>
-                    {enableTopForm ? 'ON' : 'OFF'}
-                  </span>
+                  <ShinyButton
+                    type="submit"
+                    label="Save"
+                    className="!px-7 !py-2.5 !text-xs !font-mono !font-extrabold !uppercase !tracking-wider active:scale-95 transition"
+                  />
                 </div>
+              </form>
+            </div>
+          )}
 
-                {/* Month / Year Filter Dropdown */}
-                <div className="flex items-center gap-2 border-magic-bar px-4 py-2 rounded-full">
-                  <span className="text-xs uppercase tracking-wider text-slate-400 font-bold">
-                    MONTH:
-                  </span>
-                  <select
-                    value={selectedMonthYear}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSelectedMonthYear(val);
-                      setVisibleLimit(val === 'last30' ? 30 : 20);
-                    }}
-                    className="bg-transparent text-xs sm:text-sm text-slate-800 dark:text-white focus:outline-none font-bold uppercase cursor-pointer font-mono"
-                  >
-                    <option value="all" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">ALL MONTHS</option>
-                    <option value="last30" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">LAST 30 DAYS</option>
-                    {availableMonths.map((m) => (
-                      <option key={m.value} value={m.value} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
-                        {m.label.toUpperCase()}
-                      </option>
-                    ))}
-                  </select>
+          {/* 4. Study Log Table Section */}
+          <div className="space-y-4">
+            {isDefaultTableDeleted ? (
+              <div className="w-full p-8 sm:p-12 rounded-2xl glass-panel text-center space-y-4 border border-dashed border-red-500/40 animate-fadeIn">
+                <div className="w-14 h-14 rounded-2xl bg-red-500/10 text-red-400 border border-red-500/20 flex items-center justify-center mx-auto shadow-inner">
+                  <Trash2 className="w-7 h-7" />
                 </div>
-
-                {/* + ROW Button */}
+                <div className="space-y-1">
+                  <h2 className="text-xl sm:text-2xl font-bold font-mono text-stone-900 dark:text-white uppercase tracking-tight">
+                    Default Study Log Table Deleted
+                  </h2>
+                  <p className="text-xs sm:text-sm font-mono text-stone-600 dark:text-slate-400 max-w-md mx-auto">
+                    This table is hidden. All your previous logs remain safely saved in your account and can be restored anytime.
+                  </p>
+                </div>
                 <button
                   type="button"
-                  onClick={() => handleOpenAddRowModal(todayStr)}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full glass-pill hover:bg-[#e9762b] text-stone-700 dark:text-slate-200 hover:text-black text-xs font-bold uppercase tracking-wider transition border border-orange-950/15 dark:border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm font-mono active:scale-95"
-                  title="Add a date row (today or any past date)"
+                  onClick={restoreDefaultTable}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-full bg-[#e9762b] text-black font-mono font-bold text-xs uppercase tracking-wider hover:brightness-110 transition shadow-lg shadow-orange-500/20 active:scale-95 cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>ROW</span>
-                </button>
-
-                {/* + COLUMN Button at top right */}
-                <button
-                  type="button"
-                  onClick={() => setShowAddColumnModal(true)}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full glass-pill hover:bg-[#e9762b] text-slate-200 hover:text-black text-xs font-bold uppercase tracking-wider transition border border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm font-mono active:scale-95"
-                  title="Add a custom column"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>COLUMN</span>
-                </button>
-
-                {/* COLUMNS Manager Button */}
-                <button
-                  type="button"
-                  onClick={() => setShowColumnsManagerModal(true)}
-                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-700 dark:text-slate-200 text-xs font-bold uppercase tracking-wider transition border border-stone-300/80 dark:border-white/10 hover:border-[#e9762b] cursor-pointer shadow-sm font-mono active:scale-95"
-                  title="Manage columns (delete/restore default & custom columns)"
-                >
-                  <Settings2 className="w-3.5 h-3.5 text-[#e9762b]" />
-                  <span>COLUMNS</span>
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Restore Study Log Table</span>
                 </button>
               </div>
-            </div>
+            ) : (
+              <>
+                {/* Clean Modern Single-Line Top Toolbar */}
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 font-mono pb-5 border-b border-white/10">
+                  {/* Left Side: Title, Entries Pill, Subtitle */}
+                  <div className="flex flex-col gap-1.5 select-none">
+                    <div className="flex items-center gap-3.5">
+                      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-stone-900 dark:text-white uppercase tracking-tight font-mono">
+                        {mainTableTitle || 'Study Log'}
+                      </h1>
+                      <span className="px-3 py-1 rounded-full text-xs font-mono font-extrabold tracking-wider bg-orange-500/15 text-[#e9762b] border border-orange-500/35 uppercase shadow-sm">
+                        {filteredDailyLogs.length} {filteredDailyLogs.length === 1 ? 'ENTRY' : 'ENTRIES'}
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm text-stone-500 dark:text-slate-400 font-mono tracking-tight">
+                      {mainTableDescription || 'Daily Habit, Hours & Performance Tracker'}
+                    </p>
+                  </div>
 
-            {/* Table Container with Sticky Horizontal & Vertical Scroll */}
-            <div ref={tableSectionRef} className="w-full rounded-2xl glass-panel overflow-hidden font-mono shadow-2xl scroll-mt-24">
-              <div ref={tableContainerRef} className="overflow-x-auto max-h-[80vh] overflow-y-auto relative scrollbar-thin scrollbar-thumb-white/20">
-                <table className="w-full min-w-full text-left text-xs sm:text-sm border-separate border-spacing-0">
-                  {/* Sticky Top Header */}
-                  <thead 
-                    onClick={scrollToCenterTable}
-                    className="sticky top-0 z-40 glass-table-header cursor-pointer select-none"
-                    title="Click table bar to center table on screen"
-                  >
-                    <tr className="text-xs text-stone-800 dark:text-slate-200 uppercase tracking-widest font-bold">
-                      {/* Sticky Date Column Header */}
-                      <th 
-                        onClick={scrollToCenterTable}
-                        className="py-3.5 px-3 sm:px-4 font-bold sticky left-0 top-0 z-50 glass-sticky-th border-r border-white/12 min-w-[110px] w-[110px] sm:min-w-[125px] sm:w-[125px] cursor-pointer"
-                        title="Click date column to center table on screen"
-                      >
-                        DATE
-                      </th>
-
-                      {/* Dynamic Default Columns */}
-                      {DEFAULT_COLUMNS_CONFIG.map((col) => {
-                        if (deletedDefaultColumns.includes(col.key)) return null;
-                        return (
-                          <th
-                            key={col.key}
-                            className={`py-3.5 px-2.5 sm:px-3.5 font-bold text-center sticky top-0 z-40 ${col.minWidth} group/col`}
-                            title={col.title || col.description}
-                          >
-                            <div className="flex items-center justify-center gap-1">
-                              <span>{col.label}</span>
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (window.confirm(`Delete "${col.label}" column from table?`)) {
-                                    deleteDefaultColumn(col.key);
-                                  }
-                                }}
-                                className="opacity-0 group-hover/col:opacity-100 hover:text-red-400 p-0.5 rounded transition cursor-pointer text-stone-400"
-                                title={`Delete ${col.label} column`}
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </th>
-                        );
-                      })}
-
-                      {/* Dynamic Custom Column Headers */}
-                      {customColumns.map((col, idx) => (
-                        <th
-                          key={col.id}
-                          className="py-3.5 px-3 sm:px-4 font-bold text-center whitespace-nowrap sticky top-0 z-40 min-w-[100px] sm:min-w-[120px] max-w-[160px] group/customcol"
-                        >
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingColumn({
-                                  id: col.id,
-                                  name: col.name,
-                                  type: col.type,
-                                  options: (col.options || []).join(', '),
-                                  index: idx,
-                                });
-                              }}
-                              className="text-xs uppercase tracking-wider font-bold text-stone-800 dark:text-slate-200 hover:text-[#e9762b] truncate max-w-[110px] cursor-pointer transition select-none font-mono"
-                              title={`Click to edit "${col.name}" column`}
-                            >
-                              {col.name}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (window.confirm(`Delete column "${col.name}"?`)) {
-                                  deleteCustomColumn(col.id);
-                                }
-                              }}
-                              className="opacity-0 group-hover/customcol:opacity-100 hover:text-red-400 p-0.5 rounded transition cursor-pointer text-stone-400"
-                              title={`Delete ${col.name} column`}
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </th>
-                      ))}
-
-                      {/* DEL Column Header */}
-                      <th className="py-3.5 px-2 font-bold text-center sticky top-0 z-40 min-w-[50px] w-[50px] text-stone-500 rounded-tr-xl">
-                        DEL
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5">
-                    {visibleLogs.length === 0 ? (
-                      <tr>
-                        <td
-                          colSpan={totalDefaultTableCols}
-                          className="py-12 text-center text-stone-500 dark:text-slate-400 font-mono text-xs"
-                    >
-                      <div className="flex flex-col items-center justify-center space-y-3">
-                        <Calendar className="w-8 h-8 text-[#e9762b] opacity-60" />
-                        <p>No log entries found for this period.</p>
-                        <button
-                          type="button"
-                          onClick={() => handleOpenAddRowModal(todayStr)}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#e9762b] text-black text-xs font-bold uppercase tracking-wider hover:brightness-110 transition shadow-md shadow-orange-500/20 cursor-pointer active:scale-95"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Add Date Row</span>
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ) : (
-                  visibleLogs.map((entry, idx) => {
-                  const isExpanded = expandedDate === entry.date;
-                  const hasNote = Boolean(entry.notes && entry.notes.trim().length > 0);
-                  return (
-                    <React.Fragment key={entry.date}>
-                      <tr
-                        id={`log-row-${entry.date}`}
-                        className={`hover:bg-white/[0.04] transition group/row ${
-                          isExpanded ? 'bg-white/[0.04]' : ''
-                        }`}
-                      >
-                        {/* Pinned / Sticky Date Column - Click to open details & edit */}
-                        <td
-                          onClick={() => handleToggleExpand(entry)}
-                          className={`py-3 sm:py-3.5 px-3 sm:px-4 whitespace-nowrap sticky left-0 z-20 glass-sticky-col-cell border-r border-black/10 dark:border-white/10 min-w-[110px] w-[110px] sm:min-w-[125px] sm:w-[125px] cursor-pointer ${
-                            isExpanded ? '!bg-amber-500/15 dark:!bg-[#1a1a18]' : ''
-                          }`}
-                          title="Click date to open details & edit"
-                        >
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleToggleExpand(entry);
-                              }}
-                              className={`inline-flex items-center justify-center px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer select-none font-mono ${
-                                isExpanded
-                                  ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/20'
-                                  : 'text-[#e9762b] bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 hover:border-orange-500/50'
-                              }`}
-                              title="Click date to open details & edit"
-                            >
-                              <span>{formatDateDisplay(entry.date)}</span>
-                            </button>
-                          </div>
-                        </td>
-
-                        {/* Study Hours Column */}
-                        {!deletedDefaultColumns.includes('studyHours') && (
-                          <td className="py-3 sm:py-3.5 px-3 sm:px-4 text-center min-w-[78px] sm:min-w-[92px]">
-                            {entry.studyHours != null && Number(entry.studyHours) > 0 ? (
-                              <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">{entry.studyHours}h</span>
-                            ) : (
-                              <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
-                            )}
-                          </td>
-                        )}
-
-                        {/* Class Attended Pill */}
-                        {!deletedDefaultColumns.includes('attendedClass') && (
-                          <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
-                            <button
-                              type="button"
-                              disabled={!enableTopForm}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!enableTopForm) return;
-                                updateDailyLogField(entry.date, 'attendedClass', !entry.attendedClass);
-                              }}
-                              className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
-                                enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
-                              } ${
-                                entry.attendedClass
-                                  ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
-                                  : enableTopForm
-                                    ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
-                                    : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
-                              }`}
-                              title={enableTopForm ? "Click to toggle Class Attended" : "Enable 'EDIT FORM' switch or click date button to edit"}
-                            >
-                              {entry.attendedClass ? 'YES' : 'NO'}
-                            </button>
-                          </td>
-                        )}
-
-                        {/* PYQs Solved */}
-                        {!deletedDefaultColumns.includes('pyqsSolved') && (
-                          <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[74px] sm:min-w-[86px]">
-                            {entry.pyqsSolved != null && Number(entry.pyqsSolved) > 0 ? (
-                              <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">{entry.pyqsSolved}</span>
-                            ) : (
-                              <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
-                            )}
-                          </td>
-                        )}
-
-                        {/* Revision Done Pill */}
-                        {!deletedDefaultColumns.includes('revisionDone') && (
-                          <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
-                            <button
-                              type="button"
-                              disabled={!enableTopForm}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!enableTopForm) return;
-                                updateDailyLogField(entry.date, 'revisionDone', !entry.revisionDone);
-                              }}
-                              className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
-                                enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
-                              } ${
-                                entry.revisionDone
-                                  ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
-                                  : enableTopForm
-                                    ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
-                                    : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
-                              }`}
-                              title={enableTopForm ? "Click to toggle Revision Done" : "Enable 'EDIT FORM' switch or click date button to edit"}
-                            >
-                              {entry.revisionDone ? 'YES' : 'NO'}
-                            </button>
-                          </td>
-                        )}
-
-                        {/* Mock Test Taken Pill */}
-                        {!deletedDefaultColumns.includes('mockTestTaken') && (
-                          <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
-                            <button
-                              type="button"
-                              disabled={!enableTopForm}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (!enableTopForm) return;
-                                updateDailyLogField(entry.date, 'mockTestTaken', !entry.mockTestTaken);
-                              }}
-                              className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
-                                enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
-                              } ${
-                                entry.mockTestTaken
-                                  ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
-                                  : enableTopForm
-                                    ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
-                                    : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
-                              }`}
-                              title={enableTopForm ? "Click to toggle Mock Test Taken" : "Enable 'EDIT FORM' switch or click date button to edit"}
-                            >
-                              {entry.mockTestTaken ? 'YES' : 'NO'}
-                            </button>
-                          </td>
-                        )}
-
-                        {/* Sleep Hours */}
-                        {!deletedDefaultColumns.includes('sleepHours') && (
-                          <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[74px] sm:min-w-[86px]">
-                            {entry.sleepHours != null && Number(entry.sleepHours) > 0 ? (
-                              <span className="text-stone-900 dark:text-white font-mono font-bold text-xs sm:text-sm">{entry.sleepHours}h</span>
-                            ) : (
-                              <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
-                            )}
-                          </td>
-                        )}
-
-                        {/* Notes Column with Rich Tooltip (no icon) */}
-                        {!deletedDefaultColumns.includes('notes') && (
-                          <td className="py-3 sm:py-3.5 px-2.5 sm:px-3.5 text-center min-w-[72px] sm:min-w-[84px]">
-                            {hasNote ? (
-                              <div className="relative inline-flex items-center justify-center group/note">
-                                <span className="inline-block px-2.5 py-0.5 rounded text-[11px] font-bold text-orange-950 dark:text-[#e9762b] bg-orange-500/20 dark:bg-orange-500/15 border border-orange-500/40 dark:border-orange-500/30 select-none">
-                                  Note
-                                </span>
-
-                                {/* Hover Tooltip showing the note text */}
-                                <div className="opacity-0 group-hover/note:opacity-100 pointer-events-none transition-opacity duration-200 absolute bottom-full mb-2 z-40 left-1/2 -translate-x-1/2 glass-modal text-xs px-3.5 py-2 rounded-xl shadow-2xl max-w-sm min-w-[200px] text-left whitespace-normal">
-                                  <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1">
-                                    {formatDateDisplay(entry.date)} Note:
-                                  </span>
-                                  <p className="text-stone-900 dark:text-slate-200 text-xs leading-relaxed break-words">
-                                    {entry.notes}
-                                  </p>
-                                  <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
-                                </div>
-                              </div>
-                            ) : (
-                              <span className="text-stone-400 dark:text-slate-600 font-mono text-xs">--</span>
-                            )}
-                          </td>
-                        )}
-
-                        {/* Focus Rating */}
-                        {!deletedDefaultColumns.includes('focusRating') && (
-                          <td className="py-3 sm:py-3.5 px-3 sm:px-4 text-center text-stone-900 dark:text-slate-200 font-mono font-bold text-xs sm:text-sm min-w-[78px] sm:min-w-[92px]">
-                            {entry.focusRating != null && Number(entry.focusRating) > 0 ? (
-                              <span>{entry.focusRating}/5</span>
-                            ) : (
-                              <span className="text-stone-400 dark:text-slate-600 font-mono text-xs sm:text-sm">--</span>
-                            )}
-                          </td>
-                        )}
-
-                        {/* Dynamic Custom Column Cells */}
-                        {customColumns.map((col) => {
-                          const val = entry.customData?.[col.id];
-                          return (
-                            <td key={col.id} className="py-3 sm:py-3.5 px-3 sm:px-4 text-center whitespace-nowrap font-mono text-xs sm:text-sm min-w-[100px] sm:min-w-[120px] max-w-[160px]">
-                              {col.type === 'boolean' && (
-                                <button
-                                  type="button"
-                                  disabled={!enableTopForm}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (!enableTopForm) return;
-                                    updateDailyLogCustomField(entry.date, col.id, !val);
-                                  }}
-                                  className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-[11px] font-mono tracking-wide transition-all select-none ${
-                                    enableTopForm ? 'cursor-pointer active:scale-95' : 'cursor-default'
-                                  } ${
-                                    val
-                                      ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-600/40 dark:border-emerald-500/40 shadow-xs shadow-emerald-500/20 font-extrabold'
-                                      : enableTopForm
-                                        ? 'bg-stone-200/80 dark:bg-white/5 text-stone-700 dark:text-slate-400 border border-stone-300/80 dark:border-white/10 hover:border-stone-400 hover:text-stone-900 dark:hover:border-white/20 dark:hover:text-slate-300 font-bold'
-                                        : 'bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 border border-stone-300/60 dark:border-white/5 font-bold'
-                                  }`}
-                                  title={enableTopForm ? `Click to toggle ${col.name}` : "Enable 'EDIT FORM' switch or click date button to edit"}
-                                >
-                                  {val ? 'YES' : 'NO'}
-                                </button>
-                              )}
-                              {col.type === 'number' && (
-                                val !== undefined && val !== null && val !== '' && Number(val) > 0 ? (
-                                  <span className="text-stone-900 dark:text-white font-bold">{val}</span>
-                                ) : (
-                                  <span className="text-stone-400 dark:text-slate-600 font-mono">--</span>
-                                )
-                              )}
-                              {col.type === 'text' && (
-                                val && String(val).trim() ? (
-                                  <span
-                                    className="text-stone-800 dark:text-slate-200 text-xs sm:text-sm max-w-[130px] truncate inline-block font-medium"
-                                    title={val || ''}
-                                  >
-                                    {val}
-                                  </span>
-                                ) : (
-                                  <span className="text-stone-400 dark:text-slate-600 font-mono">--</span>
-                                )
-                              )}
-                              {col.type === 'select' && (
-                                val && String(val).trim() ? (
-                                  <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-500/20 dark:bg-purple-500/15 text-purple-900 dark:text-purple-300 border border-purple-500/40 dark:border-purple-500/30">
-                                    {val}
-                                  </span>
-                                ) : (
-                                  <span className="text-stone-400 dark:text-slate-600 font-mono">--</span>
-                                )
-                              )}
-                            </td>
-                          );
-                        })}
-
-                        {/* DEL Column Cell */}
-                        <td className="py-3 sm:py-3.5 px-2 text-center whitespace-nowrap min-w-[50px] w-[50px]">
+                  {/* Right Side Action Cluster */}
+                  <div className="flex flex-wrap items-center gap-3 text-xs sm:text-[13px] w-full lg:w-auto">
+                    {/* Instant Search Input */}
+                    <div className="relative flex items-center flex-1 sm:flex-initial">
+                      <Search className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 pointer-events-none" />
+                      <input
+                        ref={mainSearchInputRef}
+                        type="text"
+                        value={mainSearchQuery}
+                        onChange={(e) => setMainSearchQuery(e.target.value)}
+                        placeholder="Search logs, notes..."
+                        className="pl-9 pr-8 py-2.5 w-full sm:w-64 rounded-full glass-input text-xs sm:text-[13px] text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#e9762b] font-mono transition-all"
+                      />
+                      <div className="absolute right-3 flex items-center gap-1">
+                        {mainSearchQuery ? (
                           <button
                             type="button"
+                            onClick={() => setMainSearchQuery('')}
+                            className="text-stone-400 hover:text-white p-0.5 rounded-full cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <span className="text-[10px] text-stone-500 dark:text-slate-500 px-1.5 py-0.5 rounded border border-white/10 font-mono">
+                            /
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Month Filter Dropdown (Styled with All Months & Amber Text) */}
+                    <div className="flex items-center gap-2 px-4 py-2.5 rounded-full glass-pill border border-white/12 text-xs sm:text-[13px] font-mono">
+                      <Calendar className="w-4 h-4 text-[#e9762b]" />
+                      <select
+                        value={selectedMonthYear}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSelectedMonthYear(val);
+                          setVisibleLimit(val === 'last30' ? 30 : 25);
+                        }}
+                        className="bg-transparent text-xs sm:text-[13px] text-[#e9762b] focus:outline-none font-bold cursor-pointer font-mono"
+                      >
+                        <option value="all" className="bg-[#141413] text-[#e9762b]">All Months</option>
+                        <option value="last30" className="bg-[#141413] text-white">Last 30 Days</option>
+                        {availableMonths.map((m) => (
+                          <option key={m.value} value={m.value} className="bg-[#141413] text-white">
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Dedicated ⚙️ SETTINGS Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowColumnsManagerModal(true)}
+                      className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-full glass-pill hover:bg-white/10 text-stone-700 dark:text-slate-200 hover:text-white text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-white/12 hover:border-[#e9762b] cursor-pointer shadow-sm active:scale-95"
+                      title="Open Table Settings"
+                    >
+                      <Settings2 className="w-4 h-4 text-[#e9762b]" />
+                      <span>SETTINGS</span>
+                    </button>
+
+                    {/* Primary NEW ENTRY Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenAddRowModal(todayStr)}
+                      className="inline-flex items-center gap-2 px-5 sm:px-6 py-2.5 rounded-full bg-gradient-to-b from-[#f28238] to-[#e9762b] hover:brightness-110 text-black font-mono font-black text-xs sm:text-[13px] uppercase tracking-wider active:scale-95 transition-all duration-200 cursor-pointer shadow-[0_4px_20px_-2px_rgba(233,118,43,0.45)] border border-orange-300/30 shrink-0"
+                    >
+                      <Plus className="w-4 h-4 stroke-[3]" />
+                      <span>NEW ENTRY</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Table Container with Sticky Horizontal & Vertical Scroll */}
+                <div ref={tableSectionRef} className="w-full rounded-2xl sm:rounded-3xl glass-panel overflow-hidden font-mono shadow-2xl scroll-mt-24">
+                  <div ref={tableContainerRef} className="overflow-x-auto max-h-[82vh] overflow-y-auto relative scrollbar-thin scrollbar-thumb-white/20">
+                    <table className="w-full min-w-full text-left text-sm border-separate border-spacing-0">
+                      {/* Sticky Top Header with Sort Affordances */}
+                      <thead
+                        onClick={scrollToCenterTable}
+                        className="sticky top-0 z-40 glass-table-header cursor-pointer select-none"
+                        title="Click table bar to center table on screen"
+                      >
+                        <tr className="text-xs sm:text-[13px] text-stone-800 dark:text-slate-200 uppercase tracking-[0.14em] font-bold">
+                          {/* Sticky Date Column Header (First row, first column) */}
+                          <th
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDeleteEntry(entry.date);
+                              scrollToCenterTable();
                             }}
-                            className="p-1.5 rounded-lg text-stone-400 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
-                            title="Delete row"
+                            className="py-4 sm:py-4.5 px-4 sm:px-5 font-bold sticky left-0 top-0 z-50 glass-sticky-th border-r border-white/12 min-w-[132px] w-[132px] sm:min-w-[152px] sm:w-[152px] cursor-pointer group"
+                            title="Click to center table on screen"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-
-                      {/* Expand in place accordion sub-panel */}
-                      {isExpanded && accordionState && (
-                        <tr id={`log-accordion-${entry.date}`} className="bg-white/[0.02] backdrop-blur-2xl border-b border-white/10" onClick={(e) => e.stopPropagation()}>
-                          <td colSpan={totalDefaultTableCols} className="p-0 border-b border-white/10">
-                            <div 
-                              className="sticky left-0 p-3.5 sm:p-5 md:p-6 space-y-4 sm:space-y-5 box-border overflow-hidden"
-                              style={{
-                                width: containerWidth ? `${containerWidth}px` : '100%',
-                                maxWidth: containerWidth ? `${containerWidth}px` : '100%',
-                              }}
-                            >
-                              {/* Accordion Top Header with Delete Button */}
-                              <div className="flex items-center justify-between border-b border-white/10 pb-3 gap-2">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="text-[11px] font-mono uppercase tracking-widest text-[#e9762b] font-bold shrink-0">
-                                    DETAILS &amp; EDITING —
-                                  </span>
-                                  <span className="text-sm font-bold text-stone-900 dark:text-white font-mono truncate">
-                                    {formatDateDisplay(entry.date)}
-                                  </span>
-                                </div>
+                            <div className="flex items-center gap-2">
+                              <span>DATE</span>
+                              {showSortArrows && (
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteEntry(entry.date)}
-                                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 dark:text-red-400 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-xs font-mono font-bold transition cursor-pointer"
-                                  title="Delete this day's entry"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleMainSort('date');
+                                  }}
+                                  className="p-1 -m-1 rounded hover:bg-white/10 text-[#e9762b] transition cursor-pointer"
+                                  title="Sort by date"
+                                  aria-label="Sort by date"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
-                                  <span>DELETE DAY</span>
+                                  {mainSortField === 'date' ? (
+                                    <span className="text-[#e9762b] text-[10px] font-bold">{mainSortAsc ? '▲' : '▼'}</span>
+                                  ) : (
+                                    <ArrowUpDown className="w-3.5 h-3.5 text-stone-400 hover:text-white" />
+                                  )}
                                 </button>
-                              </div>
+                              )}
+                            </div>
+                          </th>
 
-                              {/* Row 1: Numerical Fields (Study Hours, PYQs, Sleep Hours, Focus Rating) */}
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 font-mono">
-                                {/* Study Hours */}
-                                <div className="glass-panel p-3 rounded-xl space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                                    STUDY HOURS
-                                  </label>
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="number"
-                                      step="0.5"
-                                      min="0"
-                                      max="24"
-                                      placeholder="--"
-                                      value={accordionState.studyHours}
-                                      onChange={(e) =>
-                                        setAccordionState({
-                                          ...accordionState,
-                                          studyHours: e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)),
-                                        })
-                                      }
-                                      className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-bold text-center focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
-                                    />
-                                    <span className="text-xs text-stone-600 dark:text-slate-400 font-bold">hrs</span>
-                                  </div>
-                                </div>
-
-                                {/* PYQs Solved */}
-                                <div className="glass-panel p-3 rounded-xl space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                                    PYQS SOLVED
-                                  </label>
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="number"
-                                      step="1"
-                                      min="0"
-                                      placeholder="--"
-                                      value={accordionState.pyqsSolved}
-                                      onChange={(e) =>
-                                        setAccordionState({
-                                          ...accordionState,
-                                          pyqsSolved: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value)),
-                                        })
-                                      }
-                                      className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-bold text-center focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
-                                    />
-                                    <span className="text-xs text-stone-600 dark:text-slate-400 font-bold">ques</span>
-                                  </div>
-                                </div>
-
-                                {/* Sleep Hours */}
-                                <div className="glass-panel p-3 rounded-xl space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                                    SLEEP HOURS
-                                  </label>
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="number"
-                                      step="0.5"
-                                      min="0"
-                                      max="24"
-                                      placeholder="--"
-                                      value={accordionState.sleepHours}
-                                      onChange={(e) =>
-                                        setAccordionState({
-                                          ...accordionState,
-                                          sleepHours: e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)),
-                                        })
-                                      }
-                                      className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-bold text-center focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
-                                    />
-                                    <span className="text-xs text-stone-600 dark:text-slate-400 font-bold">hrs</span>
-                                  </div>
-                                </div>
-
-                                {/* Focus Rating */}
-                                <div className="glass-panel p-3 rounded-xl space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
-                                    FOCUS ({accordionState.focusRating ? `${accordionState.focusRating}/5` : '--'})
-                                  </label>
-                                  <div className="grid grid-cols-5 gap-1 pt-1 w-full min-w-0">
-                                    {[1, 2, 3, 4, 5].map((val) => (
-                                      <button
-                                        key={val}
-                                        type="button"
-                                        onClick={() =>
-                                          setAccordionState({
-                                            ...accordionState,
-                                            focusRating: accordionState.focusRating === val ? null : val,
-                                          })
-                                        }
-                                        className={`h-7 w-full min-w-0 rounded-md text-xs font-bold transition cursor-pointer flex items-center justify-center p-0 ${
-                                          accordionState.focusRating === val
-                                            ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/30'
-                                            : 'glass-pill text-stone-700 dark:text-slate-400 hover:text-stone-950 dark:hover:text-white'
-                                        }`}
-                                      >
-                                        {val}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Row 2: Habit Indicators (Class, Revision, Mock + Custom Yes/No Trackers) - 4 in a row */}
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 font-mono text-xs">
-                                {/* Attended Class? */}
-                                <div className="space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
-                                    ATTENDED CLASS?
-                                  </label>
-                                  <YesNoToggle
-                                    size="sm"
-                                    value={accordionState.attendedClass}
-                                    onChange={(val: boolean) =>
-                                      setAccordionState({ ...accordionState, attendedClass: val })
-                                    }
-                                  />
-                                </div>
-
-                                {/* Revision Done? */}
-                                <div className="space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
-                                    REVISION DONE?
-                                  </label>
-                                  <YesNoToggle
-                                    size="sm"
-                                    value={accordionState.revisionDone}
-                                    onChange={(val: boolean) =>
-                                      setAccordionState({ ...accordionState, revisionDone: val })
-                                    }
-                                  />
-                                </div>
-
-                                {/* Mock Test Taken? */}
-                                <div className="space-y-1.5">
-                                  <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
-                                    MOCK TEST?
-                                  </label>
-                                  <YesNoToggle
-                                    size="sm"
-                                    value={accordionState.mockTestTaken}
-                                    onChange={(val: boolean) =>
-                                      setAccordionState({ ...accordionState, mockTestTaken: val })
-                                    }
-                                  />
-                                </div>
-
-                                {/* Custom Yes/No Trackers */}
-                                {customColumns
-                                  .filter((col) => col.type === 'boolean')
-                                  .map((col) => (
-                                    <div key={col.id} className="space-y-1.5">
-                                      <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
-                                        {col.name.toUpperCase()}?
-                                      </label>
-                                      <YesNoToggle
-                                        size="sm"
-                                        value={Boolean(accordionState.customData?.[col.id])}
-                                        onChange={(val: boolean) =>
-                                          setAccordionState({
-                                            ...accordionState,
-                                            customData: {
-                                              ...accordionState.customData,
-                                              [col.id]: val,
-                                            },
-                                          })
-                                        }
-                                      />
-                                    </div>
-                                  ))}
-
-                                {/* Quick Add Custom Habit/Tracker in 4th slot if no boolean custom columns exist */}
-                                {customColumns.filter((col) => col.type === 'boolean').length === 0 && (
-                                  <div className="space-y-1.5 flex flex-col justify-between">
-                                    <label className="text-[10px] uppercase tracking-widest text-stone-500 dark:text-slate-400 font-bold block truncate">
-                                      CUSTOM TRACKER
-                                    </label>
+                          {/* Dynamic Default Columns */}
+                          {DEFAULT_COLUMNS_CONFIG.map((col) => {
+                            if (deletedDefaultColumns.includes(col.key)) return null;
+                            const isSorted = mainSortField === col.key;
+                            return (
+                              <th
+                                key={col.key}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  scrollToCenterTable();
+                                }}
+                                className={`py-4 sm:py-4.5 px-3.5 sm:px-5 font-bold text-center sticky top-0 z-40 ${col.minWidth} group/col cursor-pointer select-none`}
+                                title="Click to center table on screen"
+                              >
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <span>{col.label}</span>
+                                  {showSortArrows && (
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        setNewColType('boolean');
-                                        setShowAddColumnModal(true);
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMainSort(col.key);
                                       }}
-                                      className="w-full h-8 rounded-lg bg-orange-500/10 hover:bg-[#e9762b] text-[#e9762b] hover:text-black font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 border border-dashed border-[#e9762b]/40 hover:border-[#e9762b]"
-                                      title="Add a custom Yes/No tracker column"
+                                      className="p-1 -m-1 rounded hover:bg-white/10 text-[#e9762b] transition cursor-pointer"
+                                      title={`Sort by ${col.label}`}
+                                      aria-label={`Sort by ${col.label}`}
                                     >
-                                      <Plus className="w-3.5 h-3.5" />
-                                      <span>+ TRACKER</span>
+                                      {isSorted ? (
+                                        <span className="text-[#e9762b] text-[10px] font-bold">{mainSortAsc ? '▲' : '▼'}</span>
+                                      ) : (
+                                        <ArrowUpDown className="w-3.5 h-3.5 text-stone-400 hover:text-white" />
+                                      )}
                                     </button>
-                                  </div>
-                                )}
-                              </div>
+                                  )}
+                                </div>
+                              </th>
+                            );
+                          })}
 
-                              {/* Row 3: Notes Input in Accordion */}
-                              <div className="space-y-1.5 font-mono">
-                                <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
-                                  NOTES &amp; OBSERVATIONS
-                                </label>
-                                <input
-                                  id={`accordion-notes-${entry.date}`}
-                                  type="text"
-                                  value={accordionState.notes}
-                                  onChange={(e) =>
-                                    setAccordionState({ ...accordionState, notes: e.target.value })
-                                  }
-                                  placeholder="Write any thoughts, chapters covered, roadblocks..."
-                                  className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
-                                />
-                              </div>
-
-                              {/* Row 4: Custom Trackers & Metrics in Accordion (Non-boolean: Number, Text, Select) */}
-                              {customColumns.some((col) => col.type !== 'boolean') && (
-                                <div className="space-y-3 pt-3 border-t border-white/10 font-mono">
-                                  <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
-                                    ADDITIONAL CUSTOM TRACKERS
+                          {/* Dynamic Custom Column Headers */}
+                          {customColumns.map((col) => {
+                            const isSorted = mainSortField === col.id;
+                            return (
+                              <th
+                                key={col.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  scrollToCenterTable();
+                                }}
+                                className="py-4 sm:py-4.5 px-4 sm:px-5 font-bold text-center whitespace-nowrap sticky top-0 z-40 min-w-[120px] sm:min-w-[144px] max-w-[200px] group/customcol cursor-pointer select-none"
+                                title="Click to center table on screen"
+                              >
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <span className="text-xs sm:text-[13px] uppercase tracking-[0.14em] font-bold text-stone-800 dark:text-slate-200 truncate max-w-[130px] font-mono">
+                                    {formatColumnHeader(col.name, col.unit)}
                                   </span>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-                                    {customColumns
-                                      .filter((col) => col.type !== 'boolean')
-                                      .map((col) => (
-                                        <div
-                                          key={col.id}
-                                          className="glass-panel p-3 rounded-xl space-y-1.5"
-                                        >
-                                          <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
-                                            {col.name}
-                                          </label>
-                                          {col.type === 'number' && (
-                                            <input
-                                              type="number"
-                                              step="any"
-                                              value={accordionState.customData?.[col.id] ?? ''}
-                                              onChange={(e) =>
-                                                setAccordionState({
-                                                  ...accordionState,
-                                                  customData: {
-                                                    ...accordionState.customData,
-                                                    [col.id]: e.target.value === '' ? '' : Number(e.target.value),
-                                                  },
-                                                })
-                                              }
-                                              placeholder="--"
-                                              className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
-                                            />
-                                          )}
-                                          {col.type === 'text' && (
-                                            <input
-                                              type="text"
-                                              value={accordionState.customData?.[col.id] ?? ''}
-                                              onChange={(e) =>
-                                                setAccordionState({
-                                                  ...accordionState,
-                                                  customData: {
-                                                    ...accordionState.customData,
-                                                    [col.id]: e.target.value,
-                                                  },
-                                                })
-                                              }
-                                              placeholder="--"
-                                              className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
-                                            />
-                                          )}
-                                          {col.type === 'select' && (
-                                            <select
-                                              value={accordionState.customData?.[col.id] ?? ''}
-                                              onChange={(e) =>
-                                                setAccordionState({
-                                                  ...accordionState,
-                                                  customData: {
-                                                    ...accordionState.customData,
-                                                    [col.id]: e.target.value,
-                                                  },
-                                                })
-                                              }
-                                              className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
+                                  {showSortArrows && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMainSort(col.id);
+                                      }}
+                                      className="p-1 -m-1 rounded hover:bg-white/10 text-[#e9762b] transition cursor-pointer"
+                                      title={`Sort by ${col.name}`}
+                                      aria-label={`Sort by ${col.name}`}
+                                    >
+                                      {isSorted ? (
+                                        <span className="text-[#e9762b] text-[10px] font-bold">{mainSortAsc ? '▲' : '▼'}</span>
+                                      ) : (
+                                        <ArrowUpDown className="w-3.5 h-3.5 text-stone-400 hover:text-white" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+                              </th>
+                            );
+                          })}
+
+                          {/* Subtle Action Column Header */}
+                          <th aria-label="Actions" className="py-4 sm:py-4.5 px-3 font-bold text-center sticky top-0 z-40 min-w-[64px] w-[64px] text-stone-500 rounded-tr-xl">
+                            •••
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.07]">
+                        {visibleLogs.length === 0 ? (
+                          <tr>
+                            <td
+                              colSpan={totalDefaultTableCols}
+                              className="py-16 text-center text-stone-500 dark:text-slate-400 font-mono text-sm"
+                            >
+                              <div className="flex flex-col items-center justify-center space-y-4">
+                                <Calendar className="w-10 h-10 text-[#e9762b] opacity-60" />
+                                <p>No log entries found for this period.</p>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenAddRowModal(todayStr)}
+                                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#e9762b] text-black text-xs sm:text-sm font-bold uppercase tracking-wider hover:brightness-110 transition shadow-md shadow-orange-500/20 cursor-pointer active:scale-95"
+                                >
+                                  <Plus className="w-4 h-4" />
+                                  <span>Add Date Row</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : (
+                          visibleLogs.map((entry, idx) => {
+                            const isExpanded = expandedDate === entry.date;
+                            const hasNote = Boolean(entry.notes && entry.notes.trim().length > 0);
+                            return (
+                              <React.Fragment key={entry.date}>
+                                <tr
+                                  id={`log-row-${entry.date}`}
+                                  className={`even:bg-white/[0.012] hover:bg-white/[0.04] transition-colors duration-150 group/row ${isExpanded ? '!bg-white/[0.05]' : ''
+                                    }`}
+                                >
+                                  {/* Pinned / Sticky Date Column - Click to open details & edit */}
+                                  <td
+                                    onClick={() => handleToggleExpand(entry)}
+                                    className={`py-4 sm:py-4.5 px-4 sm:px-5 whitespace-nowrap sticky left-0 z-20 glass-sticky-col-cell border-r border-black/10 dark:border-white/10 min-w-[132px] w-[132px] sm:min-w-[152px] sm:w-[152px] cursor-pointer ${isExpanded ? '!bg-amber-500/15 dark:!bg-[#1a1a18]' : ''
+                                      }`}
+                                    title="Click date to open details & edit"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleToggleExpand(entry);
+                                        }}
+                                        className={`inline-flex items-center justify-center px-3.5 py-2 rounded-xl text-xs sm:text-[13px] font-extrabold tracking-wide transition-all duration-150 cursor-pointer select-none font-mono uppercase ${isExpanded
+                                          ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/25'
+                                          : 'text-[#e9762b] bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/35 hover:border-orange-500/60'
+                                          }`}
+                                        title="Click date to open details & edit"
+                                      >
+                                        <span>{formatDateDisplay(entry.date)}</span>
+                                      </button>
+                                    </div>
+                                  </td>
+
+                                  {/* Study Hours Column */}
+                                  {!deletedDefaultColumns.includes('studyHours') && (
+                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[100px] sm:min-w-[120px]">
+                                      {entry.studyHours != null && Number(entry.studyHours) > 0 ? (
+                                        <span className="text-stone-900 dark:text-white font-mono-numbers font-bold text-sm sm:text-[15px]">{entry.studyHours}h</span>
+                                      ) : (
+                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                      )}
+                                    </td>
+                                  )}
+
+                                  {/* Class Attended Pill */}
+                                  {!deletedDefaultColumns.includes('attendedClass') && (
+                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[96px] sm:min-w-[114px]">
+                                      <TriStateBadge
+                                        value={entry.attendedClass}
+                                        onChange={(newVal) => updateDailyLogField(entry.date, 'attendedClass', newVal)}
+                                        cycleEnabled={enableClickToCycle}
+                                        className="mx-auto"
+                                      />
+                                    </td>
+                                  )}
+
+                                  {/* PYQs Solved */}
+                                  {!deletedDefaultColumns.includes('pyqsSolved') && (
+                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[96px] sm:min-w-[114px]">
+                                      {entry.pyqsSolved != null && Number(entry.pyqsSolved) > 0 ? (
+                                        <span className="text-stone-900 dark:text-white font-mono-numbers font-bold text-sm sm:text-[15px]">{entry.pyqsSolved}</span>
+                                      ) : (
+                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                      )}
+                                    </td>
+                                  )}
+
+                                  {/* Revision Done Pill */}
+                                  {!deletedDefaultColumns.includes('revisionDone') && (
+                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[96px] sm:min-w-[114px]">
+                                      <TriStateBadge
+                                        value={entry.revisionDone}
+                                        onChange={(newVal) => updateDailyLogField(entry.date, 'revisionDone', newVal)}
+                                        cycleEnabled={enableClickToCycle}
+                                        className="mx-auto"
+                                      />
+                                    </td>
+                                  )}
+
+                                  {/* Mock Test Taken Pill */}
+                                  {!deletedDefaultColumns.includes('mockTestTaken') && (
+                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[96px] sm:min-w-[114px]">
+                                      <TriStateBadge
+                                        value={entry.mockTestTaken}
+                                        onChange={(newVal) => updateDailyLogField(entry.date, 'mockTestTaken', newVal)}
+                                        cycleEnabled={enableClickToCycle}
+                                        className="mx-auto"
+                                      />
+                                    </td>
+                                  )}
+
+                                  {/* Sleep Hours */}
+                                  {!deletedDefaultColumns.includes('sleepHours') && (
+                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[96px] sm:min-w-[114px]">
+                                      {entry.sleepHours != null && Number(entry.sleepHours) > 0 ? (
+                                        <span className="text-stone-900 dark:text-white font-mono-numbers font-bold text-sm sm:text-[15px]">{entry.sleepHours}h</span>
+                                      ) : (
+                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                      )}
+                                    </td>
+                                  )}
+
+                                  {/* Notes Column with Rich Tooltip (no icon) */}
+                                  {!deletedDefaultColumns.includes('notes') && (
+                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[104px] sm:min-w-[124px]">
+                                      {hasNote ? (
+                                        <div className="relative inline-flex items-center justify-center group/note">
+                                          <span className="inline-block px-3 py-1 rounded-lg text-xs font-bold text-orange-950 dark:text-[#e9762b] bg-orange-500/20 dark:bg-orange-500/15 border border-orange-500/40 dark:border-orange-500/35 select-none">
+                                            Note
+                                          </span>
+
+                                          {/* Hover Tooltip showing the note text */}
+                                          <div className="opacity-0 group-hover/note:opacity-100 pointer-events-none transition-opacity duration-200 absolute bottom-full mb-2 z-40 left-1/2 -translate-x-1/2 glass-modal text-xs px-4 py-2.5 rounded-xl shadow-2xl max-w-sm min-w-[220px] text-left whitespace-normal">
+                                            <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1">
+                                              {formatDateDisplay(entry.date)} Note:
+                                            </span>
+                                            <p className="text-stone-900 dark:text-slate-200 text-xs sm:text-sm leading-relaxed break-words">
+                                              {entry.notes}
+                                            </p>
+                                            <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                      )}
+                                    </td>
+                                  )}
+
+                                  {/* Focus Rating */}
+                                  {!deletedDefaultColumns.includes('focusRating') && (
+                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center text-stone-900 dark:text-slate-200 font-mono-numbers font-bold text-sm sm:text-[15px] min-w-[100px] sm:min-w-[120px]">
+                                      {entry.focusRating != null && Number(entry.focusRating) > 0 ? (
+                                        <span>{entry.focusRating}/5</span>
+                                      ) : (
+                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm font-normal select-none">--</span>
+                                      )}
+                                    </td>
+                                  )}
+
+                                  {/* Dynamic Custom Column Cells */}
+                                  {customColumns.map((col) => {
+                                    const val = entry.customData?.[col.id];
+                                    return (
+                                      <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center whitespace-nowrap font-mono text-sm sm:text-[15px] min-w-[120px] sm:min-w-[144px] max-w-[200px]">
+                                        {col.type === 'boolean' && (
+                                          <TriStateBadge
+                                            value={val}
+                                            onChange={(newVal) => updateDailyLogCustomField(entry.date, col.id, newVal)}
+                                            cycleEnabled={enableClickToCycle}
+                                            className="mx-auto"
+                                          />
+                                        )}
+                                        {col.type === 'number' && (
+                                          val !== undefined && val !== null && val !== '' && Number(val) > 0 ? (
+                                            <span className="text-stone-900 dark:text-white font-mono-numbers font-bold">{val}</span>
+                                          ) : (
+                                            <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                          )
+                                        )}
+                                        {col.type === 'text' && (
+                                          val && String(val).trim() ? (
+                                            <span
+                                              className="text-stone-800 dark:text-slate-200 text-xs sm:text-sm max-w-[150px] truncate inline-block font-medium"
+                                              title={val || ''}
                                             >
-                                              <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
-                                                -- Select --
-                                              </option>
-                                              {(col.options || []).map((opt) => (
-                                                <option key={opt} value={opt} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
-                                                  {opt}
-                                                </option>
+                                              {val}
+                                            </span>
+                                          ) : (
+                                            <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                          )
+                                        )}
+                                        {col.type === 'select' && (
+                                          val && String(val).trim() ? (
+                                            <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-purple-500/20 dark:bg-purple-500/15 text-purple-900 dark:text-purple-300 border border-purple-500/40 dark:border-purple-500/35">
+                                              {String(val).includes('|')
+                                                ? String(val).split('|').map((s) => s.trim()).filter(Boolean).pop() || String(val).split('|')[0].trim()
+                                                : String(val).trim()}
+                                            </span>
+                                          ) : (
+                                            <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                          )
+                                        )}
+                                        {col.type === 'rating' && (
+                                          val !== undefined && val !== null && Number(val) > 0 ? (
+                                            <span className="text-stone-900 dark:text-slate-200 font-mono-numbers font-bold text-sm sm:text-[15px]">
+                                              {val}/5
+                                            </span>
+                                          ) : (
+                                            <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                          )
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+
+                                  {/* Subtle Action Column Cell */}
+                                  <td className="py-4 sm:py-4.5 px-3 text-center whitespace-nowrap min-w-[64px] w-[64px] relative">
+                                    <div className="relative inline-block text-left">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setMainActiveActionMenuDate(mainActiveActionMenuDate === entry.date ? null : entry.date);
+                                        }}
+                                        className="p-2 rounded-xl hover:bg-white/10 text-stone-400 hover:text-white transition cursor-pointer active:scale-95"
+                                        title="Row actions"
+                                      >
+                                        <MoreVertical className="w-4 h-4" />
+                                      </button>
+
+                                      {mainActiveActionMenuDate === entry.date && (
+                                        <div
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="absolute right-0 top-full mt-2 w-48 rounded-2xl border border-white/12 bg-[#171716] shadow-[0_20px_50px_-10px_rgba(0,0,0,0.8)] p-1.5 z-50 animate-fadeIn font-mono text-[13px]"
+                                        >
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              handleToggleExpand(entry);
+                                              setMainActiveActionMenuDate(null);
+                                            }}
+                                            className="w-full px-3 py-2.5 rounded-xl text-left hover:bg-white/10 flex items-center gap-2.5 text-stone-200 hover:text-white cursor-pointer transition"
+                                          >
+                                            <Edit3 className="w-3.5 h-3.5 text-[#e9762b]" />
+                                            <span>Edit</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              handleOpenAddRowModal(todayStr);
+                                              setAddRowStudyHours(entry.studyHours != null && entry.studyHours > 0 ? entry.studyHours : '');
+                                              setAddRowAttendedClass(normalizeTriState(entry.attendedClass));
+                                              setAddRowPyqs(entry.pyqsSolved != null && entry.pyqsSolved > 0 ? entry.pyqsSolved : '');
+                                              setAddRowRevisionDone(normalizeTriState(entry.revisionDone));
+                                              setAddRowMockTest(normalizeTriState(entry.mockTestTaken));
+                                              setAddRowSleepHours(entry.sleepHours != null && entry.sleepHours > 0 ? entry.sleepHours : '');
+                                              setAddRowRating(entry.focusRating ?? null);
+                                              setAddRowNotes(entry.notes || '');
+                                              setAddRowCustomData({ ...(entry.customData || {}) });
+                                              setMainActiveActionMenuDate(null);
+                                            }}
+                                            className="w-full px-3 py-2.5 rounded-xl text-left hover:bg-white/10 flex items-center gap-2.5 text-stone-200 hover:text-white cursor-pointer transition"
+                                          >
+                                            <Copy className="w-3.5 h-3.5 text-sky-400" />
+                                            <span>Duplicate</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              handleDeleteEntry(entry.date);
+                                              setMainActiveActionMenuDate(null);
+                                            }}
+                                            className="w-full px-3 py-2.5 rounded-xl text-left hover:bg-red-500/15 flex items-center gap-2.5 text-red-400 hover:text-red-300 cursor-pointer transition"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                            <span>Delete</span>
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+
+                                {/* Expand in place accordion sub-panel */}
+                                {isExpanded && accordionState && (
+                                  <tr id={`log-accordion-${entry.date}`} className="bg-white/[0.02] backdrop-blur-2xl border-b border-white/10" onClick={(e) => e.stopPropagation()}>
+                                    <td colSpan={totalDefaultTableCols} className="p-0 border-b border-white/10">
+                                      <div
+                                        className="sticky left-0 p-3.5 sm:p-5 md:p-6 space-y-4 sm:space-y-5 box-border overflow-hidden"
+                                        style={{
+                                          width: containerWidth ? `${containerWidth}px` : '100%',
+                                          maxWidth: containerWidth ? `${containerWidth}px` : '100%',
+                                        }}
+                                      >
+                                        {/* Accordion Top Header with Delete Button */}
+                                        <div className="flex items-center justify-between border-b border-white/10 pb-3 gap-2">
+                                          <div className="flex items-center gap-2 min-w-0">
+                                            <span className="text-[11px] font-mono uppercase tracking-widest text-[#e9762b] font-bold shrink-0">
+                                              DETAILS &amp; EDITING —
+                                            </span>
+                                            <span className="text-sm font-bold text-stone-900 dark:text-white font-mono truncate">
+                                              {formatDateDisplay(entry.date)}
+                                            </span>
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleDeleteEntry(entry.date)}
+                                            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 dark:text-red-400 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 text-xs font-mono font-bold transition cursor-pointer"
+                                            title="Delete this day's entry"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5 stroke-[2.5]" />
+                                            <span>DELETE DAY</span>
+                                          </button>
+                                        </div>
+
+                                        {/* Row 1: Numerical Fields (Study Hours, PYQs, Sleep Hours, Focus Rating) */}
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 font-mono">
+                                          {/* Study Hours */}
+                                          <div className="glass-panel p-3 rounded-xl space-y-1.5">
+                                            <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                                              STUDY HOURS
+                                            </label>
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="number"
+                                                step="0.5"
+                                                min="0"
+                                                max="24"
+                                                placeholder="--"
+                                                value={accordionState.studyHours}
+                                                onChange={(e) =>
+                                                  setAccordionState({
+                                                    ...accordionState,
+                                                    studyHours: e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)),
+                                                  })
+                                                }
+                                                className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-bold text-center focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
+                                              />
+                                              <span className="text-xs text-stone-600 dark:text-slate-400 font-bold">hrs</span>
+                                            </div>
+                                          </div>
+
+                                          {/* PYQs Solved */}
+                                          <div className="glass-panel p-3 rounded-xl space-y-1.5">
+                                            <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                                              PYQS SOLVED
+                                            </label>
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="number"
+                                                step="1"
+                                                min="0"
+                                                placeholder="--"
+                                                value={accordionState.pyqsSolved}
+                                                onChange={(e) =>
+                                                  setAccordionState({
+                                                    ...accordionState,
+                                                    pyqsSolved: e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value)),
+                                                  })
+                                                }
+                                                className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-bold text-center focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
+                                              />
+                                              <span className="text-xs text-stone-600 dark:text-slate-400 font-bold">ques</span>
+                                            </div>
+                                          </div>
+
+                                          {/* Sleep Hours */}
+                                          <div className="glass-panel p-3 rounded-xl space-y-1.5">
+                                            <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                                              SLEEP HOURS
+                                            </label>
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="number"
+                                                step="0.5"
+                                                min="0"
+                                                max="24"
+                                                placeholder="--"
+                                                value={accordionState.sleepHours}
+                                                onChange={(e) =>
+                                                  setAccordionState({
+                                                    ...accordionState,
+                                                    sleepHours: e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)),
+                                                  })
+                                                }
+                                                className="w-full glass-input rounded-lg px-2.5 py-1.5 text-sm text-stone-900 dark:text-white font-bold text-center focus:outline-none placeholder-stone-400 dark:placeholder-slate-600"
+                                              />
+                                              <span className="text-xs text-stone-600 dark:text-slate-400 font-bold">hrs</span>
+                                            </div>
+                                          </div>
+
+                                          {/* Focus Rating */}
+                                          <div className="glass-panel p-3 rounded-xl space-y-1.5">
+                                            <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
+                                              FOCUS ({accordionState.focusRating ? `${accordionState.focusRating}/5` : '--'})
+                                            </label>
+                                            <div className="grid grid-cols-5 gap-1 pt-1 w-full min-w-0">
+                                              {[1, 2, 3, 4, 5].map((val) => (
+                                                <button
+                                                  key={val}
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setAccordionState({
+                                                      ...accordionState,
+                                                      focusRating: accordionState.focusRating === val ? null : val,
+                                                    })
+                                                  }
+                                                  className={`h-7 w-full min-w-0 rounded-md text-xs font-bold transition cursor-pointer flex items-center justify-center p-0 ${accordionState.focusRating === val
+                                                    ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/30'
+                                                    : 'glass-pill text-stone-700 dark:text-slate-400 hover:text-stone-950 dark:hover:text-white'
+                                                    }`}
+                                                >
+                                                  {val}
+                                                </button>
                                               ))}
-                                            </select>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        {/* Row 2: Habit Indicators (Class, Revision, Mock + Custom Yes/No Trackers) - 4 in a row */}
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 font-mono text-xs">
+                                          {/* Attended Class? */}
+                                          <div className="space-y-1.5">
+                                            <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
+                                              ATTENDED CLASS?
+                                            </label>
+                                            <TriStatePillSelect
+                                              size="sm"
+                                              value={accordionState.attendedClass}
+                                              onChange={(val) =>
+                                                setAccordionState({ ...accordionState, attendedClass: val })
+                                              }
+                                            />
+                                          </div>
+
+                                          {/* Revision Done? */}
+                                          <div className="space-y-1.5">
+                                            <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
+                                              REVISION DONE?
+                                            </label>
+                                            <TriStatePillSelect
+                                              size="sm"
+                                              value={accordionState.revisionDone}
+                                              onChange={(val) =>
+                                                setAccordionState({ ...accordionState, revisionDone: val })
+                                              }
+                                            />
+                                          </div>
+
+                                          {/* Mock Test Taken? */}
+                                          <div className="space-y-1.5">
+                                            <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
+                                              MOCK TEST?
+                                            </label>
+                                            <TriStatePillSelect
+                                              size="sm"
+                                              value={accordionState.mockTestTaken}
+                                              onChange={(val) =>
+                                                setAccordionState({ ...accordionState, mockTestTaken: val })
+                                              }
+                                            />
+                                          </div>
+
+                                          {/* Custom Yes/No Trackers */}
+                                          {customColumns
+                                            .filter((col) => col.type === 'boolean')
+                                            .map((col) => (
+                                              <div key={col.id} className="space-y-1.5">
+                                                <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
+                                                  {col.name.toUpperCase()}?
+                                                </label>
+                                                <TriStatePillSelect
+                                                  size="sm"
+                                                  value={accordionState.customData?.[col.id]}
+                                                  onChange={(val) =>
+                                                    setAccordionState({
+                                                      ...accordionState,
+                                                      customData: {
+                                                        ...accordionState.customData,
+                                                        [col.id]: val,
+                                                      },
+                                                    })
+                                                  }
+                                                />
+                                              </div>
+                                            ))}
+
+                                          {/* Quick Add Custom Habit/Tracker in 4th slot if no boolean custom columns exist */}
+                                          {customColumns.filter((col) => col.type === 'boolean').length === 0 && (
+                                            <div className="space-y-1.5 flex flex-col justify-between">
+                                              <label className="text-[10px] uppercase tracking-widest text-stone-500 dark:text-slate-400 font-bold block truncate">
+                                                CUSTOM TRACKER
+                                              </label>
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setNewColType('boolean');
+                                                  setShowAddColumnModal(true);
+                                                }}
+                                                className="w-full h-8 rounded-lg bg-orange-500/10 hover:bg-[#e9762b] text-[#e9762b] hover:text-black font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 border border-dashed border-[#e9762b]/40 hover:border-[#e9762b]"
+                                                title="Add a custom Yes/No tracker column"
+                                              >
+                                                <Plus className="w-3.5 h-3.5" />
+                                                <span>+ TRACKER</span>
+                                              </button>
+                                            </div>
                                           )}
                                         </div>
-                                      ))}
-                                  </div>
-                                </div>
-                              )}
 
-                              {/* Accordion Action Buttons */}
-                              <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-white/10">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setExpandedDate(null);
-                                    setAccordionState(null);
-                                  }}
-                                  className="px-5 py-2 rounded-lg bg-stone-200/90 hover:bg-stone-300 dark:bg-[#1c1c1b] dark:hover:bg-[#252524] border border-stone-300/80 dark:border-white/10 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white text-xs uppercase font-bold tracking-wider transition cursor-pointer shadow-sm"
-                                >
-                                  CLOSE
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleSaveAccordion(entry.date)}
-                                  className="px-6 py-2 rounded-lg bg-[#e9762b] text-black font-extrabold text-xs uppercase tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-md shadow-orange-500/20 shrink-0"
-                                >
-                                  SAVE CHANGES
-                                </button>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
+                                        {/* Row 3: Notes Input in Accordion */}
+                                        <div className="space-y-1.5 font-mono">
+                                          <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block">
+                                            NOTES &amp; OBSERVATIONS
+                                          </label>
+                                          <input
+                                            id={`accordion-notes-${entry.date}`}
+                                            type="text"
+                                            value={accordionState.notes}
+                                            onChange={(e) =>
+                                              setAccordionState({ ...accordionState, notes: e.target.value })
+                                            }
+                                            placeholder="Write any thoughts, chapters covered, roadblocks..."
+                                            className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
+                                          />
+                                        </div>
+
+                                        {/* Row 4: Custom Trackers & Metrics in Accordion (Non-boolean: Number, Text, Select) */}
+                                        {customColumns.some((col) => col.type !== 'boolean') && (
+                                          <div className="space-y-3 pt-3 border-t border-white/10 font-mono">
+                                            <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
+                                              ADDITIONAL CUSTOM TRACKERS
+                                            </span>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                                              {customColumns
+                                                .filter((col) => col.type !== 'boolean')
+                                                .map((col) => (
+                                                  <div
+                                                    key={col.id}
+                                                    className="glass-panel p-3 rounded-xl space-y-1.5"
+                                                  >
+                                                    <label className="text-[10px] uppercase tracking-widest text-slate-400 font-bold block truncate">
+                                                      {col.name}
+                                                    </label>
+                                                    {col.type === 'number' && (
+                                                      <input
+                                                        type="number"
+                                                        step="any"
+                                                        value={accordionState.customData?.[col.id] ?? ''}
+                                                        onChange={(e) =>
+                                                          setAccordionState({
+                                                            ...accordionState,
+                                                            customData: {
+                                                              ...accordionState.customData,
+                                                              [col.id]: e.target.value === '' ? '' : Number(e.target.value),
+                                                            },
+                                                          })
+                                                        }
+                                                        placeholder="--"
+                                                        className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
+                                                      />
+                                                    )}
+                                                    {col.type === 'text' && (
+                                                      <input
+                                                        type="text"
+                                                        value={accordionState.customData?.[col.id] ?? ''}
+                                                        onChange={(e) =>
+                                                          setAccordionState({
+                                                            ...accordionState,
+                                                            customData: {
+                                                              ...accordionState.customData,
+                                                              [col.id]: e.target.value,
+                                                            },
+                                                          })
+                                                        }
+                                                        placeholder="--"
+                                                        className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
+                                                      />
+                                                    )}
+                                                    {col.type === 'select' && (
+                                                      <select
+                                                        value={accordionState.customData?.[col.id] ?? ''}
+                                                        onChange={(e) =>
+                                                          setAccordionState({
+                                                            ...accordionState,
+                                                            customData: {
+                                                              ...accordionState.customData,
+                                                              [col.id]: e.target.value,
+                                                            },
+                                                          })
+                                                        }
+                                                        className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
+                                                      >
+                                                        <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
+                                                          -- Select --
+                                                        </option>
+                                                        {(col.options || []).map((opt) => (
+                                                          <option key={opt} value={opt} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
+                                                            {opt}
+                                                          </option>
+                                                        ))}
+                                                      </select>
+                                                    )}
+                                                    {col.type === 'rating' && (
+                                                      <select
+                                                        value={accordionState.customData?.[col.id] ?? ''}
+                                                        onChange={(e) =>
+                                                          setAccordionState({
+                                                            ...accordionState,
+                                                            customData: {
+                                                              ...accordionState.customData,
+                                                              [col.id]: e.target.value === '' ? '' : Number(e.target.value),
+                                                            },
+                                                          })
+                                                        }
+                                                        className="w-full glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white font-bold text-center focus:outline-none cursor-pointer"
+                                                      >
+                                                        <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">-- Rating --</option>
+                                                        <option value="5" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">5/5 (Mastered)</option>
+                                                        <option value="4" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">4/5 (Good)</option>
+                                                        <option value="3" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">3/5 (Average)</option>
+                                                        <option value="2" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">2/5 (Weak)</option>
+                                                        <option value="1" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">1/5 (Need Review)</option>
+                                                      </select>
+                                                    )}
+                                                  </div>
+                                                ))}
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Accordion Action Buttons */}
+                                        <div className="flex flex-wrap items-center justify-end gap-3 pt-2 border-t border-white/10">
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setExpandedDate(null);
+                                              setAccordionState(null);
+                                            }}
+                                            className="px-5 py-2 rounded-lg bg-stone-200/90 hover:bg-stone-300 dark:bg-[#1c1c1b] dark:hover:bg-[#252524] border border-stone-300/80 dark:border-white/10 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white text-xs uppercase font-bold tracking-wider transition cursor-pointer shadow-sm"
+                                          >
+                                            CLOSE
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSaveAccordion(entry.date)}
+                                            className="px-6 py-2 rounded-lg bg-[#e9762b] text-black font-extrabold text-xs uppercase tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-md shadow-orange-500/20 shrink-0"
+                                          >
+                                            SAVE CHANGES
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Bottom Table Navigation & Chunk Loading Bar */}
+                  {/* Footer Metrics Bar */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 px-5 py-4 bg-white/[0.02] backdrop-blur-xl border-t border-white/10 font-mono text-xs sm:text-[13px]">
+                    {/* Left: Row Count & Load More */}
+                    <div className="flex flex-wrap items-center gap-3 text-stone-500 dark:text-slate-400">
+                      <span className="uppercase tracking-wider text-xs">
+                        SHOWING <span className="text-stone-900 dark:text-white font-bold font-mono-numbers">{visibleLogs.length}</span> OF{' '}
+                        <span className="text-stone-900 dark:text-white font-bold font-mono-numbers">{filteredDailyLogs.length}</span> ROWS
+                      </span>
+                      {filteredDailyLogs.length > visibleLogs.length && (
+                        <button
+                          type="button"
+                          onClick={() => setVisibleLimit((prev) => prev + 15)}
+                          className="px-3.5 py-1.5 rounded-full glass-pill hover:border-[#e9762b] text-[#e9762b] text-xs font-bold uppercase tracking-wider transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <span>+ Load 15 More</span>
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
                       )}
-                    </React.Fragment>
-                  );
-                  })
-                )}
-              </tbody>
-            </table>
+                      {visibleLimit > 20 && (
+                        <button
+                          type="button"
+                          onClick={() => setVisibleLimit(20)}
+                          className="px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white text-xs font-bold uppercase tracking-wider transition cursor-pointer"
+                        >
+                          Show Less
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Right: Live KPI Chips */}
+                    <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs font-mono">
+                      <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.08]">
+                        <span className="text-slate-400 uppercase tracking-wider text-[11px]">AVG HOURS:</span>
+                        <span className="text-stone-900 dark:text-white font-extrabold font-mono-numbers text-xs sm:text-[13px]">{mainStats.avgHours} hrs</span>
+                      </div>
+                      <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.08]">
+                        <span className="text-slate-400 uppercase tracking-wider text-[11px]">CLASS ATTENDED:</span>
+                        <span className="text-emerald-400 font-extrabold font-mono-numbers text-xs sm:text-[13px]">{mainStats.classPercent}%</span>
+                      </div>
+                      <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.08]">
+                        <span className="text-slate-400 uppercase tracking-wider text-[11px]">AVG SLEEP:</span>
+                        <span className="text-stone-900 dark:text-white font-extrabold font-mono-numbers text-xs sm:text-[13px]">{mainStats.avgSleep} hrs</span>
+                      </div>
+                      <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-orange-500/10 border border-orange-500/25">
+                        <span className="text-orange-300/80 uppercase tracking-wider text-[11px]">TOTAL:</span>
+                        <span className="text-[#e9762b] font-extrabold font-mono-numbers text-xs sm:text-[13px]">{mainStats.totalHours} hrs</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
-
-          {/* Bottom Table Navigation & Chunk Loading Bar */}
-          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-white/[0.03] backdrop-blur-xl border-t border-orange-950/10 dark:border-white/10 font-mono text-xs shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
-            <span className="text-stone-600 dark:text-slate-400">
-              Showing <span className="text-stone-900 dark:text-white font-bold">{visibleLogs.length}</span> of{' '}
-              <span className="text-stone-900 dark:text-white font-bold">{filteredDailyLogs.length}</span> days recorded
-            </span>
-
-            <div className="flex items-center gap-2">
-              {filteredDailyLogs.length > visibleLogs.length && (
-                <button
-                  type="button"
-                  onClick={() => setVisibleLimit((prev) => prev + 10)}
-                  className="px-4 py-1.5 rounded-lg glass-pill hover:border-orange-500/40 text-[#e9762b] font-bold uppercase tracking-wider transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
-                >
-                  <span>Load More (+10)</span>
-                  <ChevronDown className="w-3.5 h-3.5" />
-                </button>
-              )}
-
-              {visibleLimit > 10 && (
-                <button
-                  type="button"
-                  onClick={() => setVisibleLimit(10)}
-                  className="px-3 py-1.5 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white uppercase font-bold text-[11px] transition cursor-pointer border border-stone-300/80 dark:border-white/10"
-                >
-                  Show Less
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </>
-    )}
-  </div>
-</>
-)}
+        </>
+      )}
 
       {/* Modal: Add Log Row for Any Date (Today or Past Date) */}
       {showAddRowModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-lg glass-modal rounded-2xl p-6 sm:p-7 space-y-5 border border-white/20 shadow-2xl font-mono max-h-[90vh] overflow-y-auto">
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-fadeIn"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowAddRowModal(false); }}
+        >
+          <div
+            className="relative w-full max-w-xl max-h-[90vh] flex flex-col rounded-3xl border font-mono overflow-hidden transition-all duration-200"
+            style={{
+              backgroundColor: isDark ? 'rgba(18, 18, 17, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+              backdropFilter: 'blur(36px)',
+              WebkitBackdropFilter: 'blur(36px)',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.16)' : 'rgba(0, 0, 0, 0.12)',
+              boxShadow: isDark
+                ? '0 30px 90px -10px rgba(0,0,0,0.95), 0 0 60px -20px rgba(233,118,43,0.25)'
+                : '0 30px 80px rgba(0, 0, 0, 0.14), inset 0 1px 1px rgba(255, 255, 255, 0.95)',
+            }}
+          >
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-3">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-[#e9762b]" />
-                <h3 className="text-base sm:text-lg font-bold text-stone-900 dark:text-white uppercase tracking-wider">
-                  Add Study Log Row
-                </h3>
+            <div className={`flex items-center justify-between border-b px-5 sm:px-6 py-4 shrink-0 transition-colors ${isDark ? 'bg-[#141413] border-white/10' : 'bg-[#f4f0e8] border-stone-200'
+              }`}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-[#e9762b] flex items-center justify-center border border-orange-500/40 shadow-inner">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-stone-900 dark:text-white uppercase tracking-wider">
+                    NEW STUDY LOG ENTRY
+                  </h3>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowAddRowModal(false)}
-                className="p-1 rounded-full hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+                title="Close modal (Esc)"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitAddRowModal} className="space-y-5">
-              {/* Date Selector with quick pills (Today, Yesterday) & Date Picker */}
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  SELECT DATE (TODAY OR ANY PAST DATE)
-                </label>
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleAddRowDateChange(todayStr)}
-                    className={`px-3 py-1.5 rounded-lg text-xs uppercase font-bold transition cursor-pointer ${
-                      addRowDate === todayStr
-                        ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/20'
-                        : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
-                    }`}
-                  >
-                    Today
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleAddRowDateChange(yesterdayStr)}
-                    className={`px-3 py-1.5 rounded-lg text-xs uppercase font-bold transition cursor-pointer ${
-                      addRowDate === yesterdayStr
-                        ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/20'
-                        : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white'
-                    }`}
-                  >
-                    Yesterday
-                  </button>
-                  <input
-                    type="date"
-                    max={todayStr}
-                    value={addRowDate}
-                    onChange={(e) => handleAddRowDateChange(e.target.value)}
-                    className="glass-input rounded-lg px-3 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none flex-1 min-w-[140px] font-mono cursor-pointer"
-                    required
-                  />
-                </div>
-                {dailyLogs.some((l) => l.date === addRowDate && ((l.studyHours != null && l.studyHours > 0) || l.attendedClass || (l.pyqsSolved != null && l.pyqsSolved > 0) || l.notes)) && (
-                  <p className="text-[11px] text-[#e9762b] font-medium flex items-center gap-1 pt-1">
-                    <span>*</span> Existing log found for {formatDateDisplay(addRowDate)}. Saving will update this row.
-                  </p>
-                )}
-              </div>
+            <form onSubmit={handleSubmitAddRowModal} className="flex flex-col flex-1 min-h-0">
+              <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-3.5 min-h-0 custom-scrollbar text-xs">
 
-              {/* Numerical Fields: Study Hours, PYQs, Sleep Hours */}
-              <div className="grid grid-cols-3 gap-3 text-xs">
-                {/* Study Hours */}
-                <div className="glass-panel p-3 rounded-xl space-y-1.5">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
-                    STUDY HOURS
-                  </label>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      max="24"
-                      placeholder="0"
-                      value={addRowStudyHours}
-                      onChange={(e) => setAddRowStudyHours(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)))}
-                      className="w-full glass-input rounded-lg px-2 py-1 text-center font-bold text-stone-900 dark:text-white text-xs focus:outline-none"
-                    />
-                    <span className="text-[10px] text-stone-500 dark:text-slate-400">h</span>
+                {/* 1. DATE SELECTOR */}
+                <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${
+                  isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono">
+                      DATE
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded font-extrabold uppercase border bg-orange-500/15 text-[#e9762b] border-orange-500/30">
+                      {formatDateDisplay(addRowDate)}
+                    </span>
                   </div>
-                </div>
 
-                {/* PYQs */}
-                <div className="glass-panel p-3 rounded-xl space-y-1.5">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
-                    PYQS
-                  </label>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      step="1"
-                      min="0"
-                      placeholder="0"
-                      value={addRowPyqs}
-                      onChange={(e) => setAddRowPyqs(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value)))}
-                      className="w-full glass-input rounded-lg px-2 py-1 text-center font-bold text-stone-900 dark:text-white text-xs focus:outline-none"
-                    />
-                    <span className="text-[10px] text-stone-500 dark:text-slate-400">q</span>
-                  </div>
-                </div>
-
-                {/* Sleep */}
-                <div className="glass-panel p-3 rounded-xl space-y-1.5">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
-                    SLEEP
-                  </label>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      step="0.5"
-                      min="0"
-                      max="24"
-                      placeholder="0"
-                      value={addRowSleepHours}
-                      onChange={(e) => setAddRowSleepHours(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)))}
-                      className="w-full glass-input rounded-lg px-2 py-1 text-center font-bold text-stone-900 dark:text-white text-xs focus:outline-none"
-                    />
-                    <span className="text-[10px] text-stone-500 dark:text-slate-400">h</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Habit Toggles: Class, Revision, Mock */}
-              <div className="grid grid-cols-3 gap-3 text-xs">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
-                    CLASS ATTENDED?
-                  </label>
-                  <YesNoToggle
-                    size="sm"
-                    value={addRowAttendedClass}
-                    onChange={(val) => setAddRowAttendedClass(val)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
-                    REVISION DONE?
-                  </label>
-                  <YesNoToggle
-                    size="sm"
-                    value={addRowRevisionDone}
-                    onChange={(val) => setAddRowRevisionDone(val)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
-                    MOCK TEST?
-                  </label>
-                  <YesNoToggle
-                    size="sm"
-                    value={addRowMockTest}
-                    onChange={(val) => setAddRowMockTest(val)}
-                  />
-                </div>
-              </div>
-
-              {/* Focus Rating (1-5) */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                    FOCUS RATING ({addRowRating ? `${addRowRating}/5` : 'Not Rated'})
-                  </label>
-                  {addRowRating && (
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setAddRowRating(null)}
-                      className="text-[10px] text-stone-500 hover:text-stone-700 dark:hover:text-slate-300 underline cursor-pointer"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-5 gap-1.5">
-                  {[1, 2, 3, 4, 5].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setAddRowRating(addRowRating === val ? null : val)}
-                      className={`h-8 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center ${
-                        addRowRating === val
-                          ? 'bg-[#e9762b] text-black font-extrabold shadow-sm shadow-orange-500/20'
-                          : 'glass-pill text-stone-700 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white'
+                      onClick={() => handleAddRowDateChange(todayStr)}
+                      className={`px-4 py-2 rounded-xl text-xs uppercase font-extrabold transition cursor-pointer ${
+                        addRowDate === todayStr
+                          ? 'bg-[#e9762b] text-white shadow-md shadow-orange-500/25'
+                          : isDark
+                            ? 'bg-white/5 hover:bg-white/10 text-stone-300 border border-white/10'
+                            : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-300/80 shadow-sm'
                       }`}
                     >
-                      {val}★
+                      Today
                     </button>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => handleAddRowDateChange(yesterdayStr)}
+                      className={`px-4 py-2 rounded-xl text-xs uppercase font-extrabold transition cursor-pointer ${
+                        addRowDate === yesterdayStr
+                          ? 'bg-[#e9762b] text-white shadow-md shadow-orange-500/25'
+                          : isDark
+                            ? 'bg-white/5 hover:bg-white/10 text-stone-300 border border-white/10'
+                            : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-300/80 shadow-sm'
+                      }`}
+                    >
+                      Yesterday
+                    </button>
+                    <input
+                      type="date"
+                      max={todayStr}
+                      value={addRowDate}
+                      onChange={(e) => handleAddRowDateChange(e.target.value)}
+                      className={`border focus:border-[#e9762b] rounded-xl px-3.5 py-2 text-xs focus:outline-none flex-1 min-w-[140px] font-mono font-bold cursor-pointer transition ${
+                        isDark
+                          ? 'bg-[#121211] border-white/10 text-white'
+                          : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                      }`}
+                      required
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {/* Custom Trackers (if any exist) */}
-              {customColumns.length > 0 && (
-                <div className="space-y-3 pt-2 border-t border-orange-950/10 dark:border-white/10">
-                  <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
-                    CUSTOM COLUMNS
+                {/* 2. STUDY & REST METRICS */}
+                <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${
+                  isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono">
+                      STUDY &amp; REST METRICS
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-500/15 text-sky-600 dark:text-sky-400 font-extrabold border border-sky-500/30">
+                      3 METRICS
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider block truncate">
+                        STUDY HOURS (HRS)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="24"
+                        placeholder="0"
+                        value={addRowStudyHours}
+                        onChange={(e) => setAddRowStudyHours(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)))}
+                        className={`w-full border focus:border-[#e9762b] rounded-xl px-3 py-2 font-mono text-sm font-bold text-center focus:outline-none transition ${
+                          isDark
+                            ? 'bg-[#121211] border-white/10 text-white'
+                            : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                        }`}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider block truncate">
+                        PYQS SOLVED (QUES)
+                      </label>
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        placeholder="0"
+                        value={addRowPyqs}
+                        onChange={(e) => setAddRowPyqs(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value)))}
+                        className={`w-full border focus:border-[#e9762b] rounded-xl px-3 py-2 font-mono text-sm font-bold text-center focus:outline-none transition ${
+                          isDark
+                            ? 'bg-[#121211] border-white/10 text-white'
+                            : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                        }`}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider block truncate">
+                        SLEEP HOURS (HRS)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="24"
+                        placeholder="0"
+                        value={addRowSleepHours}
+                        onChange={(e) => setAddRowSleepHours(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value)))}
+                        className={`w-full border focus:border-[#e9762b] rounded-xl px-3 py-2 font-mono text-sm font-bold text-center focus:outline-none transition ${
+                          isDark
+                            ? 'bg-[#121211] border-white/10 text-white'
+                            : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. DAILY HABITS */}
+                <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${
+                  isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                }`}>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono block">
+                    DAILY HABITS
                   </span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {customColumns.map((col) => (
-                      <div key={col.id} className="space-y-1.5 glass-panel p-2.5 rounded-xl">
-                        <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block truncate">
-                          {col.name}
+                  <div className="space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider truncate">
+                        ATTENDED CLASS
+                      </label>
+                      <div className="w-full sm:w-56 shrink-0">
+                        <TriStatePillSelect
+                          size="sm"
+                          value={addRowAttendedClass}
+                          onChange={setAddRowAttendedClass}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider truncate">
+                        REVISION DONE
+                      </label>
+                      <div className="w-full sm:w-56 shrink-0">
+                        <TriStatePillSelect
+                          size="sm"
+                          value={addRowRevisionDone}
+                          onChange={setAddRowRevisionDone}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider truncate">
+                        MOCK TEST TAKEN
+                      </label>
+                      <div className="w-full sm:w-56 shrink-0">
+                        <TriStatePillSelect
+                          size="sm"
+                          value={addRowMockTest}
+                          onChange={setAddRowMockTest}
+                        />
+                      </div>
+                    </div>
+
+                    {customColumns.filter((col) => col.type === 'boolean').map((col) => (
+                      <div key={col.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider truncate">
+                          {formatColumnHeader(col.name, col.unit)}
                         </label>
-                        {col.type === 'boolean' && (
-                          <YesNoToggle
+                        <div className="w-full sm:w-56 shrink-0">
+                          <TriStatePillSelect
                             size="sm"
-                            value={Boolean(addRowCustomData[col.id])}
+                            value={addRowCustomData[col.id]}
                             onChange={(val) => setAddRowCustomData({ ...addRowCustomData, [col.id]: val })}
                           />
-                        )}
-                        {col.type === 'number' && (
-                          <input
-                            type="number"
-                            step="any"
-                            value={addRowCustomData[col.id] ?? ''}
-                            onChange={(e) =>
-                              setAddRowCustomData({
-                                ...addRowCustomData,
-                                [col.id]: e.target.value === '' ? '' : Number(e.target.value),
-                              })
-                            }
-                            placeholder="0"
-                            className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none"
-                          />
-                        )}
-                        {col.type === 'text' && (
-                          <input
-                            type="text"
-                            value={addRowCustomData[col.id] ?? ''}
-                            onChange={(e) =>
-                              setAddRowCustomData({ ...addRowCustomData, [col.id]: e.target.value })
-                            }
-                            placeholder="Enter text..."
-                            className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none"
-                          />
-                        )}
-                        {col.type === 'select' && (
-                          <select
-                            value={addRowCustomData[col.id] ?? ''}
-                            onChange={(e) =>
-                              setAddRowCustomData({ ...addRowCustomData, [col.id]: e.target.value })
-                            }
-                            className="w-full glass-input rounded-lg px-2.5 py-1.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
-                          >
-                            <option value="" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
-                              -- Select --
-                            </option>
-                            {(col.options || []).map((opt) => (
-                              <option key={opt} value={opt} className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
-                        )}
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
-              )}
 
-              {/* Notes */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  NOTES (OPTIONAL)
-                </label>
-                <textarea
-                  rows={2}
-                  value={addRowNotes}
-                  onChange={(e) => setAddRowNotes(e.target.value)}
-                  placeholder="Topics studied, key achievements, or notes for this date..."
-                  className="w-full glass-input rounded-xl px-3 py-2 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none resize-none"
-                />
+                {/* 4. FOCUS RATING */}
+                <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${
+                  isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono">
+                      FOCUS RATING
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-extrabold uppercase border ${
+                        addRowRating
+                          ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30'
+                          : isDark
+                            ? 'bg-white/5 text-stone-400 border-white/10'
+                            : 'bg-stone-100 text-stone-500 border-stone-200'
+                      }`}>
+                        {addRowRating ? `${addRowRating}/5 STARS` : 'NOT RATED'}
+                      </span>
+                      {addRowRating && (
+                        <button
+                          type="button"
+                          onClick={() => setAddRowRating(null)}
+                          className="text-[10px] text-stone-500 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white underline cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-5 gap-2">
+                    {[1, 2, 3, 4, 5].map((val) => {
+                      const isSelected = addRowRating === val;
+                      return (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => setAddRowRating(isSelected ? null : val)}
+                          className={`h-9 rounded-xl text-xs font-mono font-bold transition cursor-pointer flex items-center justify-center gap-1 active:scale-95 ${
+                            isSelected
+                              ? 'bg-[#e9762b] text-white shadow-md shadow-orange-500/25 border border-orange-500/40'
+                              : isDark
+                                ? 'bg-[#121211] hover:bg-white/10 text-stone-300 border border-white/10'
+                                : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-300 shadow-sm'
+                          }`}
+                        >
+                          <span>{val}</span>
+                          <span className={isSelected ? 'text-white' : 'text-amber-500 dark:text-amber-400'}>★</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 5. NOTES */}
+                <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${
+                  isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono">
+                      NOTES &amp; REFLECTIONS
+                    </span>
+                    <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${
+                      isDark ? 'bg-white/10 text-stone-300 border-white/10' : 'bg-stone-100 text-stone-600 border-stone-200'
+                    }`}>
+                      OPTIONAL
+                    </span>
+                  </div>
+
+                  <textarea
+                    rows={3}
+                    value={addRowNotes}
+                    onChange={(e) => setAddRowNotes(e.target.value)}
+                    placeholder="Write any thoughts, key formulas reviewed, or milestones achieved today..."
+                    className={`w-full border focus:border-[#e9762b] rounded-xl px-3.5 py-2.5 text-xs focus:outline-none transition leading-relaxed resize-none custom-scrollbar ${
+                      isDark
+                        ? 'bg-[#121211] border-white/10 text-white placeholder-stone-500'
+                        : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                    }`}
+                  />
+                </div>
+
+                {/* 6. ADDITIONAL CUSTOM TRACKERS (non-boolean) */}
+                {customColumns.filter((c) => c.type !== 'boolean').length > 0 && (
+                  <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${
+                    isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200/90'
+                  }`}>
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono block">
+                      CUSTOM FIELDS
+                    </span>
+                    <div className="space-y-3">
+                      {customColumns
+                        .filter((c) => c.type !== 'boolean')
+                        .map((col) => (
+                          <div key={col.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                            <label className="text-[10px] text-stone-500 dark:text-stone-400 uppercase font-bold tracking-wider truncate">
+                              {formatColumnHeader(col.name, col.unit)}
+                            </label>
+                            <div className="w-full sm:w-56 shrink-0">
+                              {col.type === 'number' && (
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={addRowCustomData[col.id] ?? ''}
+                                  onChange={(e) =>
+                                    setAddRowCustomData({
+                                      ...addRowCustomData,
+                                      [col.id]: e.target.value === '' ? '' : Number(e.target.value),
+                                    })
+                                  }
+                                  placeholder="0"
+                                  className={`w-full border focus:border-[#e9762b] rounded-xl px-3 py-2 text-xs font-mono font-bold focus:outline-none transition ${
+                                    isDark ? 'bg-[#121211] border-white/10 text-white' : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                                  }`}
+                                />
+                              )}
+                              {col.type === 'text' && (
+                                <input
+                                  type="text"
+                                  value={addRowCustomData[col.id] ?? ''}
+                                  onChange={(e) =>
+                                    setAddRowCustomData({ ...addRowCustomData, [col.id]: e.target.value })
+                                  }
+                                  placeholder="Enter text..."
+                                  className={`w-full border focus:border-[#e9762b] rounded-xl px-3.5 py-2 text-xs focus:outline-none transition ${
+                                    isDark ? 'bg-[#121211] border-white/10 text-white' : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                                  }`}
+                                />
+                              )}
+                              {col.type === 'select' && (
+                                <select
+                                  value={addRowCustomData[col.id] ?? ''}
+                                  onChange={(e) =>
+                                    setAddRowCustomData({ ...addRowCustomData, [col.id]: e.target.value })
+                                  }
+                                  className={`w-full border focus:border-[#e9762b] rounded-xl px-3.5 py-2 text-xs focus:outline-none cursor-pointer transition ${
+                                    isDark ? 'bg-[#121211] border-white/10 text-white' : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                                  }`}
+                                >
+                                  <option value="" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>-- Select --</option>
+                                  {(col.options || []).map((opt) => (
+                                    <option key={opt} value={opt} className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>
+                                      {opt}
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                              {col.type === 'rating' && (
+                                <select
+                                  value={addRowCustomData[col.id] ?? ''}
+                                  onChange={(e) =>
+                                    setAddRowCustomData({
+                                      ...addRowCustomData,
+                                      [col.id]: e.target.value === '' ? '' : Number(e.target.value),
+                                    })
+                                  }
+                                  className={`w-full border focus:border-[#e9762b] rounded-xl px-3.5 py-2 text-xs font-bold text-center focus:outline-none cursor-pointer transition ${
+                                    isDark ? 'bg-[#121211] border-white/10 text-white' : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                                  }`}
+                                >
+                                  <option value="" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>-- Rating --</option>
+                                  <option value="5" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>5/5 (Mastered)</option>
+                                  <option value="4" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>4/5 (Good)</option>
+                                  <option value="3" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>3/5 (Average)</option>
+                                  <option value="2" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>2/5 (Weak)</option>
+                                  <option value="1" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>1/5 (Need Review)</option>
+                                </select>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Modal Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-orange-950/10 dark:border-white/10">
-                <button
-                  type="button"
-                  onClick={() => setShowAddRowModal(false)}
-                  className="px-4 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white uppercase font-bold text-xs transition cursor-pointer border border-stone-300/80 dark:border-white/10"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2 rounded-lg bg-[#e9762b] text-black font-extrabold uppercase text-xs tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-md shadow-orange-500/20"
-                >
-                  Save Row
-                </button>
+              {/* Sticky Modal Footer (Settings style) */}
+              <div className={`flex items-center justify-between border-t px-6 sm:px-8 py-3.5 shrink-0 transition-colors ${isDark ? 'bg-[#141413] border-white/10' : 'bg-[#f4f0e8] border-stone-200'
+                }`}>
+                <span className="text-[11px] font-mono text-stone-500 dark:text-stone-400 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#e9762b] animate-pulse" />
+                  <span className="hidden sm:inline">STUDYO • </span>
+                  <span>{formatDateDisplay(addRowDate)}</span>
+                </span>
+                <div className="flex items-center gap-3 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddRowModal(false)}
+                    className={`px-5 py-2.5 rounded-full border text-xs font-bold uppercase tracking-wider transition cursor-pointer active:scale-95 ${isDark
+                      ? 'bg-[#1c1c1b] border-white/10 text-slate-300 hover:text-white'
+                      : 'bg-stone-200 border-stone-300 text-stone-800 hover:text-black'
+                      }`}
+                  >
+                    CLOSE
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-7 py-2.5 rounded-full bg-[#e9762b] text-white text-xs font-mono font-black uppercase tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-lg shadow-orange-500/25"
+                  >
+                    SAVE ENTRY
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -2367,26 +2788,42 @@ export const DailyStudyLog: React.FC = () => {
 
       {/* Modal: Add Custom Column */}
       {showAddColumnModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-md glass-modal rounded-2xl p-6 shadow-2xl font-mono space-y-6">
-            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-stone-900 dark:text-white uppercase tracking-tight">
-                  Add Column
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowAddColumnModal(false); }}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl border font-mono overflow-hidden transition-all duration-200"
+            style={{
+              backgroundColor: isDark ? 'rgba(18, 18, 17, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.16)' : 'rgba(0, 0, 0, 0.12)',
+              boxShadow: isDark
+                ? '0 30px 90px -10px rgba(0,0,0,0.95), 0 0 60px -20px rgba(233,118,43,0.25)'
+                : '0 30px 80px rgba(0, 0, 0, 0.14), inset 0 1px 1px rgba(255, 255, 255, 0.95)',
+            }}
+          >
+            <div className={`flex items-center justify-between border-b px-5 sm:px-6 py-4 ${isDark ? 'bg-[#141413] border-white/10' : 'bg-[#f4f0e8] border-stone-200'
+              }`}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-[#e9762b] flex items-center justify-center border border-orange-500/40 shadow-inner">
+                  <Columns className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm sm:text-base font-bold text-stone-900 dark:text-white uppercase tracking-wider font-mono">
+                  ADD COLUMN
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowAddColumnModal(false)}
-                className="p-1 rounded-lg hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateColumn} className="space-y-4 text-xs">
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+            <form onSubmit={handleCreateColumn} className="p-6 space-y-5 text-xs">
+              <div className="space-y-2">
+                <label className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
                   COLUMN NAME
                 </label>
                 <input
@@ -2395,22 +2832,25 @@ export const DailyStudyLog: React.FC = () => {
                   value={newColName}
                   onChange={(e) => setNewColName(e.target.value)}
                   placeholder="e.g. Mood, Water intake, Exercise, Pages read"
-                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none"
+                  className={`w-full border focus:border-[#e9762b] rounded-xl px-4 py-3 text-xs focus:outline-none transition ${isDark
+                    ? 'bg-black/40 border-white/10 text-white placeholder-stone-500'
+                    : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                    }`}
                   autoFocus
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  TYPE
+              <div className="space-y-2.5">
+                <label className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
+                  COLUMN TYPE
                 </label>
-                <div className="grid grid-cols-5 gap-1.5">
+                <div className="grid grid-cols-5 gap-2">
                   {[
                     { type: 'boolean' as CustomColumnType, label: 'Yes/No', desc: 'Clickable yes/no', icon: CheckSquare, color: 'text-[#10b981]' },
-                    { type: 'number' as CustomColumnType, label: 'Number', desc: 'Numeric value', icon: Hash, color: 'text-sky-400' },
-                    { type: 'text' as CustomColumnType, label: 'Text', desc: 'Free text', icon: Type, color: 'text-amber-400' },
-                    { type: 'select' as CustomColumnType, label: 'Dropdown', desc: 'Pick from your options', icon: List, color: 'text-purple-400' },
-                    { type: 'rating' as CustomColumnType, label: 'Rating', desc: 'Score from 1 to 5', icon: Star, color: 'text-amber-400' },
+                    { type: 'number' as CustomColumnType, label: 'Number', desc: 'Numeric value', icon: Hash, color: 'text-sky-500 dark:text-sky-400' },
+                    { type: 'text' as CustomColumnType, label: 'Text', desc: 'Free text', icon: Type, color: 'text-amber-500 dark:text-amber-400' },
+                    { type: 'select' as CustomColumnType, label: 'Dropdown', desc: 'Pick from your options', icon: List, color: 'text-purple-500 dark:text-purple-400' },
+                    { type: 'rating' as CustomColumnType, label: 'Rating', desc: 'Score from 1 to 5', icon: Star, color: 'text-amber-500 dark:text-amber-400' },
                   ].map((item) => {
                     const Icon = item.icon;
                     const isSelected = newColType === item.type;
@@ -2421,11 +2861,12 @@ export const DailyStudyLog: React.FC = () => {
                         onClick={() => setNewColType(item.type)}
                         aria-pressed={isSelected}
                         title={item.desc}
-                        className={`py-2.5 px-1 rounded-xl border transition flex flex-col items-center gap-1.5 cursor-pointer ${
-                          isSelected
-                            ? 'bg-orange-500/10 border-[#e9762b] shadow-sm shadow-orange-500/20'
-                            : 'glass-pill text-stone-700 dark:text-slate-300 hover:border-stone-400 dark:hover:border-white/20'
-                        }`}
+                        className={`py-3 px-1.5 rounded-xl border transition flex flex-col items-center gap-1.5 cursor-pointer ${isSelected
+                          ? 'bg-orange-500/15 border-[#e9762b] shadow-sm shadow-orange-500/20'
+                          : isDark
+                            ? 'bg-[#181817] border-white/10 text-stone-300 hover:border-white/25'
+                            : 'bg-[#faf6f0] border-stone-200 text-stone-700 hover:border-stone-300'
+                          }`}
                       >
                         <Icon className={`w-4 h-4 ${item.color}`} />
                         <span className="font-bold text-stone-900 dark:text-white text-[10px] leading-none">{item.label}</span>
@@ -2433,13 +2874,13 @@ export const DailyStudyLog: React.FC = () => {
                     );
                   })}
                 </div>
-                <p className="text-[10px] text-stone-500 dark:text-slate-500">
+                <p className="text-[11px] text-stone-500 dark:text-stone-400">
                   {{
-                    boolean: 'Clickable yes/no',
-                    number: 'Numeric value',
-                    text: 'Free text',
-                    select: 'Pick from your options',
-                    rating: 'Score from 1 to 5',
+                    boolean: 'Clickable YES / NO / N/A status badge',
+                    number: 'Numeric value (supports decimals & totals)',
+                    text: 'Free text note or label',
+                    select: 'Dropdown menu with custom options',
+                    rating: '1 to 5 star score rating',
                   }[newColType] ?? ''}
                 </p>
               </div>
@@ -2447,15 +2888,17 @@ export const DailyStudyLog: React.FC = () => {
               {newColType === 'select' && (() => {
                 const optList = newColOptions.split(',').map((s) => s.trim()).filter(Boolean);
                 return (
-                  <div className="space-y-2.5 animate-fadeIn">
+                  <div className={`space-y-3 p-4 rounded-2xl border animate-fadeIn ${isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200 shadow-sm'
+                    }`}>
                     <div className="flex items-center justify-between">
-                      <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                        OPTIONS
+                      <label className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
+                        DROPDOWN OPTIONS
                       </label>
-                      <span className="text-[10px] text-stone-500 dark:text-slate-500 font-mono">{optList.length}</span>
+                      <span className="text-[10px] text-[#e9762b] font-mono font-bold">{optList.length} added</span>
                     </div>
 
-                    <div className="flex flex-wrap gap-1.5 min-h-[40px] max-h-28 overflow-y-auto p-2 rounded-xl bg-stone-100/60 dark:bg-white/[0.03] border border-stone-200 dark:border-white/10 items-center">
+                    <div className={`flex flex-wrap gap-1.5 min-h-[42px] max-h-28 overflow-y-auto p-2.5 rounded-xl border items-center ${isDark ? 'bg-black/40 border-white/10' : 'bg-[#faf6f0] border-stone-200'
+                      }`}>
                       {optList.length > 0 ? (
                         optList.map((opt) => (
                           <span
@@ -2474,7 +2917,7 @@ export const DailyStudyLog: React.FC = () => {
                           </span>
                         ))
                       ) : (
-                        <span className="text-[11px] text-stone-400 dark:text-slate-500 px-1">No options yet</span>
+                        <span className="text-[11px] text-stone-500 px-1">No options added yet</span>
                       )}
                     </div>
 
@@ -2489,17 +2932,18 @@ export const DailyStudyLog: React.FC = () => {
                             handleAddOptionToNewCol();
                           }
                         }}
-                        placeholder="Add option, press Enter"
-                        className="flex-1 min-w-0 glass-input rounded-xl px-3.5 py-2 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
+                        placeholder="Type option & press Enter"
+                        className={`flex-1 min-w-0 border focus:border-[#e9762b] rounded-xl px-3.5 py-2 text-xs focus:outline-none transition ${isDark ? 'bg-black/40 border-white/10 text-white placeholder-stone-500' : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                          }`}
                       />
                       <button
                         type="button"
                         onClick={() => handleAddOptionToNewCol()}
                         disabled={!newColOptionInput.trim()}
                         aria-label="Add option"
-                        className="w-9 h-9 rounded-xl bg-[#e9762b] text-black flex items-center justify-center hover:brightness-110 active:scale-95 transition cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="w-9 h-9 rounded-xl bg-[#e9762b] text-white flex items-center justify-center hover:brightness-110 active:scale-95 transition cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        <Plus className="w-4 h-4" />
+                        <Plus className="w-4 h-4 stroke-[2.5]" />
                       </button>
                     </div>
 
@@ -2515,7 +2959,8 @@ export const DailyStudyLog: React.FC = () => {
                           type="button"
                           title={preset.opts.join(', ')}
                           onClick={() => setNewColOptions(Array.from(new Set([...optList, ...preset.opts])).join(', '))}
-                          className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide bg-stone-200/60 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 border border-stone-300/80 dark:border-white/10 transition cursor-pointer"
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border transition cursor-pointer ${isDark ? 'bg-white/5 hover:bg-white/10 text-stone-300 border-white/10' : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-200'
+                            }`}
                         >
                           + {preset.label}
                         </button>
@@ -2525,19 +2970,23 @@ export const DailyStudyLog: React.FC = () => {
                 );
               })()}
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-orange-950/10 dark:border-white/10">
+              <div className={`flex items-center justify-end gap-3 pt-4 border-t ${isDark ? 'border-white/10' : 'border-stone-200'
+                }`}>
                 <button
                   type="button"
                   onClick={() => setShowAddColumnModal(false)}
-                  className="px-4 py-2 glass-pill text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white uppercase font-bold text-xs transition cursor-pointer"
+                  className={`px-5 py-2.5 rounded-full border uppercase font-bold text-xs transition cursor-pointer ${isDark
+                    ? 'bg-[#1c1c1b] border-white/10 text-slate-300 hover:text-white'
+                    : 'bg-stone-200 border-stone-300 text-stone-800 hover:text-black'
+                    }`}
                 >
-                  Cancel
+                  CANCEL
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 rounded-lg bg-[#e9762b] text-black font-extrabold uppercase text-xs tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-md shadow-orange-500/20"
+                  className="px-6 py-2.5 rounded-full bg-[#e9762b] text-white font-black uppercase text-xs tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-lg shadow-orange-500/25"
                 >
-                  Create
+                  CREATE COLUMN
                 </button>
               </div>
             </form>
@@ -2547,26 +2996,42 @@ export const DailyStudyLog: React.FC = () => {
 
       {/* Modal: Edit / Configure Custom Column */}
       {editingColumn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-md glass-modal rounded-2xl p-6 shadow-2xl font-mono space-y-6">
-            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-3">
-              <div>
-                <h3 className="text-base font-bold text-stone-900 dark:text-white uppercase tracking-tight">
-                  Configure Column
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setEditingColumn(null); }}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl border font-mono overflow-hidden transition-all duration-200"
+            style={{
+              backgroundColor: isDark ? 'rgba(18, 18, 17, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.16)' : 'rgba(0, 0, 0, 0.12)',
+              boxShadow: isDark
+                ? '0 30px 90px -10px rgba(0,0,0,0.95), 0 0 60px -20px rgba(233,118,43,0.25)'
+                : '0 30px 80px rgba(0, 0, 0, 0.14), inset 0 1px 1px rgba(255, 255, 255, 0.95)',
+            }}
+          >
+            <div className={`flex items-center justify-between border-b px-5 sm:px-6 py-4 ${isDark ? 'bg-[#141413] border-white/10' : 'bg-[#f4f0e8] border-stone-200'
+              }`}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-[#e9762b] flex items-center justify-center border border-orange-500/40 shadow-inner">
+                  <Settings2 className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm sm:text-base font-bold text-stone-900 dark:text-white uppercase tracking-wider font-mono">
+                  CONFIGURE COLUMN
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingColumn(null)}
-                className="p-1 rounded-lg hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveEditColumn} className="space-y-4 text-xs">
+            <form onSubmit={handleSaveEditColumn} className="p-6 space-y-4 text-xs">
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                <label className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
                   COLUMN NAME
                 </label>
                 <input
@@ -2576,12 +3041,15 @@ export const DailyStudyLog: React.FC = () => {
                   onChange={(e) =>
                     setEditingColumn({ ...editingColumn, name: e.target.value })
                   }
-                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none"
+                  className={`w-full border focus:border-[#e9762b] rounded-xl px-4 py-2.5 text-xs focus:outline-none transition ${isDark
+                    ? 'bg-black/40 border-white/10 text-white'
+                    : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                    }`}
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                <label className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
                   COLUMN TYPE
                 </label>
                 <select
@@ -2592,28 +3060,33 @@ export const DailyStudyLog: React.FC = () => {
                       type: e.target.value as CustomColumnType,
                     })
                   }
-                  className="w-full glass-input rounded-xl px-3.5 py-2.5 text-xs text-stone-900 dark:text-white focus:outline-none cursor-pointer"
+                  className={`w-full border focus:border-[#e9762b] rounded-xl px-4 py-2.5 text-xs focus:outline-none cursor-pointer transition ${isDark
+                    ? 'bg-black/40 border-white/10 text-white'
+                    : 'bg-white border-stone-300 text-stone-900 shadow-sm'
+                    }`}
                 >
-                  <option value="boolean" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Yes / No</option>
-                  <option value="number" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Number</option>
-                  <option value="text" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Text</option>
-                  <option value="select" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Dropdown</option>
-                  <option value="rating" className="bg-[#f7f5f0] text-slate-900 dark:bg-[#141413] dark:text-white">Rating</option>
+                  <option value="boolean" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>Yes / No</option>
+                  <option value="number" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>Number</option>
+                  <option value="text" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>Text</option>
+                  <option value="select" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>Dropdown</option>
+                  <option value="rating" className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>Rating</option>
                 </select>
               </div>
 
               {editingColumn.type === 'select' && (() => {
                 const optList = (editingColumn.options || '').split(',').map((s) => s.trim()).filter(Boolean);
                 return (
-                  <div className="space-y-2.5">
+                  <div className={`space-y-2.5 p-4 rounded-2xl border ${isDark ? 'bg-[#181817] border-white/10' : 'bg-white/95 border-stone-200 shadow-sm'
+                    }`}>
                     <div className="flex items-center justify-between">
-                      <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                      <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-stone-300 font-bold block">
                         OPTIONS
                       </label>
-                      <span className="text-[10px] text-stone-500 dark:text-slate-500 font-mono">{optList.length}</span>
+                      <span className="text-[10px] text-[#e9762b] font-mono font-bold">{optList.length}</span>
                     </div>
 
-                    <div className="flex flex-wrap gap-1.5 min-h-[40px] max-h-28 overflow-y-auto p-2 rounded-xl bg-stone-100/60 dark:bg-white/[0.03] border border-stone-200 dark:border-white/10 items-center">
+                    <div className={`flex flex-wrap gap-1.5 min-h-[40px] max-h-28 overflow-y-auto p-2.5 rounded-xl border items-center ${isDark ? 'bg-black/40 border-white/10' : 'bg-[#faf6f0] border-stone-200'
+                      }`}>
                       {optList.length > 0 ? (
                         optList.map((opt) => (
                           <span
@@ -2632,7 +3105,7 @@ export const DailyStudyLog: React.FC = () => {
                           </span>
                         ))
                       ) : (
-                        <span className="text-[11px] text-stone-400 dark:text-slate-500 px-1">No options yet</span>
+                        <span className="text-[11px] text-stone-500 px-1">No options yet</span>
                       )}
                     </div>
 
@@ -2648,14 +3121,15 @@ export const DailyStudyLog: React.FC = () => {
                           }
                         }}
                         placeholder="Add option, press Enter"
-                        className="flex-1 min-w-0 glass-input rounded-xl px-3.5 py-2 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
+                        className={`flex-1 min-w-0 border focus:border-[#e9762b] rounded-xl px-3.5 py-2 text-xs focus:outline-none ${isDark ? 'bg-black/40 border-white/10 text-white placeholder-stone-500' : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                          }`}
                       />
                       <button
                         type="button"
                         onClick={() => handleAddOptionToEditCol()}
                         disabled={!editColOptionInput.trim()}
                         aria-label="Add option"
-                        className="w-9 h-9 rounded-xl bg-[#e9762b] text-black flex items-center justify-center hover:brightness-110 active:scale-95 transition cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="w-9 h-9 rounded-xl bg-[#e9762b] text-white flex items-center justify-center hover:brightness-110 active:scale-95 transition cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <Plus className="w-4 h-4" />
                       </button>
@@ -2665,16 +3139,17 @@ export const DailyStudyLog: React.FC = () => {
               })()}
 
               {/* Column Reordering */}
-              <div className="space-y-1.5 pt-2">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+              <div className="space-y-1.5 pt-1">
+                <label className="text-[10px] uppercase tracking-widest text-stone-500 dark:text-stone-400 font-bold block">
                   COLUMN POSITION
                 </label>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <button
                     type="button"
                     disabled={editingColumn.index === 0}
                     onClick={() => handleMoveColumn(editingColumn.index, 'left')}
-                    className="flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 disabled:opacity-30 text-stone-700 dark:text-slate-300 font-bold uppercase text-[11px] border border-stone-300/80 dark:border-white/10 transition cursor-pointer disabled:cursor-not-allowed"
+                    className={`flex-1 inline-flex items-center justify-center gap-2 py-2.5 rounded-xl disabled:opacity-30 font-bold uppercase text-[11px] border transition cursor-pointer disabled:cursor-not-allowed ${isDark ? 'bg-[#181817] hover:bg-white/10 text-stone-200 border-white/10' : 'bg-stone-100 hover:bg-stone-200 text-stone-800 border-stone-300 shadow-sm'
+                      }`}
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                     <span>Move Left</span>
@@ -2683,7 +3158,8 @@ export const DailyStudyLog: React.FC = () => {
                     type="button"
                     disabled={editingColumn.index === customColumns.length - 1}
                     onClick={() => handleMoveColumn(editingColumn.index, 'right')}
-                    className="flex-1 inline-flex items-center justify-center gap-2 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 disabled:opacity-30 text-stone-700 dark:text-slate-300 font-bold uppercase text-[11px] border border-stone-300/80 dark:border-white/10 transition cursor-pointer disabled:cursor-not-allowed"
+                    className={`flex-1 inline-flex items-center justify-center gap-2 py-2.5 rounded-xl disabled:opacity-30 font-bold uppercase text-[11px] border transition cursor-pointer disabled:cursor-not-allowed ${isDark ? 'bg-[#181817] hover:bg-white/10 text-stone-200 border-white/10' : 'bg-stone-100 hover:bg-stone-200 text-stone-800 border-stone-300 shadow-sm'
+                      }`}
                   >
                     <span>Move Right</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -2692,30 +3168,34 @@ export const DailyStudyLog: React.FC = () => {
               </div>
 
               {/* Danger Zone: Delete Column */}
-              <div className="pt-2">
+              <div className="pt-1">
                 <button
                   type="button"
                   onClick={() => handleDeleteColumn(editingColumn.id, editingColumn.name)}
-                  className="w-full inline-flex items-center justify-center gap-2 py-2 rounded-lg bg-red-500/10 text-red-500 dark:text-red-400 hover:bg-red-500/20 border border-red-500/30 text-[11px] font-bold uppercase tracking-wider transition cursor-pointer"
+                  className="w-full inline-flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-500/10 text-red-500 dark:text-red-400 hover:bg-red-500/20 border border-red-500/30 text-[11px] font-bold uppercase tracking-wider transition cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Delete</span>
+                  <span>Delete Column</span>
                 </button>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-orange-950/10 dark:border-white/10">
+              <div className={`flex items-center justify-end gap-3 pt-4 border-t ${isDark ? 'border-white/10' : 'border-stone-200'
+                }`}>
                 <button
                   type="button"
                   onClick={() => setEditingColumn(null)}
-                  className="px-4 py-2 rounded-lg bg-stone-200/90 dark:bg-white/5 hover:bg-stone-300 dark:hover:bg-white/10 text-stone-700 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white uppercase font-bold text-xs transition cursor-pointer border border-stone-300/80 dark:border-white/10"
+                  className={`px-5 py-2.5 rounded-full border uppercase font-bold text-xs transition cursor-pointer ${isDark
+                    ? 'bg-[#1c1c1b] border-white/10 text-slate-300 hover:text-white'
+                    : 'bg-stone-200 border-stone-300 text-stone-800 hover:text-black'
+                    }`}
                 >
-                  Cancel
+                  CANCEL
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 rounded-lg bg-[#e9762b] text-black font-extrabold uppercase text-xs tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-md shadow-orange-500/20"
+                  className="px-6 py-2.5 rounded-full bg-[#e9762b] text-white font-black uppercase text-xs tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-lg shadow-orange-500/25"
                 >
-                  Save
+                  SAVE CHANGES
                 </button>
               </div>
             </form>
@@ -2725,27 +3205,42 @@ export const DailyStudyLog: React.FC = () => {
 
       {/* Modal: Create New Custom Table */}
       {showCreateTableModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-lg glass-modal rounded-2xl p-6 sm:p-8 space-y-6 border border-white/15 shadow-2xl font-mono">
-            <div className="flex items-center justify-between border-b border-stone-200 dark:border-white/10 pb-4">
-              <div className="flex items-center gap-2">
-                <Table2 className="w-5 h-5 text-[#e9762b]" />
-                <h3 className="text-lg font-bold text-stone-900 dark:text-white tracking-wide uppercase">
-                  Create Custom Table
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowCreateTableModal(false); }}
+        >
+          <div
+            className="w-full max-w-lg rounded-3xl border font-mono overflow-hidden transition-all duration-200"
+            style={{
+              backgroundColor: isDark ? 'rgba(18, 18, 17, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.16)' : 'rgba(0, 0, 0, 0.12)',
+              boxShadow: isDark
+                ? '0 30px 90px -10px rgba(0,0,0,0.95), 0 0 60px -20px rgba(233,118,43,0.25)'
+                : '0 30px 80px rgba(0, 0, 0, 0.14), inset 0 1px 1px rgba(255, 255, 255, 0.95)',
+            }}
+          >
+            <div className={`flex items-center justify-between border-b px-5 sm:px-6 py-4 ${isDark ? 'bg-[#141413] border-white/10' : 'bg-[#f4f0e8] border-stone-200'
+              }`}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-[#e9762b] flex items-center justify-center border border-orange-500/40 shadow-inner">
+                  <Table2 className="w-4 h-4" />
+                </div>
+                <h3 className="text-sm sm:text-base font-bold text-stone-900 dark:text-white tracking-wider uppercase font-mono">
+                  NEW TABLE
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowCreateTableModal(false)}
-                className="p-1 rounded-full hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+                className="p-1.5 rounded-xl hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4.5 h-4.5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateTable} className="space-y-5">
+            <form onSubmit={handleCreateTable} className="p-6 sm:p-7 space-y-5">
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+                <label className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
                   TABLE TITLE
                 </label>
                 <input
@@ -2754,26 +3249,28 @@ export const DailyStudyLog: React.FC = () => {
                   value={newTableTitle}
                   onChange={(e) => setNewTableTitle(e.target.value)}
                   placeholder="e.g. Mock Tests"
-                  className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
+                  className={`w-full border focus:border-[#e9762b] rounded-xl px-4 py-3 text-xs focus:outline-none transition ${isDark ? 'bg-black/40 border-white/10 text-white placeholder-stone-500' : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                    }`}
                   autoFocus
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
-                  DESCRIPTION (OPTIONAL)
+                <label className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
+                  DESCRIPTION <span className="text-stone-500">(OPTIONAL)</span>
                 </label>
                 <input
                   type="text"
                   value={newTableDesc}
                   onChange={(e) => setNewTableDesc(e.target.value)}
-                  placeholder="Optional description..."
-                  className="w-full glass-input rounded-xl px-4 py-2.5 text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-600 focus:outline-none focus:border-[#e9762b]"
+                  placeholder="Optional subtitle or goal..."
+                  className={`w-full border focus:border-[#e9762b] rounded-xl px-4 py-3 text-xs focus:outline-none transition ${isDark ? 'bg-black/40 border-white/10 text-white placeholder-stone-500' : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                    }`}
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] uppercase tracking-widest text-stone-600 dark:text-slate-400 font-bold block">
+              <div className="space-y-2.5">
+                <label className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
                   CHOOSE A TEMPLATE
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -2811,13 +3308,14 @@ export const DailyStudyLog: React.FC = () => {
                             setNewTableTitle(tmpl.title);
                           }
                         }}
-                        className={`px-3.5 py-3 rounded-xl border text-left transition flex items-center gap-2.5 cursor-pointer ${
-                          isSelected
-                            ? 'bg-orange-500/15 dark:bg-orange-500/20 border-[#e9762b] shadow-sm shadow-orange-500/20 text-stone-900 dark:text-white font-extrabold'
-                            : 'bg-stone-100/70 dark:bg-white/5 border-stone-200 dark:border-white/10 text-stone-700 dark:text-slate-300 hover:border-stone-300 dark:hover:border-white/20 hover:text-stone-900 dark:hover:text-white font-bold'
-                        }`}
+                        className={`px-4 py-3.5 rounded-xl border text-left transition flex items-center gap-3 cursor-pointer ${isSelected
+                          ? 'bg-orange-500/15 border-[#e9762b] shadow-sm shadow-orange-500/20 text-[#e9762b] font-extrabold'
+                          : isDark
+                            ? 'bg-[#181817] border-white/10 text-stone-300 hover:border-white/25 hover:text-white font-bold'
+                            : 'bg-[#faf6f0] border-stone-200 text-stone-700 hover:border-stone-300 hover:bg-stone-100 font-bold shadow-sm'
+                          }`}
                       >
-                        <Icon className={`w-4 h-4 shrink-0 ${isSelected ? 'text-[#e9762b]' : 'text-stone-500 dark:text-slate-400'}`} />
+                        <Icon className={`w-4 h-4 shrink-0 ${isSelected ? 'text-[#e9762b]' : 'text-stone-400'}`} />
                         <span className="text-xs tracking-wide uppercase text-stone-900 dark:text-white">{tmpl.title}</span>
                       </button>
                     );
@@ -2825,19 +3323,24 @@ export const DailyStudyLog: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200 dark:border-white/10">
+              <div className={`flex items-center justify-end gap-3 pt-4 border-t ${isDark ? 'border-white/10' : 'border-stone-200'
+                }`}>
                 <button
                   type="button"
                   onClick={() => setShowCreateTableModal(false)}
-                  className="px-5 py-2.5 rounded-full border border-stone-300 dark:border-white/10 text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white text-xs uppercase font-bold tracking-wider transition cursor-pointer hover:bg-stone-100 dark:hover:bg-white/5"
+                  className={`px-5 py-2.5 rounded-full border text-xs uppercase font-bold tracking-wider transition cursor-pointer ${isDark
+                    ? 'bg-[#1c1c1b] border-white/10 text-slate-300 hover:text-white'
+                    : 'bg-stone-200 border-stone-300 text-stone-800 hover:text-black'
+                    }`}
                 >
-                  Cancel
+                  CANCEL
                 </button>
-                <ShinyButton
+                <button
                   type="submit"
-                  label="Create Table"
-                  className="!px-6 !py-2.5 !text-xs !font-mono !font-extrabold !uppercase !tracking-wider"
-                />
+                  className="px-7 py-2.5 rounded-full bg-[#e9762b] text-white text-xs font-mono font-black uppercase tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-lg shadow-orange-500/25"
+                >
+                  CREATE TABLE
+                </button>
               </div>
             </form>
           </div>
@@ -2846,151 +3349,393 @@ export const DailyStudyLog: React.FC = () => {
 
       {/* Modal: Columns Manager (Delete / Restore Default & Custom Columns) */}
       {showColumnsManagerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="w-full max-w-lg glass-modal rounded-2xl p-6 sm:p-7 space-y-5 border border-white/20 shadow-2xl font-mono max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-3">
-              <div className="flex items-center gap-2">
-                <Settings2 className="w-5 h-5 text-[#e9762b]" />
-                <div>
-                  <h3 className="text-base sm:text-lg font-bold text-stone-900 dark:text-white uppercase tracking-wider">
-                    Columns Manager
-                  </h3>
-                  <p className="text-[11px] text-stone-500 dark:text-slate-400">
-                    Delete or restore any column in the default table
-                  </p>
+        <div
+          className="fixed inset-0 z-[150] flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-fadeIn"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowColumnsManagerModal(false); }}
+        >
+          <div
+            className="relative w-full max-w-xl max-h-[90vh] flex flex-col rounded-3xl border font-mono overflow-hidden transition-all duration-200"
+            style={{
+              backgroundColor: isDark ? 'rgba(18, 18, 17, 0.98)' : 'rgba(255, 255, 255, 0.98)',
+              backdropFilter: 'blur(36px)',
+              WebkitBackdropFilter: 'blur(36px)',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.16)' : 'rgba(0, 0, 0, 0.12)',
+              boxShadow: isDark
+                ? '0 30px 90px -10px rgba(0,0,0,0.95), 0 0 60px -20px rgba(233,118,43,0.25)'
+                : '0 30px 80px rgba(0, 0, 0, 0.14), inset 0 1px 1px rgba(255, 255, 255, 0.95)',
+            }}
+          >
+            {/* Clean Compact Header */}
+            <div className={`flex items-center justify-between border-b px-5 sm:px-6 py-4 shrink-0 transition-colors ${isDark ? 'bg-[#141413] border-white/10' : 'bg-[#f4f0e8] border-stone-200'
+              }`}>
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-orange-500/20 text-[#e9762b] flex items-center justify-center border border-orange-500/40 shadow-inner">
+                  <Settings2 className="w-4 h-4" />
                 </div>
+                <h3 className="text-sm sm:text-base font-bold text-stone-900 dark:text-white uppercase tracking-wider font-mono">
+                  SETTINGS — {(mainTableTitle || 'STUDY LOG').toUpperCase()}
+                </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowColumnsManagerModal(false)}
-                className="p-1 rounded-full hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-500 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-400 hover:text-stone-900 dark:hover:text-white transition cursor-pointer"
+                title="Close (Esc)"
+                aria-label="Close settings"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Default Columns List */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
-                  DEFAULT COLUMNS ({activeDefaultColsCount} / {DEFAULT_COLUMNS_CONFIG.length} ACTIVE)
+            {/* Scrollable Body */}
+            <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-4 space-y-3.5 min-h-0 custom-scrollbar text-xs">
+
+              {/* 1. TABLE DETAILS */}
+              <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${isDark
+                ? 'bg-[#181817] border-white/10'
+                : 'bg-white/95 border-stone-200/90'
+                }`}>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono block">
+                  TABLE DETAILS
                 </span>
-                {deletedDefaultColumns.length > 0 && (
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-wider text-stone-500 dark:text-stone-400 font-bold block">
+                      NAME
+                    </label>
+                    <input
+                      type="text"
+                      value={mainTableTitle}
+                      onChange={(e) => setMainTableTitle(e.target.value)}
+                      placeholder="Study Log"
+                      className={`w-full border focus:border-[#e9762b] rounded-xl px-3.5 py-2.5 text-xs focus:outline-none transition ${isDark ? 'bg-[#121211] border-white/10 text-white placeholder-stone-600' : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                        }`}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] uppercase tracking-wider text-stone-500 dark:text-stone-400 font-bold block">
+                      SUBTITLE
+                    </label>
+                    <input
+                      type="text"
+                      value={mainTableDescription}
+                      onChange={(e) => setMainTableDescription(e.target.value)}
+                      placeholder="Optional subtitle"
+                      className={`w-full border focus:border-[#e9762b] rounded-xl px-3.5 py-2.5 text-xs focus:outline-none transition ${isDark ? 'bg-[#121211] border-white/10 text-white placeholder-stone-600' : 'bg-white border-stone-300 text-stone-900 placeholder-stone-400 shadow-sm'
+                        }`}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. OPTIONS */}
+              <div className={`p-4 rounded-2xl border shadow-sm space-y-2.5 transition-colors ${isDark
+                ? 'bg-[#181817] border-white/10'
+                : 'bg-white/95 border-stone-200/90'
+                }`}>
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono block">
+                  OPTIONS
+                </span>
+
+                <div className="space-y-2">
+                  {/* Sort Arrows */}
+                  <div className="flex items-center justify-between gap-3 py-1">
+                    <span className="text-[11px] uppercase tracking-wider font-bold text-stone-700 dark:text-stone-300">
+                      SORT ARROWS
+                    </span>
+                    <div className={`flex items-center gap-1 p-1 rounded-xl border shrink-0 ${isDark ? 'bg-[#121211] border-white/10' : 'bg-stone-100 border-stone-300'
+                      }`}>
+                      <button
+                        type="button"
+                        onClick={() => setShowSortArrows(true)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${showSortArrows
+                          ? 'bg-[#e9762b] text-white shadow-sm font-extrabold'
+                          : 'text-stone-500 hover:text-black dark:text-stone-400 dark:hover:text-white'
+                          }`}
+                      >
+                        ON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowSortArrows(false)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${!showSortArrows
+                          ? isDark
+                            ? 'bg-white/10 text-white font-extrabold'
+                            : 'bg-white text-stone-900 shadow-sm font-extrabold'
+                          : 'text-stone-500 hover:text-black dark:text-stone-400 dark:hover:text-white'
+                          }`}
+                      >
+                        OFF
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Click-to-Cycle */}
+                  <div className="flex items-center justify-between gap-3 py-1">
+                    <span className="text-[11px] uppercase tracking-wider font-bold text-stone-700 dark:text-stone-300">
+                      CLICK-TO-CYCLE (YES / NO)
+                    </span>
+                    <div className={`flex items-center gap-1 p-1 rounded-xl border shrink-0 ${isDark ? 'bg-[#121211] border-white/10' : 'bg-stone-100 border-stone-300'
+                      }`}>
+                      <button
+                        type="button"
+                        onClick={() => setEnableClickToCycle(true)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${enableClickToCycle
+                          ? 'bg-[#e9762b] text-white shadow-sm font-extrabold'
+                          : 'text-stone-500 hover:text-black dark:text-stone-400 dark:hover:text-white'
+                          }`}
+                      >
+                        ON
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEnableClickToCycle(false)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition cursor-pointer ${!enableClickToCycle
+                          ? isDark
+                            ? 'bg-white/10 text-white font-extrabold'
+                            : 'bg-white text-stone-900 shadow-sm font-extrabold'
+                          : 'text-stone-500 hover:text-black dark:text-stone-400 dark:hover:text-white'
+                          }`}
+                      >
+                        OFF
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. DEFAULT COLUMNS */}
+              <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${isDark
+                ? 'bg-[#181817] border-white/10'
+                : 'bg-white/95 border-stone-200/90'
+                }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono">
+                      DEFAULT COLUMNS
+                    </span>
+                    <span className="px-2 py-0.5 rounded-lg bg-orange-500/15 text-[#e9762b] border border-orange-500/30 text-[10px] font-bold font-mono">
+                      {activeDefaultColsCount}/{DEFAULT_COLUMNS_CONFIG.length}
+                    </span>
+                  </div>
+                  {deletedDefaultColumns.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={resetDefaultColumns}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-orange-500/10 text-[#e9762b] hover:bg-orange-500/20 border border-orange-500/30 text-[10px] font-bold uppercase tracking-wider transition cursor-pointer"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>RESTORE ALL</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {DEFAULT_COLUMNS_CONFIG.map((col) => {
+                    const isDeleted = deletedDefaultColumns.includes(col.key);
+                    return (
+                      <button
+                        key={col.key}
+                        type="button"
+                        onClick={() => isDeleted ? restoreDefaultColumn(col.key) : deleteDefaultColumn(col.key)}
+                        className={`flex items-center justify-between px-3 py-2 rounded-xl border text-left transition cursor-pointer active:scale-95 ${isDeleted
+                            ? isDark
+                              ? 'bg-[#121211]/60 border-white/5 text-stone-500'
+                              : 'bg-stone-100/80 border-stone-200 text-stone-400'
+                            : isDark
+                              ? 'bg-[#121211] border-white/10 text-white hover:border-[#e9762b]/50'
+                              : 'bg-white border-stone-300 text-stone-900 hover:border-[#e9762b]/50 shadow-sm'
+                          }`}
+                        title={isDeleted ? `Show ${col.label}` : `Hide ${col.label}`}
+                      >
+                        <span className={`text-[11px] font-bold uppercase font-mono truncate ${isDeleted ? 'line-through' : ''}`}>
+                          {col.label}
+                        </span>
+                        {isDeleted ? (
+                          <EyeOff className="w-3.5 h-3.5 text-stone-500 shrink-0" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5 text-[#e9762b] shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 4. CUSTOM COLUMNS */}
+              <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${isDark
+                ? 'bg-[#181817] border-white/10'
+                : 'bg-white/95 border-stone-200/90'
+                }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono">
+                      CUSTOM COLUMNS
+                    </span>
+                    <span className="px-2 py-0.5 rounded-lg bg-orange-500/15 text-[#e9762b] border border-orange-500/30 text-[10px] font-bold font-mono">
+                      {customColumns.length}
+                    </span>
+                  </div>
                   <button
                     type="button"
-                    onClick={resetDefaultColumns}
-                    className="inline-flex items-center gap-1 text-[11px] font-bold text-[#e9762b] hover:underline cursor-pointer"
+                    onClick={() => setShowAddColumnModal(true)}
+                    className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#e9762b] text-white text-[10px] font-bold uppercase tracking-wider hover:brightness-110 transition cursor-pointer shadow-sm"
                   >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>Restore All</span>
+                    <Plus className="w-3 h-3 stroke-[3]" />
+                    <span>ADD COLUMN</span>
                   </button>
+                </div>
+
+                {customColumns.length > 0 ? (
+                  <div className={`divide-y rounded-xl border overflow-hidden max-h-48 overflow-y-auto custom-scrollbar ${isDark
+                    ? 'divide-white/5 border-white/10 bg-[#121211]'
+                    : 'divide-stone-200 border-stone-200 bg-[#faf6f0]'
+                    }`}>
+                    {customColumns.map((col, idx) => (
+                      <div
+                        key={col.id}
+                        className="flex items-center justify-between px-3 py-2.5 gap-2 hover:bg-black/5 dark:hover:bg-white/[0.02] transition"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs font-bold uppercase font-mono text-stone-900 dark:text-white truncate">
+                            {col.name}
+                          </span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-stone-200/80 dark:bg-white/10 text-stone-600 dark:text-slate-400 font-mono uppercase font-bold">
+                            {col.type}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            disabled={idx === 0}
+                            onClick={() => handleMoveColumn(idx, 'left')}
+                            className="p-1 rounded-lg hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-400 hover:text-stone-900 dark:hover:text-white disabled:opacity-20 cursor-pointer"
+                            title="Move left"
+                          >
+                            <ArrowLeft className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === customColumns.length - 1}
+                            onClick={() => handleMoveColumn(idx, 'right')}
+                            className="p-1 rounded-lg hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-400 hover:text-stone-900 dark:hover:text-white disabled:opacity-20 cursor-pointer"
+                            title="Move right"
+                          >
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Delete custom column "${col.name}"?`)) {
+                                deleteCustomColumn(col.id);
+                              }
+                            }}
+                            className="p-1 rounded-lg hover:bg-red-500/20 text-stone-400 hover:text-red-500 transition cursor-pointer"
+                            title="Delete column"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-stone-500 dark:text-slate-500 font-mono">
+                    No custom columns yet.
+                  </p>
                 )}
               </div>
 
-              <div className="divide-y divide-white/5 border border-white/10 rounded-xl overflow-hidden glass-panel">
-                {DEFAULT_COLUMNS_CONFIG.map((col) => {
-                  const isDeleted = deletedDefaultColumns.includes(col.key);
-                  return (
-                    <div
-                      key={col.key}
-                      className="flex items-center justify-between p-3 gap-3 hover:bg-white/[0.02] transition"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs font-bold uppercase font-mono ${isDeleted ? 'line-through text-stone-400 dark:text-slate-500' : 'text-stone-900 dark:text-white'}`}>
-                            {col.label}
-                          </span>
-                          <span
-                            className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
-                              isDeleted
-                                ? 'bg-red-500/15 text-red-400 border border-red-500/20'
-                                : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
-                            }`}
-                          >
-                            {isDeleted ? 'Deleted' : 'Active'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-stone-500 dark:text-slate-400 truncate mt-0.5">
-                          {col.description}
-                        </p>
-                      </div>
+              {/* 5. DATA & ACTIONS */}
+              <div className={`p-4 rounded-2xl border shadow-sm space-y-3 transition-colors ${isDark
+                ? 'bg-[#181817] border-white/10'
+                : 'bg-white/95 border-stone-200/90'
+                }`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#e9762b] font-mono">
+                    DATA &amp; ACTIONS
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 dark:text-stone-400 font-mono">
+                    {dailyLogs.length} {dailyLogs.length === 1 ? 'ENTRY' : 'ENTRIES'}
+                  </span>
+                </div>
 
-                      {isDeleted ? (
-                        <button
-                          type="button"
-                          onClick={() => restoreDefaultColumn(col.key)}
-                          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 text-xs font-bold transition cursor-pointer"
-                        >
-                          <RotateCcw className="w-3 h-3" />
-                          <span>Restore</span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm(`Delete "${col.label}" column from default table?`)) {
-                              deleteDefaultColumn(col.key);
-                            }
-                          }}
-                          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 text-xs font-bold transition cursor-pointer"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          <span>Delete</span>
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={handleExportCSV}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition cursor-pointer active:scale-95 ${isDark
+                        ? 'bg-[#121211] border-white/10 text-white hover:border-[#e9762b]'
+                        : 'bg-white border-stone-300 text-stone-800 hover:border-[#e9762b] shadow-sm'
+                      }`}
+                  >
+                    <Download className="w-3.5 h-3.5 text-[#e9762b]" />
+                    <span>EXPORT CSV</span>
+                  </button>
 
-            {/* Custom Columns List */}
-            {customColumns.length > 0 && (
-              <div className="space-y-3 pt-2">
-                <span className="text-[10px] uppercase tracking-widest text-[#e9762b] font-bold block">
-                  CUSTOM COLUMNS ({customColumns.length})
-                </span>
-                <div className="divide-y divide-white/5 border border-white/10 rounded-xl overflow-hidden glass-panel">
-                  {customColumns.map((col) => (
-                    <div
-                      key={col.id}
-                      className="flex items-center justify-between p-3 gap-3 hover:bg-white/[0.02] transition"
-                    >
-                      <div className="min-w-0">
-                        <span className="text-xs font-bold uppercase font-mono text-stone-900 dark:text-white">
-                          {col.name}
-                        </span>
-                        <span className="text-[10px] ml-2 px-1.5 py-0.2 rounded bg-white/10 text-slate-400 font-mono">
-                          {col.type}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm(`Delete custom column "${col.name}"?`)) {
-                            deleteCustomColumn(col.id);
-                          }
-                        }}
-                        className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/30 text-xs font-bold transition cursor-pointer"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                        <span>Delete</span>
-                      </button>
-                    </div>
-                  ))}
+                  <button
+                    type="button"
+                    disabled={dailyLogs.length === 0}
+                    onClick={() => {
+                      if (window.confirm('Delete ALL recorded daily log entries? This cannot be undone.')) {
+                        dailyLogs.forEach((l) => deleteDailyLog(l.date));
+                      }
+                    }}
+                    className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border text-[11px] font-bold uppercase tracking-wider transition cursor-pointer active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed ${isDark
+                        ? 'bg-[#121211] border-white/10 text-stone-300 hover:text-red-400 hover:border-red-500/40'
+                        : 'bg-white border-stone-300 text-stone-700 hover:text-red-600 hover:border-red-400 shadow-sm'
+                      }`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                    <span>CLEAR LOGS</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Hide the default Study Log table? (You can restore it anytime)')) {
+                        deleteDefaultTable();
+                        setShowColumnsManagerModal(false);
+                      }
+                    }}
+                    className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 dark:text-red-400 border border-red-500/25 text-[11px] font-bold uppercase tracking-wider transition cursor-pointer active:scale-95"
+                  >
+                    <EyeOff className="w-3.5 h-3.5" />
+                    <span>HIDE TABLE</span>
+                  </button>
                 </div>
               </div>
-            )}
 
-            <div className="flex items-center justify-end pt-4 border-t border-stone-200 dark:border-white/10">
-              <button
-                type="button"
-                onClick={() => setShowColumnsManagerModal(false)}
-                className="px-5 py-2 rounded-full bg-[#e9762b] text-black text-xs font-mono font-bold uppercase tracking-wider hover:brightness-110 transition cursor-pointer active:scale-95 shadow-md shadow-orange-500/20"
-              >
-                Done
-              </button>
+            </div>
+
+            {/* Clean Footer */}
+            <div className={`flex items-center justify-between border-t px-5 sm:px-6 py-3.5 shrink-0 transition-colors ${isDark ? 'bg-[#141413] border-white/10' : 'bg-[#f4f0e8] border-stone-200'
+              }`}>
+              <div className="flex items-center gap-2 text-[11px] text-stone-500 dark:text-stone-400 font-mono">
+                <span className="w-2 h-2 rounded-full bg-[#e9762b]" />
+                <span className="uppercase tracking-wider font-bold text-stone-700 dark:text-stone-300">STUDYO</span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowColumnsManagerModal(false)}
+                  className={`px-5 py-2.5 rounded-full border text-xs font-bold uppercase tracking-wider transition cursor-pointer active:scale-95 ${isDark
+                    ? 'bg-[#1c1c1b] border-white/10 text-slate-300 hover:text-white'
+                    : 'bg-stone-200 border-stone-300 text-stone-800 hover:text-black'
+                    }`}
+                >
+                  CLOSE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowColumnsManagerModal(false)}
+                  className="px-6 py-2.5 rounded-full bg-[#e9762b] text-white text-xs font-mono font-black uppercase tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-lg shadow-orange-500/25"
+                >
+                  SAVE
+                </button>
+              </div>
             </div>
           </div>
         </div>

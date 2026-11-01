@@ -42,8 +42,8 @@ export const YesNoToggle: React.FC<YesNoToggleProps> = ({
         onClick={() => onChange(false)}
         className={`flex-1 py-1 px-2.5 rounded-lg font-bold uppercase transition-all duration-200 cursor-pointer text-center ${
           !value
-            ? 'bg-stone-400/90 text-stone-900 dark:bg-white/20 dark:text-white shadow-sm font-extrabold'
-            : 'text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-300/60 dark:hover:bg-white/5'
+            ? 'bg-red-500/20 text-red-400 border border-red-500/30 shadow-md shadow-red-950/20 font-black'
+            : 'text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-300/60 dark:hover:bg-white/5 border border-transparent'
         } ${disabled ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
       >
         NO

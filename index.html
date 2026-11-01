@@ -2,14 +2,14 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Studyo | Study Tracker PWA</title>
     <meta name="description" content="Clean, zero-cost, hyper-optimized study analytics app with Pomodoro focus room, syllabus mapping, and 365-day activity heatmap." />
     <meta name="theme-color" content="#000000" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="./manifest.json" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -24,14 +24,14 @@
               document.documentElement.classList.add('light');
               document.documentElement.style.colorScheme = 'light';
               var meta = document.querySelector('meta[name="theme-color"]');
-              if (meta) meta.setAttribute('content', '#f7f5f0');
+              if (meta) meta.setAttribute('content', '#fae8dc');
             }
           }
         } catch (e) {}
       })();
     </script>
   </head>
-  <body class="bg-[#f7f5f0] text-slate-900 dark:bg-[#000000] dark:text-slate-100 min-h-screen selection:bg-orange-500 selection:text-black transition-colors duration-300">
+  <body class="bg-[#fae8dc] text-slate-900 dark:bg-[#000000] dark:text-slate-100 min-h-screen selection:bg-orange-500 selection:text-black transition-colors duration-300">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>

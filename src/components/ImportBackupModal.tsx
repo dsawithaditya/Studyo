@@ -84,6 +84,15 @@ export const ImportBackupModal: React.FC<ImportBackupModalProps> = ({ isOpen, on
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Protect against oversized payloads (max 10 MB)
+    const MAX_BACKUP_BYTES = 10 * 1024 * 1024;
+    if (file.size > MAX_BACKUP_BYTES) {
+      setFileName(file.name);
+      setPreview(null);
+      setErrorMessage('Backup file exceeds the 10 MB safety limit.');
+      return;
+    }
+
     setFileName(file.name);
     setErrorMessage(null);
 

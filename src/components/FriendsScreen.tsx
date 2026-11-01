@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useStudyStore } from '../store/useStudyStore';
+import { useAuthStore } from '../store/useAuthStore';
+import { dbSearchProfileByFriendCode } from '../services/supabaseClient';
 import { FriendProfile } from '../types';
 import {
   Users,
@@ -22,9 +24,19 @@ import {
   CheckCircle2,
   XCircle,
   Award,
-  ArrowRight
+  ArrowRight,
+  Loader2,
+  Edit2
 } from 'lucide-react';
+import { normalizeTriState } from './ui/TriStateToggle';
 import confetti from 'canvas-confetti';
+
+const KNOWN_PEER_DIRECTORY: Record<string, string> = {
+  'D4M8X': 'Dev Sharma',
+  'E7K92': 'Priya Patel',
+  'S3W5Y': 'Samir Khan',
+  'R8P2T': 'Rohan Gupta',
+};
 
 interface FriendsScreenProps {
   onBackToTimer?: () => void;
@@ -51,6 +63,10 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFeedback, setSearchFeedback] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [searchedFriend, setSearchedFriend] = useState<FriendProfile | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isEditingSearchedName, setIsEditingSearchedName] = useState(false);
+  const [customFriendNameInput, setCustomFriendNameInput] = useState('');
+  const [isSendingRequest, setIsSendingRequest] = useState(false);
 
   // Selected friend for Study Table & Comments view (case-insensitive lookup)
   const [selectedFriendCode, setSelectedFriendCode] = useState<string | null>(() => {
@@ -75,7 +91,7 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
 
   // Copy user's student code to clipboard
   const handleCopyCode = () => {
-    const code = user.friendCode || 'A9X4K';
+    const code = user.friendCode || 'STUDY1';
     navigator.clipboard.writeText(code);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
@@ -83,7 +99,7 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
 
   // Share user's invite message
   const handleShareInvite = () => {
-    const code = user.friendCode || 'A9X4K';
+    const code = user.friendCode || 'STUDY1';
     const text = `Hey! Connect with me on Studyo. My Student Code is: ${code}`;
     if (navigator.share) {
       navigator.share({
@@ -98,7 +114,7 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
   };
 
   // Execute Search for code
-  const handleSearch = (codeToSearch?: string) => {
+  const handleSearch = async (codeToSearch?: string) => {
     const query = (codeToSearch || searchQuery).trim().toUpperCase();
     if (!query) {
       setSearchFeedback({ type: 'error', text: 'Please enter a 4-5 digit student code.' });
@@ -112,15 +128,121 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
       return;
     }
 
-    const match = friends.find((f) => f.code.toUpperCase() === query);
-    if (match) {
-      setSearchedFriend(match);
-      setSearchFeedback({ type: 'success', text: `Student found: ${match.name} (#${match.code})` });
-    } else {
-      // Dynamic fallback for any valid alphanumeric 4-5 digit code
+    setIsSearching(true);
+    setSearchFeedback(null);
+    setIsEditingSearchedName(false);
+
+    try {
+      // 1. Check existing friends / requests first
+      const localMatch = friends.find((f) => f.code.toUpperCase() === query);
+      if (localMatch) {
+        setSearchedFriend(localMatch);
+        setCustomFriendNameInput(localMatch.name);
+        setSearchFeedback({ type: 'success', text: `Student found in your circle: ${localMatch.name} (#${localMatch.code})` });
+        setIsSearching(false);
+        return;
+      }
+
+      // 2. Query Supabase profiles table for live registered user with this friend code
+      const cloudPeer = await dbSearchProfileByFriendCode(query);
+      if (cloudPeer && cloudPeer.name) {
+        const peerProfile: FriendProfile = {
+          code: cloudPeer.friendCode,
+          name: cloudPeer.name,
+          avatar: cloudPeer.name.charAt(0).toUpperCase(),
+          bio: `Studyo peer student • ${cloudPeer.name}`,
+          streakDays: cloudPeer.streakDays || 1,
+          dailyTargetMinutes: cloudPeer.dailyTargetMinutes || 360,
+          todayStudyMinutes: 180,
+          lastActive: cloudPeer.lastStudiedDate ? `Active ${cloudPeer.lastStudiedDate}` : 'Recently active',
+          status: 'none',
+          studyLogs: [
+            {
+              date: new Date().toISOString().split('T')[0],
+              studyHours: 4.5,
+              attendedClass: true,
+              pyqsSolved: 20,
+              revisionDone: true,
+              mockTestTaken: false,
+              sleepHours: 7.5,
+              focusRating: 5,
+              notes: 'Daily syllabus tracking and problem solving.',
+            },
+            {
+              date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+              studyHours: 4.0,
+              attendedClass: true,
+              pyqsSolved: 18,
+              revisionDone: true,
+              mockTestTaken: false,
+              sleepHours: 7.0,
+              focusRating: 4,
+              notes: 'Formula revision and practice test analysis.',
+            },
+          ],
+          comments: [],
+        };
+        setSearchedFriend(peerProfile);
+        setCustomFriendNameInput(cloudPeer.name);
+        setSearchFeedback({ type: 'success', text: `Verified student found: ${cloudPeer.name} (#${cloudPeer.friendCode})` });
+        setIsSearching(false);
+        return;
+      }
+
+      // 3. Check local auth users (for offline / multi-account local testing)
+      const localAuthUsers = useAuthStore.getState().users || [];
+      const matchedAuth = localAuthUsers.find(
+        (u) => (u.friendCode && u.friendCode.toUpperCase() === query) || (u.id && u.id.toUpperCase() === query)
+      );
+      if (matchedAuth && matchedAuth.name) {
+        const peerProfile: FriendProfile = {
+          code: query,
+          name: matchedAuth.name,
+          avatar: matchedAuth.name.charAt(0).toUpperCase(),
+          bio: `Studyo peer student • ${matchedAuth.name}`,
+          streakDays: 5,
+          dailyTargetMinutes: 360,
+          todayStudyMinutes: 180,
+          lastActive: 'Recently active',
+          status: 'none',
+          studyLogs: [],
+          comments: [],
+        };
+        setSearchedFriend(peerProfile);
+        setCustomFriendNameInput(matchedAuth.name);
+        setSearchFeedback({ type: 'success', text: `Student found: ${matchedAuth.name} (#${query})` });
+        setIsSearching(false);
+        return;
+      }
+
+      // 4. Check known demo peer directory
+      if (KNOWN_PEER_DIRECTORY[query]) {
+        const demoName = KNOWN_PEER_DIRECTORY[query];
+        const peerProfile: FriendProfile = {
+          code: query,
+          name: demoName,
+          avatar: demoName.charAt(0).toUpperCase(),
+          bio: `Studyo peer student • ${demoName}`,
+          streakDays: 8,
+          dailyTargetMinutes: 300,
+          todayStudyMinutes: 180,
+          lastActive: 'Recently',
+          status: 'none',
+          studyLogs: [],
+          comments: [],
+        };
+        setSearchedFriend(peerProfile);
+        setCustomFriendNameInput(demoName);
+        setSearchFeedback({ type: 'success', text: `Student found: ${demoName} (#${query})` });
+        setIsSearching(false);
+        return;
+      }
+
+      // 5. Dynamic fallback for valid code: allow connecting and let user enter their friend's name!
+      const defaultName = `Student ${query}`;
       const dynamicPeer: FriendProfile = {
         code: query,
-        name: `Student ${query}`,
+        name: defaultName,
         avatar: query.charAt(0),
         bio: `Studyo peer student • Code #${query}`,
         streakDays: 8,
@@ -155,22 +277,31 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
         comments: [],
       };
       setSearchedFriend(dynamicPeer);
-      setSearchFeedback({ type: 'success', text: `Discovered student profile for #${query}` });
+      setCustomFriendNameInput(defaultName);
+      setSearchFeedback({ type: 'success', text: `Discovered student profile for #${query}. You can set their real name below!` });
+    } finally {
+      setIsSearching(false);
     }
   };
 
   // Send friend request
-  const handleSendRequest = (code: string) => {
-    const res = sendFriendRequest(code);
-    if (res.success) {
-      setSearchFeedback({ type: 'success', text: res.message });
-      // Update searched friend state
-      if (searchedFriend && searchedFriend.code.toUpperCase() === code.toUpperCase()) {
-        setSearchedFriend({ ...searchedFriend, status: 'outgoing_request' });
+  const handleSendRequest = async (code: string) => {
+    setIsSendingRequest(true);
+    try {
+      const friendRealName = searchedFriend?.name || customFriendNameInput.trim();
+      const res = await sendFriendRequest(code, friendRealName);
+      if (res.success) {
+        setSearchFeedback({ type: 'success', text: res.message });
+        // Update searched friend state
+        if (searchedFriend && searchedFriend.code.toUpperCase() === code.toUpperCase()) {
+          setSearchedFriend({ ...searchedFriend, name: friendRealName || searchedFriend.name, status: 'outgoing_request' });
+        }
+        confetti({ particleCount: 30, spread: 50, origin: { y: 0.7 } });
+      } else {
+        setSearchFeedback({ type: 'error', text: res.message });
       }
-      confetti({ particleCount: 30, spread: 50, origin: { y: 0.7 } });
-    } else {
-      setSearchFeedback({ type: 'error', text: res.message });
+    } finally {
+      setIsSendingRequest(false);
     }
   };
 
@@ -218,7 +349,7 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
             </div>
           </div>
 
-          {/* Right: Unique Student Code Box */}
+          {/* Right: Unique Student Code Box (Read-only) */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-3.5 rounded-2xl bg-white/90 dark:bg-black/60 border border-[#e9762b]/40 shadow-[0_4px_25px_rgba(233,118,43,0.15)]">
             <div className="px-3 py-1 flex flex-col">
               <span className="text-[10px] text-stone-600 dark:text-slate-400 uppercase tracking-widest font-bold">
@@ -226,7 +357,7 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
               </span>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="text-2xl font-black tracking-widest text-[#e9762b] font-mono select-all">
-                  {user.friendCode || 'A9X4K'}
+                  {user.friendCode || 'STUDY1'}
                 </span>
                 <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30">
                   Active
@@ -517,10 +648,15 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
 
               <button
                 type="submit"
-                className="px-6 py-3 rounded-xl bg-[#e9762b] text-black font-extrabold text-xs uppercase tracking-wider transition hover:bg-[#ff5f00] shadow-[0_0_20px_rgba(233,118,43,0.35)] cursor-pointer flex items-center justify-center gap-2"
+                disabled={isSearching}
+                className="px-6 py-3 rounded-xl bg-[#e9762b] text-black font-extrabold text-xs uppercase tracking-wider transition hover:bg-[#ff5f00] shadow-[0_0_20px_rgba(233,118,43,0.35)] cursor-pointer flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
               >
-                <Search className="w-4 h-4" />
-                <span>Search</span>
+                {isSearching ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-black" />
+                ) : (
+                  <Search className="w-4 h-4" />
+                )}
+                <span>{isSearching ? 'Searching...' : 'Search'}</span>
               </button>
             </form>
 
@@ -555,7 +691,56 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
                   </div>
                   <div>
                     <div className="flex items-center gap-2.5">
-                      <h3 className="font-extrabold text-white text-lg">{searchedFriend.name}</h3>
+                      {isEditingSearchedName ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={customFriendNameInput}
+                            onChange={(e) => setCustomFriendNameInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const trimmed = customFriendNameInput.trim();
+                                if (trimmed) {
+                                  setSearchedFriend({ ...searchedFriend, name: trimmed, avatar: trimmed.charAt(0).toUpperCase() });
+                                }
+                                setIsEditingSearchedName(false);
+                              }
+                            }}
+                            className="glass-input rounded-lg px-2.5 py-1 text-sm text-white font-bold max-w-[180px] focus:outline-none focus:border-[#e9762b]"
+                            placeholder="Friend's name"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const trimmed = customFriendNameInput.trim();
+                              if (trimmed) {
+                                setSearchedFriend({ ...searchedFriend, name: trimmed, avatar: trimmed.charAt(0).toUpperCase() });
+                              }
+                              setIsEditingSearchedName(false);
+                            }}
+                            className="p-1.5 rounded-lg bg-[#e9762b] text-black hover:brightness-110 cursor-pointer"
+                            title="Save name"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-extrabold text-white text-lg">{searchedFriend.name}</h3>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomFriendNameInput(searchedFriend.name);
+                              setIsEditingSearchedName(true);
+                            }}
+                            className="p-1 rounded text-stone-400 hover:text-[#e9762b] transition cursor-pointer"
+                            title="Edit friend name"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
                       <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-[#e9762b]/15 text-[#e9762b] border border-[#e9762b]/30">
                         #{searchedFriend.code}
                       </span>
@@ -923,15 +1108,28 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
 
                       {/* Attended Class */}
                       <td className="py-3 px-4 text-center whitespace-nowrap">
-                        {log.attendedClass ? (
-                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold text-[10px]">
-                            YES
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-md bg-stone-200/60 dark:bg-white/5 text-stone-600 dark:text-slate-500 text-[10px]">
-                            NO
-                          </span>
-                        )}
+                        {(() => {
+                          const st = normalizeTriState(log.attendedClass);
+                          if (st === 'yes') {
+                            return (
+                              <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 font-bold text-[10px]">
+                                YES
+                              </span>
+                            );
+                          }
+                          if (st === 'no') {
+                            return (
+                              <span className="px-2 py-0.5 rounded-md bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30 font-bold text-[10px]">
+                                NO
+                              </span>
+                            );
+                          }
+                          return (
+                            <span className="px-2 py-0.5 rounded-md bg-stone-200/60 dark:bg-white/5 text-stone-500 dark:text-slate-500 text-[10px]">
+                              N/A
+                            </span>
+                          );
+                        })()}
                       </td>
 
                       {/* PYQs */}
@@ -941,22 +1139,34 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({ onBackToTimer }) =
 
                       {/* Revision */}
                       <td className="py-3 px-4 text-center whitespace-nowrap">
-                        {log.revisionDone ? (
-                          <span className="text-emerald-600 dark:text-emerald-400 font-bold">✓</span>
-                        ) : (
-                          <span className="text-stone-400 dark:text-slate-600">-</span>
-                        )}
+                        {(() => {
+                          const st = normalizeTriState(log.revisionDone);
+                          if (st === 'yes') return <span className="text-emerald-600 dark:text-emerald-400 font-bold">✓</span>;
+                          if (st === 'no') return <span className="text-red-500 font-bold">✕</span>;
+                          return <span className="text-stone-400 dark:text-slate-600">-</span>;
+                        })()}
                       </td>
 
                       {/* Mock Test */}
                       <td className="py-3 px-4 text-center whitespace-nowrap">
-                        {log.mockTestTaken ? (
-                          <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-bold text-[10px]">
-                            DONE
-                          </span>
-                        ) : (
-                          <span className="text-stone-400 dark:text-slate-600">-</span>
-                        )}
+                        {(() => {
+                          const st = normalizeTriState(log.mockTestTaken);
+                          if (st === 'yes') {
+                            return (
+                              <span className="px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 font-bold text-[10px]">
+                                DONE
+                              </span>
+                            );
+                          }
+                          if (st === 'no') {
+                            return (
+                              <span className="px-2 py-0.5 rounded-md bg-red-500/15 text-red-600 dark:text-red-400 border border-red-500/30 font-bold text-[10px]">
+                                NO
+                              </span>
+                            );
+                          }
+                          return <span className="text-stone-400 dark:text-slate-600">-</span>;
+                        })()}
                       </td>
 
                       {/* Focus */}

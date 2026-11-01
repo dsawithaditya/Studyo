@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { useStudyStore } from '../store/useStudyStore';
+import { useStudyStore, getLocalDateString } from '../store/useStudyStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { 
   TrendingUp, 
@@ -10,8 +10,13 @@ import {
   ChevronDown,
   RefreshCw,
   Check,
-  X
+  X,
+  MapPin,
+  Compass,
+  Award,
+  Zap
 } from 'lucide-react';
+import { normalizeTriState } from './ui/TriStateToggle';
 
 export const StudyLogAnalysis: React.FC = () => {
   const { 
@@ -23,6 +28,7 @@ export const StudyLogAnalysis: React.FC = () => {
     isSyncing,
     syncError,
     isCloudSynced,
+    sessions = [],
   } = useStudyStore();
 
   const [justSynced, setJustSynced] = useState(false);
@@ -112,8 +118,8 @@ export const StudyLogAnalysis: React.FC = () => {
           list.push({
             id: `custom_${col.id}`,
             label: cleanName,
-            unit: '',
-            defaultMax: 10,
+            unit: col.type === 'rating' ? '/5' : col.unit ? ` ${col.unit}` : '',
+            defaultMax: col.type === 'rating' ? 5 : 10,
             getValue: (_, entry) => {
               const val = entry?.customData?.[col.id];
               if (typeof val === 'number') return val;
@@ -135,7 +141,7 @@ export const StudyLogAnalysis: React.FC = () => {
         return {
           id: col.id,
           label: cleanName,
-          unit: col.unit ? ` ${col.unit}` : '',
+          unit: col.type === 'rating' ? '/5' : col.unit ? ` ${col.unit}` : '',
           defaultMax: col.type === 'rating' ? 5 : 10,
           getValue: (dateStr: string) => {
             const row = tbl.rows?.find((r) => r.date === dateStr);
@@ -188,23 +194,33 @@ export const StudyLogAnalysis: React.FC = () => {
   // Sort logs ascending by date for chronological trend calculations
   const sortedLogs = useMemo(() => [...dailyLogs].sort((a, b) => a.date.localeCompare(b.date)), [dailyLogs]);
 
-  // 1. Consistency streak calculation (consecutive days logged ending today or yesterday)
+  // 1. Consistency streak calculation (consecutive days with recorded activity ending today or yesterday)
   const calculateStreak = () => {
     if (sortedLogs.length === 0) return 0;
-    const sortedDates = [...new Set(sortedLogs.map((l) => l.date))].sort().reverse();
+    const activeLogs = sortedLogs.filter(
+      (l) =>
+        (Number(l.studyHours) || 0) > 0 ||
+        l.attendedClass ||
+        (Number(l.pyqsSolved) || 0) > 0 ||
+        l.revisionDone ||
+        l.mockTestTaken ||
+        (Number(l.focusRating) || 0) > 0 ||
+        Boolean(l.notes && l.notes.trim())
+    );
+    const sortedDates = [...new Set(activeLogs.map((l) => l.date))].sort().reverse();
     if (sortedDates.length === 0) return 0;
 
     const d = new Date();
-    const today = d.toISOString().split('T')[0];
+    const today = getLocalDateString(d);
     d.setDate(d.getDate() - 1);
-    const yest = d.toISOString().split('T')[0];
+    const yest = getLocalDateString(d);
 
-    let checkDate = sortedDates.includes(today) ? new Date() : sortedDates.includes(yest) ? d : null;
+    const checkDate = sortedDates.includes(today) ? new Date() : sortedDates.includes(yest) ? d : null;
     if (!checkDate) return 0;
 
     let currentStreak = 0;
     while (true) {
-      const ds = checkDate.toISOString().split('T')[0];
+      const ds = getLocalDateString(checkDate);
       if (sortedDates.includes(ds)) {
         currentStreak++;
         checkDate.setDate(checkDate.getDate() - 1);
@@ -223,7 +239,7 @@ export const StudyLogAnalysis: React.FC = () => {
   const chartDays = Array.from({ length: daysCount }, (_, i) => {
     const d = new Date(now);
     d.setDate(d.getDate() - (daysCount - 1 - i));
-    const ds = d.toISOString().split('T')[0];
+    const ds = getLocalDateString(d);
     const entry = sortedLogs.find((l) => l.date === ds);
     
     // Bottom day label: strictly only date number (not month) for month timeframe, matching user image
@@ -247,16 +263,58 @@ export const StudyLogAnalysis: React.FC = () => {
   const maxValue = Math.max(currentMetric.defaultMax, ...chartDays.map((d) => d.value));
   const totalPeriodValue = chartDays.reduce((acc, d) => acc + d.value, 0);
 
-  // 3. Habit Completion %
+  // 3. Habit Completion % (Tri-State aware: N/A excluded from denominator)
+  const classBreakdown = useMemo(() => {
+    let yes = 0;
+    let no = 0;
+    let na = 0;
+    sortedLogs.forEach((l) => {
+      const state = normalizeTriState(l.attendedClass);
+      if (state === 'yes') yes++;
+      else if (state === 'no') no++;
+      else na++;
+    });
+    const denom = yes + no;
+    const rate = denom > 0 ? Math.round((yes / denom) * 100) : 100;
+    return { yes, no, na, rate, denom, text: `${yes} Attended • ${no} Missed • ${na} No Class (N/A)` };
+  }, [sortedLogs]);
+
+  const revisionBreakdown = useMemo(() => {
+    let yes = 0;
+    let no = 0;
+    let na = 0;
+    sortedLogs.forEach((l) => {
+      const state = normalizeTriState(l.revisionDone);
+      if (state === 'yes') yes++;
+      else if (state === 'no') no++;
+      else na++;
+    });
+    const denom = yes + no;
+    const rate = denom > 0 ? Math.round((yes / denom) * 100) : 100;
+    return { yes, no, na, rate, denom, text: `${yes} Done • ${no} Missed • ${na} N/A` };
+  }, [sortedLogs]);
+
+  const mockBreakdown = useMemo(() => {
+    let yes = 0;
+    let no = 0;
+    let na = 0;
+    sortedLogs.forEach((l) => {
+      const state = normalizeTriState(l.mockTestTaken);
+      if (state === 'yes') yes++;
+      else if (state === 'no') no++;
+      else na++;
+    });
+    const denom = yes + no;
+    const rate = denom > 0 ? Math.round((yes / denom) * 100) : 100;
+    return { yes, no, na, rate, denom, text: `${yes} Taken • ${no} Missed • ${na} N/A` };
+  }, [sortedLogs]);
+
   const totalDaysWithEntries = sortedLogs.length;
-  const daysAttendedClass = sortedLogs.filter((l) => l.attendedClass).length;
-  const daysRevision = sortedLogs.filter((l) => l.revisionDone).length;
-  const daysMockTest = sortedLogs.filter((l) => l.mockTestTaken).length;
   const daysPyqsSolved = sortedLogs.filter((l) => (l.pyqsSolved ?? 0) > 0).length;
 
-  const classPct = totalDaysWithEntries ? Math.round((daysAttendedClass / totalDaysWithEntries) * 100) : 0;
-  const revisionPct = totalDaysWithEntries ? Math.round((daysRevision / totalDaysWithEntries) * 100) : 0;
-  const mockPct = totalDaysWithEntries ? Math.round((daysMockTest / totalDaysWithEntries) * 100) : 0;
+  const classPct = classBreakdown.rate;
+  const revisionPct = revisionBreakdown.rate;
+  const mockPct = mockBreakdown.rate;
   const pyqPct = totalDaysWithEntries ? Math.round((daysPyqsSolved / totalDaysWithEntries) * 100) : 0;
 
   const loggedPeriodEntries = chartDays.filter((d) => d.hasEntry && d.focus > 0);
@@ -472,7 +530,7 @@ export const StudyLogAnalysis: React.FC = () => {
 
         {/* Bar Visualizer with Horizontal Scroll Container */}
         <div className="w-full overflow-x-auto custom-scrollbar pb-2 sm:pb-3">
-          <div className={`h-64 sm:h-76 flex items-end pt-16 sm:pt-20 pb-4 sm:pb-5 border-b border-orange-950/10 dark:border-white/10 ${
+          <div className={`h-64 sm:h-76 flex items-stretch pt-14 sm:pt-16 pb-4 sm:pb-5 border-b border-orange-950/10 dark:border-white/10 ${
             timeframe === 'month' ? 'min-w-[680px] sm:min-w-0 gap-1 sm:gap-1.5' : 'w-full gap-2 sm:gap-3.5'
           }`}>
             {chartDays.map((d, idx) => {
@@ -482,7 +540,7 @@ export const StudyLogAnalysis: React.FC = () => {
               return (
                 <div 
                   key={idx} 
-                  className="flex-1 min-w-0 flex flex-col items-center h-full justify-end group relative cursor-pointer"
+                  className="flex-1 min-w-0 flex flex-col items-center justify-between h-full group relative cursor-pointer"
                 >
                   {/* Tooltip on hover — Safe inside container, edge-aware, high-contrast */}
                   <div 
@@ -503,25 +561,31 @@ export const StudyLogAnalysis: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Number above bar */}
-                  <span className="text-[10px] sm:text-xs font-bold text-stone-700 dark:text-slate-400 mb-1 group-hover:text-black dark:group-hover:text-white transition font-mono whitespace-nowrap select-none">
-                    {d.value > 0 ? `${Number.isInteger(d.value) ? d.value : d.value.toFixed(1)}${currentMetric.unit}` : ''}
-                  </span>
+                  {/* 1. Value number slot above bar — fixed height, aligned at bottom */}
+                  <div className="h-5 flex items-end justify-center w-full shrink-0">
+                    <span className="text-[10px] sm:text-xs font-bold text-stone-700 dark:text-slate-400 group-hover:text-black dark:group-hover:text-white transition font-mono whitespace-nowrap select-none leading-none">
+                      {d.value > 0 ? `${Number.isInteger(d.value) ? d.value : d.value.toFixed(1)}${currentMetric.unit}` : ''}
+                    </span>
+                  </div>
 
-                  {/* The Bar */}
-                  <div 
-                    className={`w-full rounded-t-md transition-all duration-300 ${
-                      d.value > 0 
-                        ? 'bg-gradient-to-t from-[#e9762b]/80 to-[#e9762b] group-hover:from-[#e9762b] group-hover:to-orange-400 shadow-md' 
-                        : 'bg-orange-950/5 dark:bg-white/5 h-2'
-                    }`}
-                    style={{ height: d.value > 0 ? `${Math.max(6, heightPercent)}%` : '8px' }}
-                  />
+                  {/* 2. Middle bar track — strictly bounded container with baseline alignment */}
+                  <div className="relative flex-1 w-full flex items-end justify-center min-h-0 my-1">
+                    <div 
+                      className={`w-full rounded-t-md transition-all duration-300 ${
+                        d.value > 0 
+                          ? 'bg-gradient-to-t from-[#e9762b]/80 to-[#e9762b] group-hover:from-[#e9762b] group-hover:to-orange-400 shadow-md' 
+                          : 'bg-orange-950/10 dark:bg-white/5 h-1.5'
+                      }`}
+                      style={{ height: d.value > 0 ? `${Math.max(6, heightPercent)}%` : '6px' }}
+                    />
+                  </div>
 
-                  {/* Day label below */}
-                  <span className="text-[9px] sm:text-[11px] text-stone-600 dark:text-slate-400 mt-2 font-mono truncate w-full text-center font-semibold leading-tight pb-0.5 select-none">
-                    {d.label}
-                  </span>
+                  {/* 3. Day label below bar — fixed height, perfectly level across all days */}
+                  <div className="h-5 flex items-center justify-center w-full shrink-0">
+                    <span className="text-[9px] sm:text-[11px] text-stone-600 dark:text-slate-400 font-mono truncate w-full text-center font-semibold leading-none select-none">
+                      {d.label}
+                    </span>
+                  </div>
                 </div>
               );
             })}
@@ -550,7 +614,9 @@ export const StudyLogAnalysis: React.FC = () => {
               id: 'revision',
               label: 'Revision',
               pct: revisionPct,
-              days: daysRevision,
+              days: revisionBreakdown.yes,
+              denom: revisionBreakdown.denom,
+              breakdown: revisionBreakdown.text,
               color: '#10b981', // Emerald Green
               glow: 'rgba(16, 185, 129, 0.25)',
             },
@@ -558,7 +624,9 @@ export const StudyLogAnalysis: React.FC = () => {
               id: 'class',
               label: 'Class',
               pct: classPct,
-              days: daysAttendedClass,
+              days: classBreakdown.yes,
+              denom: classBreakdown.denom,
+              breakdown: classBreakdown.text,
               color: '#3b82f6', // Vibrant Blue
               glow: 'rgba(59, 130, 246, 0.25)',
             },
@@ -566,7 +634,9 @@ export const StudyLogAnalysis: React.FC = () => {
               id: 'mocks',
               label: 'Mock Tests',
               pct: mockPct,
-              days: daysMockTest,
+              days: mockBreakdown.yes,
+              denom: mockBreakdown.denom,
+              breakdown: mockBreakdown.text,
               color: '#a855f7', // Purple / Magenta (matching Image 3)
               glow: 'rgba(168, 85, 247, 0.25)',
             },
@@ -586,8 +656,8 @@ export const StudyLogAnalysis: React.FC = () => {
                   <span className="uppercase font-bold tracking-wider text-[11px] sm:text-xs text-stone-600 dark:text-slate-400 group-hover:text-stone-900 dark:group-hover:text-white transition-colors">
                     {habit.label}
                   </span>
-                  <span className="text-[10px] text-stone-500 dark:text-slate-500 font-mono">
-                    {habit.days}/{totalDaysWithEntries}d
+                  <span className="text-[10px] text-stone-500 dark:text-slate-500 font-mono" title={habit.breakdown || ''}>
+                    {habit.denom !== undefined ? `${habit.days}/${habit.denom}d` : `${habit.days}/${totalDaysWithEntries}d`}
                   </span>
                 </div>
 
@@ -640,6 +710,13 @@ export const StudyLogAnalysis: React.FC = () => {
                     <span className="text-stone-400 dark:text-slate-500">Needs Focus</span>
                   )}
                 </div>
+
+                {/* Breakdown details */}
+                {habit.breakdown && (
+                  <div className="mt-1 text-[9px] text-stone-500 dark:text-slate-400 font-mono truncate max-w-full px-1" title={habit.breakdown}>
+                    {habit.breakdown}
+                  </div>
+                )}
               </div>
             );
           })}
