@@ -237,6 +237,7 @@ export const DailyStudyLog: React.FC = () => {
   const [addRowRating, setAddRowRating] = useState<number | null>(null);
   const [addRowNotes, setAddRowNotes] = useState<string>('');
   const [addRowCustomData, setAddRowCustomData] = useState<Record<string, any>>({});
+  const [activeViewNoteDate, setActiveViewNoteDate] = useState<string | null>(null);
 
   // Custom Tables Create Modal state
   const [showCreateTableModal, setShowCreateTableModal] = useState(false);
@@ -1793,48 +1794,78 @@ export const DailyStudyLog: React.FC = () => {
                                     </td>
                                   )}
 
-                                  {/* Notes Column with Rich Tooltip & Click to Edit */}
+                                  {/* Notes Column with Rich In-Place Note Viewer */}
                                   {!deletedDefaultColumns.includes('notes') && (
                                     <td
-                                      className="py-2 sm:py-3.5 px-2 sm:px-5 text-center min-w-[84px] sm:min-w-[124px] cursor-pointer"
-                                      onClick={() => handleOpenNoteEdit(entry)}
-                                      title={hasNote ? 'Click to view / edit note' : 'Click to add note'}
+                                      className="py-2 sm:py-3.5 px-2 sm:px-5 text-center min-w-[84px] sm:min-w-[124px] relative"
                                     >
                                       {hasNote ? (
-                                        <div className="relative inline-flex items-center justify-center group/note">
+                                        <div className="relative inline-flex items-center justify-center">
                                           <button
                                             type="button"
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              handleOpenNoteEdit(entry);
+                                              setActiveViewNoteDate(activeViewNoteDate === entry.date ? null : entry.date);
                                             }}
-                                            className="inline-block px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[10px] sm:text-xs font-bold text-orange-950 dark:text-[#e9762b] bg-orange-500/20 dark:bg-orange-500/15 hover:bg-orange-500/30 border border-orange-500/40 dark:border-orange-500/35 transition cursor-pointer select-none active:scale-95"
+                                            className="inline-block px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[10px] sm:text-xs font-bold text-orange-950 dark:text-[#e9762b] bg-orange-500/20 dark:bg-orange-500/15 hover:bg-orange-500/30 border border-orange-500/40 dark:border-orange-500/35 transition cursor-pointer select-none active:scale-95 shadow-sm"
+                                            title="Click to view note"
                                           >
                                             Note
                                           </button>
 
-                                          {/* Hover Tooltip showing the note text */}
-                                          <div className="opacity-0 group-hover/note:opacity-100 pointer-events-none transition-opacity duration-200 absolute bottom-full mb-2 z-40 left-1/2 -translate-x-1/2 glass-modal text-xs px-4 py-2.5 rounded-xl shadow-2xl max-w-sm min-w-[220px] text-left whitespace-normal">
-                                            <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1">
-                                              {formatDateDisplay(entry.date)} Note:
-                                            </span>
-                                            <p className="text-stone-900 dark:text-slate-200 text-xs sm:text-sm leading-relaxed break-words">
-                                              {entry.notes}
-                                            </p>
-                                            <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
-                                          </div>
+                                          {/* In-place Note View Popover */}
+                                          {activeViewNoteDate === entry.date && (
+                                            <>
+                                              <div
+                                                className="fixed inset-0 z-40"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  setActiveViewNoteDate(null);
+                                                }}
+                                              />
+                                              <div
+                                                className="absolute bottom-full mb-2 z-50 left-1/2 -translate-x-1/2 glass-modal text-xs p-3.5 rounded-xl shadow-2xl w-64 sm:w-80 text-left whitespace-normal border border-orange-500/30 animate-in fade-in zoom-in-95 duration-150"
+                                                onClick={(e) => e.stopPropagation()}
+                                              >
+                                                <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-white/10">
+                                                  <span className="text-[11px] text-[#e9762b] font-bold tracking-wider uppercase flex items-center gap-1.5">
+                                                    <FileText className="w-3.5 h-3.5 text-[#e9762b]" />
+                                                    {formatDateDisplay(entry.date)} Note
+                                                  </span>
+                                                  <div className="flex items-center gap-1">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setActiveViewNoteDate(null);
+                                                        handleOpenNoteEdit(entry);
+                                                      }}
+                                                      className="p-1 rounded-lg hover:bg-white/10 text-stone-400 hover:text-[#e9762b] transition text-[10px] flex items-center gap-1"
+                                                      title="Edit Note"
+                                                    >
+                                                      <Edit3 className="w-3 h-3" />
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => setActiveViewNoteDate(null)}
+                                                      className="p-1 rounded-lg hover:bg-white/10 text-stone-400 hover:text-white transition"
+                                                      title="Close"
+                                                    >
+                                                      <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                                <p className="text-stone-900 dark:text-stone-200 text-xs sm:text-sm leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap break-words select-text">
+                                                  {entry.notes}
+                                                </p>
+                                                <div className="w-2.5 h-2.5 glass-modal border-r border-b border-orange-500/30 transform rotate-45 absolute -bottom-1.5 left-1/2 -translate-x-1/2 pointer-events-none" />
+                                              </div>
+                                            </>
+                                          )}
                                         </div>
                                       ) : (
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleOpenNoteEdit(entry);
-                                          }}
-                                          className="text-stone-400/50 hover:text-[#e9762b] dark:text-white/20 dark:hover:text-[#e9762b] font-mono text-xs sm:text-sm select-none transition cursor-pointer"
-                                        >
+                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-xs sm:text-sm select-none">
                                           --
-                                        </button>
+                                        </span>
                                       )}
                                     </td>
                                   )}
@@ -3966,14 +3997,59 @@ export const DailyStudyLog: React.FC = () => {
                       )}
                       {!deletedDefaultColumns.includes('notes') && (
                         <td
-                          className="py-2 px-2.5 text-center text-[10px] text-stone-400 max-w-[140px] truncate cursor-pointer hover:text-[#e9762b] transition"
-                          title={entry.notes ? `${entry.notes} (click to edit)` : 'Click to add note'}
-                          onClick={() => {
-                            setIsFullTableView(false);
-                            handleOpenNoteEdit(entry);
-                          }}
+                          className="py-2 px-2.5 text-center text-[10px] text-stone-400 max-w-[140px] truncate relative"
+                          title={entry.notes ? entry.notes : 'No note'}
                         >
-                          {entry.notes || <span className="text-white/20">--</span>}
+                          {entry.notes ? (
+                            <div className="relative inline-flex items-center justify-center">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveViewNoteDate(activeViewNoteDate === 'full-' + entry.date ? null : 'full-' + entry.date);
+                                }}
+                                className="px-2 py-0.5 rounded text-[10px] font-bold text-[#e9762b] bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 transition cursor-pointer select-none active:scale-95"
+                                title="Click to view note"
+                              >
+                                Note
+                              </button>
+                              {activeViewNoteDate === 'full-' + entry.date && (
+                                <>
+                                  <div
+                                    className="fixed inset-0 z-40"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveViewNoteDate(null);
+                                    }}
+                                  />
+                                  <div
+                                    className="absolute bottom-full mb-2 z-50 left-1/2 -translate-x-1/2 glass-modal text-xs p-3.5 rounded-xl shadow-2xl w-64 sm:w-80 text-left whitespace-normal border border-orange-500/30 animate-in fade-in zoom-in-95 duration-150"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <div className="flex items-center justify-between gap-2 pb-1.5 mb-2 border-b border-white/10">
+                                      <span className="text-[10px] text-[#e9762b] font-bold tracking-wider uppercase flex items-center gap-1.5">
+                                        <FileText className="w-3.5 h-3.5 text-[#e9762b]" />
+                                        {formatDateDisplay(entry.date)} Note
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => setActiveViewNoteDate(null)}
+                                        className="p-1 rounded hover:bg-white/10 text-stone-400 hover:text-white transition"
+                                        title="Close"
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                    <p className="text-stone-200 text-xs leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap break-words select-text">
+                                      {entry.notes}
+                                    </p>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-white/20">--</span>
+                          )}
                         </td>
                       )}
                       {!deletedDefaultColumns.includes('focusRating') && (
