@@ -476,17 +476,17 @@ export const StudyLogAnalysis: React.FC = () => {
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto shrink-0">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:self-auto shrink-0">
             {/* Table Selector */}
-            <div className="relative flex items-center">
+            <div className="relative flex items-center flex-1 sm:flex-none min-w-0">
               <span className="text-[10px] font-mono text-stone-500 dark:text-slate-400 font-bold uppercase mr-1 hidden md:inline">
                 Table:
               </span>
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <select
                   value={selectedTableId}
                   onChange={(e) => handleTableChange(e.target.value)}
-                  className="text-xs font-mono font-bold appearance-none bg-stone-100 dark:bg-[#181817] border border-stone-300 dark:border-white/10 text-stone-900 dark:text-white pl-2.5 pr-7 py-1.5 rounded-lg focus:outline-none focus:border-[#e9762b] cursor-pointer transition shadow-sm max-w-[130px] sm:max-w-[160px] truncate"
+                  className="w-full sm:w-auto text-xs font-mono font-bold appearance-none bg-stone-100 dark:bg-[#181817] border border-stone-300 dark:border-white/10 text-stone-900 dark:text-white pl-2.5 pr-7 py-1.5 rounded-lg focus:outline-none focus:border-[#e9762b] cursor-pointer transition shadow-sm sm:max-w-[160px] truncate"
                   aria-label="Select table to analyze"
                 >
                   {availableTables.map((t) => (
@@ -500,16 +500,16 @@ export const StudyLogAnalysis: React.FC = () => {
             </div>
 
             {/* Column Selector */}
-            <div className="relative flex items-center">
+            <div className="relative flex items-center flex-1 sm:flex-none min-w-0">
               <span className="text-[10px] font-mono text-stone-500 dark:text-slate-400 font-bold uppercase mr-1 hidden md:inline">
                 Column:
               </span>
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <select
                   value={selectedColumnId}
                   onChange={(e) => setSelectedColumnId(e.target.value)}
                   disabled={availableColumns.length === 0}
-                  className="text-xs font-mono font-bold appearance-none bg-stone-100 dark:bg-[#181817] border border-stone-300 dark:border-white/10 text-stone-900 dark:text-white pl-2.5 pr-7 py-1.5 rounded-lg focus:outline-none focus:border-[#e9762b] cursor-pointer transition shadow-sm max-w-[130px] sm:max-w-[160px] truncate disabled:opacity-50"
+                  className="w-full sm:w-auto text-xs font-mono font-bold appearance-none bg-stone-100 dark:bg-[#181817] border border-stone-300 dark:border-white/10 text-stone-900 dark:text-white pl-2.5 pr-7 py-1.5 rounded-lg focus:outline-none focus:border-[#e9762b] cursor-pointer transition shadow-sm sm:max-w-[160px] truncate disabled:opacity-50"
                   aria-label="Select column to analyze"
                 >
                   {availableColumns.map((c) => (
@@ -711,9 +711,9 @@ export const StudyLogAnalysis: React.FC = () => {
                   )}
                 </div>
 
-                {/* Breakdown details */}
+                {/* Breakdown details — wraps on phones so nothing gets clipped with "…" */}
                 {habit.breakdown && (
-                  <div className="mt-1 text-[9px] text-stone-500 dark:text-slate-400 font-mono truncate max-w-full px-1" title={habit.breakdown}>
+                  <div className="mt-1 text-[9px] text-stone-500 dark:text-slate-400 font-mono leading-snug max-w-full px-1" title={habit.breakdown}>
                     {habit.breakdown}
                   </div>
                 )}

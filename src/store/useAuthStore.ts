@@ -54,6 +54,7 @@ interface AuthState {
   updateProfile: (name: string, email: string) => Promise<{ success: boolean; error?: string }>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>;
   getLockoutStatus: (email: string) => { isLocked: boolean; remainingMinutes: number };
+  signInWithOAuth: (provider: 'google' | 'github') => Promise<{ success: boolean; error?: string }>;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -90,6 +91,33 @@ export const useAuthStore = create<AuthState>()(
       },
 
       clearFlashMessage: () => set({ flashMessage: null }),
+
+      signInWithOAuth: async (provider) => {
+        const sb = getSupabaseClient();
+        if (!sb) {
+          return { success: false, error: 'Supabase client is not configured.' };
+        }
+        try {
+          const redirectUrl = window.location.origin + window.location.pathname;
+          const { error } = await sb.auth.signInWithOAuth({
+            provider,
+            options: {
+              redirectTo: redirectUrl,
+              queryParams: {
+                access_type: 'offline',
+                prompt: 'select_account',
+              },
+            },
+          });
+          if (error) {
+            return { success: false, error: error.message };
+          }
+          // Browser is redirected to the provider; session is restored by the auth listener on return.
+          return { success: true };
+        } catch (err: any) {
+          return { success: false, error: err?.message || 'Social sign-in failed.' };
+        }
+      },
 
       getLockoutStatus: (email: string) => {
         const key = email.trim().toLowerCase();
@@ -545,7 +573,7 @@ if (typeof window !== 'undefined') {
 
       if (activeSession?.user) {
         const u = activeSession.user;
-        let studentName = u.user_metadata?.name || u.email?.split('@')[0] || 'Student';
+        let studentName = u.user_metadata?.name || u.user_metadata?.full_name || u.email?.split('@')[0] || 'Student';
         try {
           const { data: profile } = await sb.from('profiles').select('*').eq('id', u.id).maybeSingle();
           if (profile?.name) studentName = profile.name;
@@ -564,6 +592,7 @@ if (typeof window !== 'undefined') {
 
         useAuthStore.setState({
           currentUser: authUser,
+          authModalView: 'closed',
           session: {
             token: activeSession.access_token,
             refreshToken: activeSession.refresh_token,
@@ -602,7 +631,7 @@ if (typeof window !== 'undefined') {
         const prev = useAuthStore.getState().currentUser;
         const authUser: AuthUser = {
           id: u.id,
-          name: prev?.id === u.id && prev.name ? prev.name : (u.user_metadata?.name || u.email?.split('@')[0] || 'Student'),
+          name: prev?.id === u.id && prev.name ? prev.name : (u.user_metadata?.name || u.user_metadata?.full_name || u.email?.split('@')[0] || 'Student'),
           email: u.email || '',
           createdAt: u.created_at,
           updatedAt: u.updated_at || u.created_at,
@@ -611,6 +640,7 @@ if (typeof window !== 'undefined') {
 
         useAuthStore.setState({
           currentUser: authUser,
+          authModalView: 'closed',
           session: {
             token: session.access_token,
             refreshToken: session.refresh_token,
@@ -619,6 +649,12 @@ if (typeof window !== 'undefined') {
             rememberMe: true,
           },
         });
+
+        // Clean OAuth return code/hash from browser URL to prevent re-triggering
+        if (typeof window !== 'undefined' && (window.location.hash.includes('access_token') || window.location.search.includes('code='))) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+          useAuthStore.getState().setFlashMessage('success', `Signed in as ${authUser.name}!`);
+        }
 
         // Defer network work until the auth lock is released
         if (event !== 'TOKEN_REFRESHED' && lastSyncedUserId !== u.id) {

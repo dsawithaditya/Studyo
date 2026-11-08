@@ -45,15 +45,17 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSupabaseModal, onOpenHalft
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
         {/* Logo and Tagline */}
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-indigo-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
-            <BookOpen className="w-5 h-5 text-white" />
-          </div>
+          <img
+            src="./logo.svg"
+            alt="Studyo logo"
+            className="w-9 h-9 rounded-xl shadow-lg shadow-orange-500/20 ring-1 ring-[#e9762b]/40 object-contain shrink-0"
+          />
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-stone-900 via-indigo-900 to-indigo-700 dark:from-white dark:via-indigo-100 dark:to-indigo-300 bg-clip-text text-transparent">
+              <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-stone-900 via-orange-900 to-[#e9762b] dark:from-white dark:via-orange-100 dark:to-[#e9762b] bg-clip-text text-transparent">
                 Studyo
               </span>
-              <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30">
+              <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-orange-500/15 text-[#e9762b] border border-orange-500/30">
                 PWA • Zero-Lag
               </span>
             </div>

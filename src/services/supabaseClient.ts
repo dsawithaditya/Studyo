@@ -257,7 +257,8 @@ WITH CHECK (auth.uid() = sender_id);
 
 CREATE POLICY "Users can update their friend requests" 
 ON public.friend_requests FOR UPDATE 
-USING (auth.uid() = sender_id OR auth.uid() = receiver_id);
+USING (auth.uid() = receiver_id OR auth.uid() = sender_id)
+WITH CHECK (auth.uid() = receiver_id OR auth.uid() = sender_id);
 
 CREATE POLICY "Users can delete their friend requests" 
 ON public.friend_requests FOR DELETE 
@@ -642,6 +643,85 @@ export async function fetchUserDataFromSupabase(userId: string) {
       customTables = metaTablesRow.custom_data.tables;
     }
 
+    const deletedCustomTableIds = (metaConfigRow?.custom_data?.deletedCustomTableIds as string[]) || [];
+
+    // Filter out deleted tables and strip legacy demo fake rows
+    customTables = customTables
+      .filter((tbl) => tbl.id !== 'tbl-mock-tests' && !deletedCustomTableIds.includes(tbl.id))
+      .map((tbl) => {
+        const isCheck =
+          tbl.id === 'tbl-check-demo' ||
+          tbl.id === 'tbl-check' ||
+          tbl.title?.trim().toLowerCase() === 'check';
+
+        const nonDemoRows = (tbl.rows || []).filter((r: any) => {
+          if (r.id === 'row-1' || r.id === 'row-2' || r.id === 'row-3' || r.id === 'row-4' || r.id === 'row-5') {
+            if (
+              r.values &&
+              (r.values.col_score === 142 ||
+                r.values.col_score === 118 ||
+                r.values.col_score === 85 ||
+                r.values.col_score === 48 ||
+                r.values.col_score === 102)
+            ) {
+              return false;
+            }
+          }
+          if (r.values?.col_paper && typeof r.values.col_paper === 'string') {
+            const p = r.values.col_paper.toLowerCase();
+            if (
+              p.includes('cs mock') ||
+              p.includes('full syllabus exam') ||
+              p.includes('discrete math') ||
+              p.includes('logical reasoning') ||
+              p.includes('diagnostic test')
+            ) {
+              return false;
+            }
+          }
+          if (r.notes && typeof r.notes === 'string') {
+            const n = r.notes.toLowerCase();
+            if (
+              n.includes('revised dp and graph') ||
+              n.includes('ran short of time') ||
+              n.includes('permutations formulas') ||
+              n.includes('fast completion under 18') ||
+              n.includes('initial benchmark test')
+            ) {
+              return false;
+            }
+          }
+          return true;
+        });
+
+        if (
+          isCheck &&
+          (nonDemoRows.length === 0 ||
+            tbl.columns?.some((c: any) => c.id === 'col_paper' || c.id === 'col_difficulty') ||
+            tbl.description?.toLowerCase().includes('mock exam'))
+        ) {
+          const todayIso = new Date().toISOString().split('T')[0];
+          const yestIso = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+          return {
+            ...tbl,
+            description: 'Topic Checklist & Tracker',
+            columns: [
+              { id: 'col_topic', name: 'TOPIC', type: 'text' },
+              { id: 'col_status', name: 'STATUS', type: 'boolean' },
+            ],
+            rows: nonDemoRows.length > 0 ? nonDemoRows : [
+              { id: 'row-1', date: todayIso, values: { col_topic: '', col_status: 'na' }, notes: '', createdAt: new Date().toISOString() },
+              { id: 'row-2', date: yestIso, values: { col_topic: '', col_status: 'na' }, notes: '', createdAt: new Date().toISOString() },
+            ],
+          };
+        }
+
+        return {
+          ...tbl,
+          rows: nonDemoRows,
+        };
+      });
+
     // Custom columns: from dedicated table if available, or from metadata row
     let customColumns: CustomColumn[] = [];
     if (customColumnsRes?.data && Array.isArray(customColumnsRes.data) && customColumnsRes.data.length > 0) {
@@ -657,6 +737,7 @@ export async function fetchUserDataFromSupabase(userId: string) {
 
     const tableConfig = {
       deletedDefaultColumns: (metaConfigRow?.custom_data?.deletedDefaultColumns as string[]) || [],
+      deletedCustomTableIds,
       isDefaultTableDeleted: Boolean(metaConfigRow?.custom_data?.isDefaultTableDeleted),
       autoGenerateRows:
         typeof metaConfigRow?.custom_data?.autoGenerateRows === 'boolean'
@@ -931,7 +1012,7 @@ export async function dbClearAllDailyLogs(userId: string) {
 
 export async function dbSaveTableConfig(
   userId: string,
-  config: { deletedDefaultColumns: string[]; isDefaultTableDeleted: boolean; autoGenerateRows?: boolean }
+  config: { deletedDefaultColumns: string[]; isDefaultTableDeleted: boolean; deletedCustomTableIds?: string[]; autoGenerateRows?: boolean }
 ) {
   const sb = getSupabaseClient();
   if (!sb || !userId) return;
@@ -1213,7 +1294,7 @@ export async function uploadAllUserDataToSupabase(
     examCountdowns?: ExamCountdown[];
     customTables?: CustomStudyTable[];
     customColumns?: CustomColumn[];
-    tableConfig?: { deletedDefaultColumns: string[]; isDefaultTableDeleted: boolean; autoGenerateRows?: boolean };
+    tableConfig?: { deletedDefaultColumns: string[]; isDefaultTableDeleted: boolean; deletedCustomTableIds?: string[]; autoGenerateRows?: boolean };
   }
 ) {
   const sb = getSupabaseClient();
@@ -1258,7 +1339,28 @@ export async function uploadAllUserDataToSupabase(
   }
 
   if (data.customTables && data.customTables.length > 0) {
-    promises.push(dbSaveAllCustomTables(userId, data.customTables));
+    const deletedSet = new Set(data.tableConfig?.deletedCustomTableIds || []);
+    const cleanTables = data.customTables
+      .filter((t) => t.id !== 'tbl-mock-tests' && !deletedSet.has(t.id))
+      .map((t) => ({
+        ...t,
+        rows: (t.rows || []).filter((r: any) => {
+          if (r.id === 'row-1' || r.id === 'row-2' || r.id === 'row-3' || r.id === 'row-4' || r.id === 'row-5') {
+            if (
+              r.values &&
+              (r.values.col_score === 142 ||
+                r.values.col_score === 118 ||
+                r.values.col_score === 85 ||
+                r.values.col_score === 48 ||
+                r.values.col_score === 102)
+            ) {
+              return false;
+            }
+          }
+          return true;
+        }),
+      }));
+    promises.push(dbSaveAllCustomTables(userId, cleanTables));
   }
 
   if (data.customColumns && data.customColumns.length > 0) {
@@ -1555,6 +1657,10 @@ export async function dbAcceptFriendRequest(
       return { success: false, message: 'Request not found.' };
     }
 
+    if (req.receiver_id !== userId) {
+      return { success: false, message: 'Only the recipient can accept this friend request.' };
+    }
+
     // B. Fetch receiver name
     const { data: receiverProfile } = await sb
       .from('profiles')
@@ -1569,7 +1675,8 @@ export async function dbAcceptFriendRequest(
     await sb
       .from('friend_requests')
       .update({ status: 'accepted', updated_at: new Date().toISOString() })
-      .eq('id', requestId);
+      .eq('id', requestId)
+      .eq('receiver_id', userId);
 
     // D. Upsert reciprocal friendship records (both directions; second one is best-effort if RLS restricts it on legacy schema)
     await Promise.allSettled([

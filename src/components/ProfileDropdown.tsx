@@ -707,12 +707,17 @@ export const ProfileDropdown: React.FC = () => {
                       key={idx}
                       className="relative p-2.5 sm:p-3 rounded-xl bg-stone-100/80 dark:bg-white/[0.04] border border-stone-200 dark:border-white/10 hover:border-stone-300 dark:hover:border-white/20 transition flex flex-col justify-between items-center group"
                     >
-                      <div className="relative w-full flex items-center justify-center">
+                      <div className="relative w-full flex items-center justify-center min-h-[26px]">
+                        <span className="text-[10px] tracking-normal uppercase font-bold text-stone-700 dark:text-slate-300 group-hover:text-black dark:group-hover:text-white leading-tight text-center pr-3 font-mono pointer-events-none">
+                          {METRIC_OPTIONS.find((o) => o.key === metricKey)?.label || 'Metric'}
+                        </span>
+                        <ChevronDown className="w-2.5 h-2.5 text-stone-400 dark:text-slate-400 absolute right-0.5 pointer-events-none group-hover:text-black dark:group-hover:text-white transition" />
                         <select
                           value={metricKey}
                           onChange={(e) => updateProfileMetricSlot(idx as 0 | 1 | 2, e.target.value)}
-                          className="appearance-none bg-transparent text-[10px] uppercase font-bold text-stone-700 dark:text-slate-300 hover:text-black dark:hover:text-white cursor-pointer pr-3.5 focus:outline-none text-center truncate max-w-full font-mono"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                           title="Click to customize metric"
+                          aria-label={`Customize profile metric slot ${idx + 1}`}
                         >
                           {METRIC_OPTIONS.map((opt) => (
                             <option key={opt.key} value={opt.key} className={isDark ? "bg-[#141413] text-white" : "bg-white text-stone-900"}>
@@ -720,7 +725,6 @@ export const ProfileDropdown: React.FC = () => {
                             </option>
                           ))}
                         </select>
-                        <ChevronDown className="w-2.5 h-2.5 text-stone-400 dark:text-slate-400 absolute right-0.5 pointer-events-none group-hover:text-black dark:group-hover:text-white transition" />
                       </div>
                       <span className={`text-base sm:text-lg font-extrabold mt-1.5 font-mono ${metric.color}`}>
                         {metric.value}
@@ -945,23 +949,23 @@ export const ProfileDropdown: React.FC = () => {
                 </button>
               </div>
 
-              {/* Settings Sub-Navigation Tabs with Slide Left/Right Arrows */}
-              <div className={`flex items-center px-1.5 sm:px-2 border-b border-stone-200 dark:border-white/10 shrink-0 text-xs font-mono select-none ${isDark ? 'bg-[#181817]' : 'bg-[#ece8df]'}`}>
-                {/* Left Slide Arrow */}
+              {/* Settings Sub-Navigation Tabs — wraps into a grid on phones (no sideways scrolling), scrollable with arrows on desktop */}
+              <div className={`flex items-center px-2 border-b border-stone-200 dark:border-white/10 shrink-0 text-xs font-mono select-none ${isDark ? 'bg-[#181817]' : 'bg-[#ece8df]'}`}>
+                {/* Left Slide Arrow (desktop only) */}
                 <button
                   type="button"
                   onClick={() => scrollSettingsTabs('left')}
-                  className="p-1 sm:p-1.5 rounded-lg text-[#e9762b] hover:text-[#ff5f00] hover:bg-stone-300/40 dark:hover:bg-white/10 transition cursor-pointer shrink-0"
+                  className="hidden sm:inline-flex p-1.5 rounded-lg text-[#e9762b] hover:text-[#ff5f00] hover:bg-stone-300/40 dark:hover:bg-white/10 transition cursor-pointer shrink-0"
                   title="Scroll tabs left"
                   aria-label="Scroll settings tabs left"
                 >
                   <ChevronLeft className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.75] drop-shadow-[0_1px_4px_rgba(233,118,43,0.35)]" />
                 </button>
 
-                {/* Scrollable Tabs */}
+                {/* Tabs: 3-column grid on phones, horizontal row on sm+ */}
                 <div 
                   ref={settingsTabsRef}
-                  className="flex-1 flex items-center gap-1.5 px-1.5 py-2.5 overflow-x-auto no-scrollbar scroll-smooth"
+                  className="flex-1 grid grid-cols-3 sm:flex sm:items-center gap-1.5 px-1 sm:px-1.5 py-2 sm:py-2.5 sm:overflow-x-auto no-scrollbar scroll-smooth"
                 >
                   {[
                     { id: 'all', label: 'All' },
@@ -978,24 +982,24 @@ export const ProfileDropdown: React.FC = () => {
                         key={tab.id}
                         type="button"
                         onClick={() => setSettingsTab(tab.id as typeof settingsTab)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition whitespace-nowrap cursor-pointer text-xs ${
+                        className={`flex items-center justify-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg font-bold transition whitespace-nowrap cursor-pointer text-xs ${
                           isActive
                             ? 'bg-[#e9762b] text-black shadow-sm font-extrabold'
                             : 'text-stone-600 dark:text-slate-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-300/40 dark:hover:bg-white/5'
                         }`}
                       >
-                        {Icon && <Icon className="w-3.5 h-3.5" />}
+                        {Icon && <Icon className="w-3.5 h-3.5 shrink-0" />}
                         <span>{tab.label}</span>
                       </button>
                     );
                   })}
                 </div>
 
-                {/* Right Slide Arrow */}
+                {/* Right Slide Arrow (desktop only) */}
                 <button
                   type="button"
                   onClick={() => scrollSettingsTabs('right')}
-                  className="p-1 sm:p-1.5 rounded-lg text-[#e9762b] hover:text-[#ff5f00] hover:bg-stone-300/40 dark:hover:bg-white/10 transition cursor-pointer shrink-0"
+                  className="hidden sm:inline-flex p-1.5 rounded-lg text-[#e9762b] hover:text-[#ff5f00] hover:bg-stone-300/40 dark:hover:bg-white/10 transition cursor-pointer shrink-0"
                   title="Scroll tabs right"
                   aria-label="Scroll settings tabs right"
                 >

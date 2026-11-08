@@ -33,6 +33,7 @@ export const AuthModal: React.FC = () => {
     redirectAfterLogin,
     setRedirectAfterLogin,
     getLockoutStatus,
+    signInWithOAuth,
   } = useAuthStore();
 
   const { updateUserProfile } = useStudyStore();
@@ -96,6 +97,22 @@ export const AuthModal: React.FC = () => {
       updateUserProfile({ name: name.trim(), email: email.trim().toLowerCase() });
     } else {
       setFormError(res.error || 'Failed to create account.');
+    }
+  };
+
+  // Handle Social (OAuth) Login
+  const handleOAuth = async (provider: 'google' | 'github') => {
+    setFormError(null);
+    setIsLoading(true);
+    const res = await signInWithOAuth(provider);
+    if (!res.success) {
+      setIsLoading(false);
+      const err = res.error || '';
+      if (err.toLowerCase().includes('not enabled') || err.toLowerCase().includes('unsupported provider')) {
+        setFormError(`Google sign-in is not enabled in your Supabase dashboard. Please enable Google under Authentication > Providers.`);
+      } else {
+        setFormError(err || 'Social sign-in failed. Make sure the provider is enabled in Supabase.');
+      }
     }
   };
 
@@ -521,6 +538,43 @@ export const AuthModal: React.FC = () => {
               </button>
             </div>
           </form>
+        )}
+
+        {/* ====================================================== */}
+        {/* SOCIAL LOGIN (Google / GitHub) - login & signup views  */}
+        {/* ====================================================== */}
+        {(authModalView === 'login' || authModalView === 'signup') && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 text-[10px] uppercase tracking-wider text-stone-400 dark:text-slate-500">
+              <div className="h-px flex-1 bg-stone-200 dark:bg-white/10" />
+              <span>Or continue with</span>
+              <div className="h-px flex-1 bg-stone-200 dark:bg-white/10" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={() => handleOAuth('google')}
+                className="py-2.5 rounded-xl glass-input hover:brightness-110 active:scale-[0.98] text-xs font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.3-1.6 3.9-5.5 3.9-3.3 0-6-2.7-6-6s2.7-6 6-6c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3.4 14.6 2.4 12 2.4 6.7 2.4 2.4 6.7 2.4 12S6.7 21.6 12 21.6c5.5 0 9.2-3.9 9.2-9.4 0-.6-.1-1.1-.2-1.6H12z" />
+                </svg>
+                <span>Google</span>
+              </button>
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={() => handleOAuth('github')}
+                className="py-2.5 rounded-xl glass-input hover:brightness-110 active:scale-[0.98] text-xs font-bold flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.200-1.200 3.200-1.200.6 1.600.2 2.800.1 3.100.7.8 1.200 1.800 1.200 3.100 0 4.400-2.700 5.400-5.300 5.700.4.4.8 1.100.8 2.200v3.200c0 .3.2.7.8.6A11.500 11.500 0 0 0 23.500 12C23.500 5.700 18.300.5 12 .5z" />
+                </svg>
+                <span>GitHub</span>
+              </button>
+            </div>
+          </div>
         )}
 
         {/* ====================================================== */}

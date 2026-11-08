@@ -231,7 +231,8 @@ export const HomeScreen: React.FC = () => {
       window.removeEventListener('resize', update);
     };
   }, []);
-  const heroHeight = `calc(100dvh - ${headerH}px)`;
+  // On phones the fixed bottom tab bar (--bottom-nav-h, defined in index.css) also takes screen space.
+  const heroHeight = `calc(100dvh - ${headerH}px - var(--bottom-nav-h, 0px))`;
 
   // Global Keyboard shortcuts
   useEffect(() => {
@@ -406,10 +407,7 @@ export const HomeScreen: React.FC = () => {
           className="text-left group cursor-pointer focus:outline-none flex items-center gap-2.5 px-4 py-2 rounded-full glass-pill hover:border-white/30 transition active:scale-95"
           title="Home (Study Hero)"
         >
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff5f00] opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[#e9762b]"></span>
-          </span>
+          <img src="./logo.svg" alt="" aria-hidden="true" width={26} height={26} className="h-[26px] w-[26px] -ml-2 rounded-lg shrink-0" draggable={false} />
           <span className="font-extrabold text-sm sm:text-base tracking-widest text-stone-900 dark:text-white uppercase group-hover:text-[#e9762b] transition">
             Studyo
           </span>
@@ -417,7 +415,8 @@ export const HomeScreen: React.FC = () => {
       </div>
 
       {/* Center: Main Bar Navigation Tabs (Pill / Capsule Dock matching Border Magic theme) */}
-      <div className="order-3 lg:order-none w-full lg:w-auto flex justify-center min-w-0">
+      {/* (Phones use the fixed bottom tab bar instead, so nothing has to be scrolled sideways to switch pages.) */}
+      <div className="order-3 lg:order-none w-full lg:w-auto hidden md:flex justify-center min-w-0">
         <div className="flex items-center gap-1.5 sm:gap-2 p-1.5 rounded-full border-magic-bar text-xs sm:text-sm uppercase tracking-wider font-bold overflow-x-auto shadow-[inset_0_1px_0_0_rgba(255,255,255,0.16),0_8px_25px_rgba(0,0,0,0.6)]">
           <button
             onClick={handleTimerTabClick}
@@ -506,6 +505,65 @@ export const HomeScreen: React.FC = () => {
     </div>
   );
 
+  // Mobile (Android/iOS) bottom tab bar — same handlers as the desktop dock, always fully visible.
+  const mobileTabs: Array<{
+    id: 'timer' | 'studylog' | 'analysis' | 'tasks';
+    label: string;
+    Icon: React.ComponentType<{ className?: string }>;
+    badge?: number;
+    onClick: () => void;
+  }> = [
+    { id: 'timer', label: 'Timer', Icon: Clock, onClick: handleTimerTabClick },
+    { id: 'studylog', label: 'Study Log', Icon: BookOpen, onClick: () => handleSwitchTab('studylog') },
+    { id: 'analysis', label: 'Analysis', Icon: TrendingUp, onClick: () => handleSwitchTab('analysis') },
+    { id: 'tasks', label: 'Tasks', Icon: CheckSquare, badge: pendingTasks.length, onClick: () => handleSwitchTab('tasks') },
+  ];
+
+  const mobileNav = (
+    <nav
+      aria-label="Main navigation"
+      className="md:hidden fixed bottom-0 inset-x-0 z-[55] bg-[#fae8dc]/90 dark:bg-black/75 backdrop-blur-2xl border-t border-black/10 dark:border-white/10 shadow-[0_-10px_30px_rgba(0,0,0,0.08)] dark:shadow-[0_-10px_30px_rgba(0,0,0,0.6)] px-2 pt-1 pb-safe"
+    >
+      <div className="grid grid-cols-4 gap-0.5 max-w-md mx-auto">
+        {mobileTabs.map(({ id, label, Icon, badge, onClick }) => {
+          const active = activeView === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={onClick}
+              aria-current={active ? 'page' : undefined}
+              aria-label={`${label} tab`}
+              className="flex flex-col items-center justify-center gap-0.5 min-h-[46px] rounded-2xl cursor-pointer select-none focus:outline-none"
+            >
+              <span
+                className={`relative flex items-center justify-center h-6 w-12 rounded-full transition-all duration-300 ease-out ${
+                  active
+                    ? 'bg-[#e9762b] text-black shadow-[0_0_18px_rgba(233,118,43,0.4)] scale-100'
+                    : 'text-stone-700 dark:text-slate-400 scale-95'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {badge !== undefined && badge > 0 && (
+                  <span className="absolute -top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#ff5f00] text-black text-[9px] font-extrabold leading-4 text-center font-mono-numbers">
+                    {badge > 99 ? '99+' : badge}
+                  </span>
+                )}
+              </span>
+              <span
+                className={`text-[10px] leading-none font-bold tracking-wider transition-colors duration-200 ${
+                  active ? 'text-[#e9762b]' : 'text-stone-600 dark:text-slate-500'
+                }`}
+              >
+                {label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+
   // Filtered tasks for Tasks view
   const todayLocalStr = getLocalTodayDateString();
   const filteredTasks = tasks.filter((task) => {
@@ -547,6 +605,7 @@ export const HomeScreen: React.FC = () => {
       <header ref={headerRef} className="sticky top-0 z-[60] w-full glass-header">
         {mainBar}
       </header>
+      {mobileNav}
 
       {/* CONTINUOUS UNIFIED AMBIENT BACKDROP (MERGES STUDY HERO + FOCUS TIMER INTO ONE CONTINUOUS IMAGE) */}
       {activeView === 'timer' && (
@@ -631,7 +690,7 @@ export const HomeScreen: React.FC = () => {
       )}
 
       {/* 3. MAIN CONTENT CONTAINER (Uniform width & rhythm across ALL tabs) */}
-      <main className="w-full flex-1 flex flex-col items-center pt-5 sm:pt-8 pb-12 sm:pb-16 mx-auto max-w-[1480px] 2xl:max-w-[1600px] px-4 sm:px-6 lg:px-10 relative">
+      <main className="w-full flex-1 flex flex-col items-center pt-5 sm:pt-8 pb-[calc(var(--bottom-nav-h,0px)+2rem)] md:pb-16 mx-auto max-w-[1480px] 2xl:max-w-[1600px] px-4 sm:px-6 lg:px-10 relative">
 
         {/* ====================================================== */}
         {/* A. TIMER & STOPWATCH MODULE                             */}
@@ -812,11 +871,35 @@ export const HomeScreen: React.FC = () => {
                   </button>
                 </div>
 
-                {/* Collapsible Settings Panel (Matches Image 2 exactly when clicked) */}
+                {/* Collapsible Settings Panel (Minimal & Modern with Voice/Ambient Soundscapes) */}
                 {showSettingsPanel && (
                   <div className="w-full flex flex-col items-center animate-fadeIn space-y-6 pt-4">
                     {/* Thin divider line */}
                     <div className="w-full max-w-4xl border-t border-white/[0.08]" />
+
+                    {/* AMBIENT AUDIO / SOUNDSCAPES SECTION (Shifted into Settings for cleaner mobile UI) */}
+                    <div className="w-full flex flex-col items-center space-y-2.5">
+                      <div className="flex items-center gap-2 text-xs font-mono font-bold text-stone-500 dark:text-slate-400 uppercase tracking-widest">
+                        <Volume2 className="w-4 h-4 text-[#e9762b]" />
+                        <span>Ambient Audio & Soundscapes</span>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 p-1.5 rounded-2xl glass-panel text-xs font-mono">
+                        {SOUNDS.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setAmbientSound(s.id)}
+                            className={`px-3 sm:px-4 py-1.5 rounded-xl text-xs uppercase font-bold tracking-wider transition cursor-pointer ${
+                              ambientSound === s.id
+                                ? 'bg-[#e9762b] text-black shadow-[0_0_15px_rgba(233,118,43,0.35)] font-extrabold'
+                                : 'text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white hover:bg-orange-500/10 dark:hover:bg-white/5'
+                            }`}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
                     {/* CUSTOM Row */}
                     <div className="flex items-center justify-center gap-4 sm:gap-6 flex-wrap text-sm font-mono">
@@ -913,11 +996,64 @@ export const HomeScreen: React.FC = () => {
                         </button>
                       ))}
                     </div>
+
+                    {/* Toggles Row inside Settings */}
+                    <div className="flex items-center justify-center gap-6 sm:gap-10 pt-2 flex-wrap select-none border-t border-white/[0.08] w-full max-w-xl">
+                      {/* Auto-start next toggle */}
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={autoStartNextRound}
+                          onClick={() => setAutoStartNextRound(!autoStartNextRound)}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all focus:outline-none cursor-pointer ${autoStartNextRound
+                              ? 'bg-[#e9762b] shadow-[0_0_12px_rgba(233,118,43,0.4)]'
+                              : 'bg-[#e0d2c4] dark:bg-[#252524] border border-orange-950/15 dark:border-white/10 hover:border-[#e9762b]/40'
+                            }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition-transform ${autoStartNextRound ? 'translate-x-6' : 'translate-x-1'
+                              }`}
+                          />
+                        </button>
+                        <span className={`text-xs font-mono uppercase tracking-widest font-bold transition-colors ${autoStartNextRound
+                            ? 'text-orange-950 dark:text-[#f5f5f4]'
+                            : 'text-stone-600 dark:text-slate-400 group-hover:text-black dark:group-hover:text-slate-200'
+                          }`}>
+                          Auto-start
+                        </span>
+                      </label>
+
+                      {/* Sound on finish toggle */}
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={soundAlertOnFinish}
+                          onClick={() => setSoundAlertOnFinish(!soundAlertOnFinish)}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all focus:outline-none cursor-pointer ${soundAlertOnFinish
+                              ? 'bg-[#e9762b] shadow-[0_0_12px_rgba(233,118,43,0.4)]'
+                              : 'bg-[#e0d2c4] dark:bg-[#252524] border border-orange-950/15 dark:border-white/10 hover:border-[#e9762b]/40'
+                            }`}
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-md transition-transform ${soundAlertOnFinish ? 'translate-x-6' : 'translate-x-1'
+                              }`}
+                          />
+                        </button>
+                        <span className={`text-xs font-mono uppercase tracking-widest font-bold transition-colors ${soundAlertOnFinish
+                            ? 'text-orange-950 dark:text-[#f5f5f4]'
+                            : 'text-stone-600 dark:text-slate-500 group-hover:text-black dark:group-hover:text-slate-300'
+                          }`}>
+                          Sound alert
+                        </span>
+                      </label>
+                    </div>
                   </div>
                 )}
 
-                {/* Bottom Toggles Row */}
-                <div className="flex items-center justify-center gap-8 sm:gap-12 pt-1 flex-wrap select-none">
+                {/* Bottom Toggles Row (Desktop only, minimal on mobile) */}
+                <div className="hidden sm:flex items-center justify-center gap-8 sm:gap-12 pt-1 flex-wrap select-none">
                   {/* Auto-start next toggle */}
                   <label className="flex items-center gap-3.5 cursor-pointer group">
                     <button
@@ -1025,10 +1161,10 @@ export const HomeScreen: React.FC = () => {
                 </div>
 
                 {/* Stopwatch Controls */}
-                <div className="flex items-center justify-center gap-3 sm:gap-4 flex-wrap">
+                <div className="flex items-center justify-center gap-2 sm:gap-4 flex-wrap">
                   <ShinyButton
                     onClick={stopwatchRunning ? pauseStopwatch : startStopwatch}
-                    className="!px-9 sm:!px-12 !py-3.5 sm:!py-4 !text-xs sm:!text-sm !font-mono !font-extrabold !tracking-widest !uppercase active:scale-95 transition"
+                    className="!px-6 sm:!px-12 !py-2.5 sm:!py-4 !text-xs sm:!text-sm !font-mono !font-extrabold !tracking-widest !uppercase active:scale-95 transition"
                   >
                     {stopwatchRunning ? (
                       <>
@@ -1046,14 +1182,14 @@ export const HomeScreen: React.FC = () => {
                   <button
                     onClick={lapStopwatch}
                     disabled={!stopwatchRunning}
-                    className="px-8 sm:px-10 py-3.5 sm:py-4 rounded-full glass-panel hover:bg-black/5 dark:hover:bg-[#1e1e1d]/90 disabled:opacity-40 disabled:pointer-events-none border border-orange-950/10 dark:border-white/12 hover:border-[#e9762b]/40 text-stone-700 dark:text-slate-300 hover:text-black dark:hover:text-white font-mono font-bold text-xs sm:text-sm tracking-widest uppercase transition active:scale-95 cursor-pointer shadow-lg"
+                    className="px-5 sm:px-10 py-2.5 sm:py-4 rounded-full glass-panel hover:bg-black/5 dark:hover:bg-[#1e1e1d]/90 disabled:opacity-40 disabled:pointer-events-none border border-orange-950/10 dark:border-white/12 hover:border-[#e9762b]/40 text-stone-700 dark:text-slate-300 hover:text-black dark:hover:text-white font-mono font-bold text-xs sm:text-sm tracking-widest uppercase transition active:scale-95 cursor-pointer shadow-lg"
                   >
                     LAP
                   </button>
 
                   <button
                     onClick={resetStopwatch}
-                    className="px-8 sm:px-10 py-3.5 sm:py-4 rounded-full glass-panel hover:bg-black/5 dark:hover:bg-[#1e1e1d]/90 border border-orange-950/10 dark:border-white/12 hover:border-[#e9762b]/40 text-stone-700 dark:text-slate-300 hover:text-black dark:hover:text-white font-mono font-bold text-xs sm:text-sm tracking-widest uppercase transition active:scale-95 cursor-pointer shadow-lg"
+                    className="px-5 sm:px-10 py-2.5 sm:py-4 rounded-full glass-panel hover:bg-black/5 dark:hover:bg-[#1e1e1d]/90 border border-orange-950/10 dark:border-white/12 hover:border-[#e9762b]/40 text-stone-700 dark:text-slate-300 hover:text-black dark:hover:text-white font-mono font-bold text-xs sm:text-sm tracking-widest uppercase transition active:scale-95 cursor-pointer shadow-lg"
                   >
                     RESET
                   </button>
@@ -1061,7 +1197,7 @@ export const HomeScreen: React.FC = () => {
                   {showFinishButton && stopwatchTime > 0 && (
                     <button
                       onClick={handleFinish}
-                      className="px-7 sm:px-9 py-3.5 sm:py-4 rounded-full bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/40 text-[#e9762b] font-mono font-bold text-xs sm:text-sm tracking-widest uppercase transition active:scale-95 flex items-center gap-2 cursor-pointer"
+                      className="px-5 sm:px-9 py-2.5 sm:py-4 rounded-full bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/40 text-[#e9762b] font-mono font-bold text-xs sm:text-sm tracking-widest uppercase transition active:scale-95 flex items-center gap-2 cursor-pointer"
                     >
                       <CheckCircle2 className="w-4 h-4" />
                       <span>FINISH</span>
@@ -1070,10 +1206,10 @@ export const HomeScreen: React.FC = () => {
 
                   <button
                     onClick={() => setZenMode(true)}
-                    className="p-3.5 sm:p-4 rounded-full glass-pill hover:border-[#e9762b]/40 dark:hover:border-white/40 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white transition active:scale-95 cursor-pointer"
+                    className="p-2.5 sm:p-4 rounded-full glass-pill hover:border-[#e9762b]/40 dark:hover:border-white/40 text-stone-700 dark:text-slate-400 hover:text-black dark:hover:text-white transition active:scale-95 cursor-pointer"
                     title="Fullscreen Mode"
                   >
-                    <CornersIcon className="w-5 h-5" />
+                    <CornersIcon className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
                 </div>
 
@@ -1099,8 +1235,8 @@ export const HomeScreen: React.FC = () => {
               </div>
             )}
 
-            {/* Ambient Sound Bar (Capsule Dock matching Border Magic theme) */}
-            <div className="flex items-center justify-center pt-0">
+            {/* Ambient Sound Bar (Desktop only - shifted inside Settings on mobile for a clean minimal UI) */}
+            <div className="hidden md:flex items-center justify-center pt-0">
               <div className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2 p-1.5 rounded-full border-magic-bar text-xs font-mono">
                 <div className="pl-3 pr-1 py-1 text-slate-400 flex items-center">
                   <Volume2 className="w-4 h-4" />
@@ -1121,9 +1257,9 @@ export const HomeScreen: React.FC = () => {
               </div>
             </div>
 
-            {/* Interactive TechText Wordmark at bottom */}
+            {/* Interactive TechText Wordmark at bottom (labels & selection handles only on pointer/desktop devices) */}
             <div className="w-full flex flex-col items-center justify-center pt-3 sm:pt-4 pb-6 sm:pb-8 relative overflow-hidden select-none">
-              <div className="w-full h-[200px] sm:h-[260px] md:h-[320px] lg:h-[380px] max-w-7xl relative">
+              <div className="w-full h-[140px] sm:h-[260px] md:h-[320px] lg:h-[380px] max-w-7xl relative">
                 <TechText
                   text={(() => {
                     const custom = (user.customWordmarkText || '').trim();
@@ -1150,9 +1286,9 @@ export const HomeScreen: React.FC = () => {
                   intro="none"
                   introDuration={2}
                   clickKick={true}
-                  draggable={true}
-                  selection={true}
-                  labels={true}
+                  draggable={typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches}
+                  selection={typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches}
+                  labels={typeof window !== 'undefined' && window.matchMedia('(hover: hover) and (pointer: fine)').matches}
                   guides={false}
                 />
               </div>
@@ -1186,52 +1322,53 @@ export const HomeScreen: React.FC = () => {
         {/* D. TASK PLANNER MODULE                                 */}
         {/* ====================================================== */}
         {activeView === 'tasks' && (
-          <div className="w-full flex flex-col space-y-8 animate-fadeIn font-mono">
+          <div className="w-full flex flex-col space-y-4 sm:space-y-6 animate-fadeIn font-mono">
             {/* Unified Top Header for Task Planner */}
-            <div className="w-full flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-orange-950/10 dark:border-white/10">
+            <div className="w-full flex items-center justify-between gap-3 pb-3 border-b border-orange-950/10 dark:border-white/10">
               <div>
-                <h1 className="text-3xl sm:text-4xl font-extrabold text-stone-900 dark:text-white tracking-tight uppercase font-mono">
-                  Task Planner
+                <h1 className="text-xl sm:text-3xl font-extrabold text-stone-900 dark:text-white tracking-tight uppercase font-mono">
+                  Tasks
                 </h1>
               </div>
-              <div className="text-xs sm:text-sm text-stone-700 dark:text-slate-300 font-mono glass-pill px-3.5 py-2 rounded-xl">
-                <span className="text-[#e9762b] font-bold">{pendingTasks.length}</span> pending tasks
+              <div className="text-xs text-stone-700 dark:text-slate-300 font-mono glass-pill px-3 py-1.5 rounded-xl">
+                <span className="text-[#e9762b] font-bold">{pendingTasks.length}</span> pending
               </div>
             </div>
 
-            {/* Inline Add Task Form */}
-            <form onSubmit={handleCreateTask} className="p-5 sm:p-6 rounded-2xl glass-panel shadow-xl space-y-3">
-              <div className="flex items-center justify-between text-xs font-bold uppercase tracking-widest text-stone-600 dark:text-slate-400">
+            {/* Inline Add Task Form - Streamlined and compact for mobile */}
+            <form onSubmit={handleCreateTask} className="p-3 sm:p-5 rounded-xl sm:rounded-2xl glass-panel shadow-lg space-y-2.5">
+              <div className="flex items-center justify-between text-[11px] sm:text-xs font-bold uppercase tracking-widest text-stone-500 dark:text-slate-400">
                 <span>Add Task</span>
+                <span className="text-[10px] text-[#e9762b] font-mono">Quick Focus</span>
               </div>
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                 <input
                   type="text"
                   placeholder="Task title (e.g. Solve 10 calculus PYQs)..."
                   value={newTaskTitle}
                   onChange={(e) => setNewTaskTitle(e.target.value)}
-                  className="flex-1 glass-input rounded-xl px-4 py-2.5 text-xs sm:text-sm text-stone-900 dark:text-white placeholder-stone-500 dark:placeholder-slate-600 focus:outline-none"
+                  className="w-full sm:flex-1 glass-input rounded-lg sm:rounded-xl px-3 py-2 text-xs sm:text-sm text-stone-900 dark:text-white placeholder-stone-500 dark:placeholder-slate-600 focus:outline-none"
                 />
-                <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex items-center gap-2">
                   <input
                     type="date"
                     value={newTaskDate}
                     onChange={(e) => setNewTaskDate(e.target.value || getLocalTodayDateString())}
                     title="Task due date"
-                    className="glass-input text-xs font-bold text-stone-900 dark:text-white rounded-xl px-3 py-2.5 focus:outline-none cursor-pointer font-mono"
+                    className="flex-1 sm:flex-none min-w-0 glass-input text-xs font-bold text-stone-900 dark:text-white rounded-lg sm:rounded-xl px-2.5 py-1.5 sm:py-2.5 focus:outline-none cursor-pointer font-mono"
                   />
                   <select
                     value={newTaskPriority}
                     onChange={(e) => setNewTaskPriority(e.target.value as TaskPriority)}
-                    className="glass-input text-xs font-bold text-stone-900 dark:text-white rounded-xl px-3 py-2.5 focus:outline-none cursor-pointer"
+                    className="flex-1 sm:flex-none glass-input text-xs font-bold text-stone-900 dark:text-white rounded-lg sm:rounded-xl px-2.5 py-1.5 sm:py-2.5 focus:outline-none cursor-pointer"
                   >
                     <option value="high" className="bg-white dark:bg-[#141413] text-stone-900 dark:text-white">High</option>
-                    <option value="med" className="bg-white dark:bg-[#141413] text-stone-900 dark:text-white">Medium</option>
+                    <option value="med" className="bg-white dark:bg-[#141413] text-stone-900 dark:text-white">Med</option>
                     <option value="low" className="bg-white dark:bg-[#141413] text-stone-900 dark:text-white">Low</option>
                   </select>
                   <button
                     type="submit"
-                    className="px-6 py-2.5 bg-[#e9762b] text-black font-extrabold rounded-xl text-xs sm:text-sm hover:brightness-110 transition uppercase tracking-wider shadow-[0_0_15px_rgba(233,118,43,0.3)] cursor-pointer"
+                    className="px-4 sm:px-6 py-1.5 sm:py-2.5 bg-[#e9762b] text-black font-extrabold rounded-lg sm:rounded-xl text-xs sm:text-sm hover:brightness-110 active:scale-95 transition uppercase tracking-wider shadow-sm cursor-pointer shrink-0"
                   >
                     Add
                   </button>
@@ -1240,13 +1377,13 @@ export const HomeScreen: React.FC = () => {
             </form>
 
             {/* Filter Tabs */}
-            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-3 text-xs sm:text-sm">
-              <div className="flex gap-2">
+            <div className="flex items-center justify-between border-b border-orange-950/10 dark:border-white/10 pb-2 text-xs">
+              <div className="flex gap-1.5 sm:gap-2">
                 {(['today', 'upcoming', 'completed'] as const).map((filter) => (
                   <button
                     key={filter}
                     onClick={() => setTaskFilter(filter)}
-                    className={`px-3.5 py-1.5 rounded-lg text-xs uppercase tracking-wider font-bold transition font-mono ${taskFilter === filter
+                    className={`px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg text-xs uppercase tracking-wider font-bold transition font-mono ${taskFilter === filter
                         ? 'bg-orange-500/10 dark:bg-white/15 text-stone-900 dark:text-white font-extrabold shadow-sm'
                         : 'text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white hover:bg-stone-200/50 dark:hover:bg-white/5'
                       }`}
@@ -1255,30 +1392,30 @@ export const HomeScreen: React.FC = () => {
                   </button>
                 ))}
               </div>
-              <span className="text-xs text-slate-400 font-mono font-bold">{filteredTasks.length} tasks</span>
+              <span className="text-[11px] text-slate-400 font-mono font-bold">{filteredTasks.length} tasks</span>
             </div>
 
             {/* Tasks List */}
-            <div className="space-y-3 sm:space-y-4">
+            <div className="space-y-2 sm:space-y-3">
               {filteredTasks.length === 0 ? (
-                <div className="p-12 text-center text-sm sm:text-base text-slate-500 border border-white/5 rounded-2xl glass-panel">
+                <div className="p-8 sm:p-12 text-center text-xs sm:text-sm text-slate-500 border border-white/5 rounded-2xl glass-panel">
                   No {taskFilter} tasks found.
                 </div>
               ) : (
                 filteredTasks.map((task) => (
                   <div
                     key={task.id}
-                    className="p-4 sm:p-5 rounded-2xl glass-panel glass-panel-interactive flex items-center justify-between gap-4 text-sm sm:text-base group"
+                    className="p-2.5 sm:p-4 rounded-xl sm:rounded-2xl glass-panel glass-panel-interactive flex items-center justify-between gap-3 text-xs sm:text-sm group"
                   >
-                    <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
                       <button
                         onClick={() => toggleTask(task.id)}
                         className="text-slate-400 hover:text-[#e9762b] flex-shrink-0 transition cursor-pointer"
                       >
                         {task.completed ? (
-                          <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-400" />
+                          <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400" />
                         ) : (
-                          <Circle className="w-5 h-5 sm:w-6 sm:h-6" />
+                          <Circle className="w-4 h-4 sm:w-5 sm:h-5" />
                         )}
                       </button>
                       <span
@@ -1289,13 +1426,13 @@ export const HomeScreen: React.FC = () => {
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
+                    <div className="flex items-center gap-1.5 sm:gap-2.5 flex-shrink-0">
                       {/* Interactive Due Date Badge / Selector */}
                       <label 
-                        className="relative inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold bg-stone-200/70 dark:bg-white/5 text-stone-700 dark:text-slate-300 border border-stone-300/60 dark:border-white/10 hover:border-[#e9762b]/50 cursor-pointer transition select-none group/date"
+                        className="relative inline-flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-lg text-[10px] sm:text-[11px] font-mono font-bold bg-stone-200/70 dark:bg-white/5 text-stone-700 dark:text-slate-300 border border-stone-300/60 dark:border-white/10 hover:border-[#e9762b]/50 cursor-pointer transition select-none group/date"
                         title="Click to view or change due date"
                       >
-                        <Calendar className="w-3.5 h-3.5 text-[#e9762b] shrink-0" />
+                        <Calendar className="w-3 h-3 text-[#e9762b] shrink-0" />
                         <span>{task.dueDate ? (task.dueDate === todayLocalStr ? 'Today' : task.dueDate) : 'Today'}</span>
                         <input
                           type="date"
@@ -1309,7 +1446,7 @@ export const HomeScreen: React.FC = () => {
                         />
                       </label>
                       <span
-                        className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider ${task.priority === 'high'
+                        className={`px-2 py-0.5 sm:px-3 sm:py-1 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider ${task.priority === 'high'
                             ? 'bg-orange-500/20 text-[#e9762b] border border-orange-500/30'
                             : task.priority === 'med'
                               ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
@@ -1323,7 +1460,7 @@ export const HomeScreen: React.FC = () => {
                         className="opacity-40 group-hover:opacity-100 hover:text-rose-400 transition p-1 cursor-pointer"
                         title="Delete task"
                       >
-                        <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                       </button>
                     </div>
                   </div>

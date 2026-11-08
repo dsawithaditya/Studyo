@@ -107,6 +107,7 @@ interface StudyState {
   // Default Table Deletion & Column Customization
   deletedDefaultColumns: string[];
   deletedDailyLogDates: string[];
+  deletedCustomTableIds: string[];
   isDefaultTableDeleted: boolean;
   autoGenerateRows: boolean;
   setAutoGenerateRows: (enable: boolean) => void;
@@ -318,6 +319,75 @@ export const isBlankCustomTableRow = (row: CustomTableRow): boolean => {
 };
 
 /**
+ * Intelligently cleans and deduplicates notes.
+ * Splits pipe-separated segments (' | ') or newlines, strips exact duplicates and redundant substrings,
+ * and rejoins them cleanly.
+ */
+export function cleanAndDeduplicateNotes(notesStr?: string | null): string {
+  if (!notesStr) return '';
+  const trimmed = notesStr.trim();
+  if (!trimmed) return '';
+
+  const rawSegments = trimmed
+    .split(/\s*\|\s*|\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (rawSegments.length <= 1) {
+    return trimmed;
+  }
+
+  const seenLower = new Set<string>();
+  const uniqueSegments: string[] = [];
+
+  for (const seg of rawSegments) {
+    const lower = seg.toLowerCase();
+    const isDuplicate = uniqueSegments.some(
+      (existing) => existing.toLowerCase() === lower || existing.toLowerCase().includes(lower)
+    );
+    if (!isDuplicate) {
+      const subIndex = uniqueSegments.findIndex((existing) => lower.includes(existing.toLowerCase()));
+      if (subIndex >= 0) {
+        seenLower.delete(uniqueSegments[subIndex].toLowerCase());
+        uniqueSegments[subIndex] = seg;
+        seenLower.add(lower);
+      } else {
+        seenLower.add(lower);
+        uniqueSegments.push(seg);
+      }
+    }
+  }
+
+  return uniqueSegments.join(' | ');
+}
+
+/**
+ * Merges two notes without duplicating messages or segments.
+ */
+export function mergeNotes(existingNotes?: string | null, newNotes?: string | null): string {
+  const cleanExisting = cleanAndDeduplicateNotes(existingNotes);
+  const cleanNew = cleanAndDeduplicateNotes(newNotes);
+
+  if (!cleanExisting && !cleanNew) return '';
+  if (!cleanExisting) return cleanNew;
+  if (!cleanNew) return cleanExisting;
+
+  if (cleanExisting.toLowerCase() === cleanNew.toLowerCase()) {
+    return cleanExisting;
+  }
+
+  if (cleanExisting.toLowerCase().includes(cleanNew.toLowerCase())) {
+    return cleanExisting;
+  }
+
+  if (cleanNew.toLowerCase().includes(cleanExisting.toLowerCase())) {
+    return cleanNew;
+  }
+
+  return cleanAndDeduplicateNotes(`${cleanExisting} | ${cleanNew}`);
+}
+
+/**
  * Ensures today's log exists date-wise when autoGenerate is true, and guarantees no future dates exist.
  * For today it generates today (unless explicitly deleted by the user or autoGenerate is false).
  */
@@ -334,7 +404,10 @@ export const ensureDailyLogsDateWise = (
   if (Array.isArray(logs)) {
     for (const log of logs) {
       if (log && log.date && log.date <= todayStr && !deletedSet.has(log.date)) {
-        map.set(log.date, log);
+        map.set(log.date, {
+          ...log,
+          notes: cleanAndDeduplicateNotes(log.notes),
+        });
       }
     }
   }
@@ -480,23 +553,8 @@ export function mergeDailyLogEntryPair(
     focusRating = lFocus;
   }
 
-  // 6. Notes (notes): Combines both notes ("Note 1 | Note 2")
-  const rNotes = (remote.notes || '').trim();
-  const lNotes = (local.notes || '').trim();
-  let notes = '';
-  if (rNotes && lNotes) {
-    if (rNotes === lNotes) {
-      notes = rNotes;
-    } else if (rNotes.includes(lNotes)) {
-      notes = rNotes;
-    } else if (lNotes.includes(rNotes)) {
-      notes = lNotes;
-    } else {
-      notes = `${rNotes} | ${lNotes}`;
-    }
-  } else {
-    notes = rNotes || lNotes || '';
-  }
+  // 6. Notes (notes): Combines both notes intelligently without duplication
+  const notes = mergeNotes(remote.notes, local.notes);
 
   // 7. Custom Columns (customData): Deep Object Merge ({ ...device1, ...device2 })
   const rCustom = remote.customData || {};
@@ -620,14 +678,7 @@ export function mergeCustomTableRowPair(
     }
   });
 
-  const rNotes = (remote.notes || '').trim();
-  const lNotes = (local.notes || '').trim();
-  let notes = '';
-  if (rNotes && lNotes) {
-    notes = rNotes === lNotes ? rNotes : `${rNotes} | ${lNotes}`;
-  } else {
-    notes = rNotes || lNotes || '';
-  }
+  const notes = mergeNotes(remote.notes, local.notes);
 
   return {
     id: remote.id || local.id,
@@ -640,26 +691,83 @@ export function mergeCustomTableRowPair(
 
 export function mergeCustomTablesList(
   remoteTables: CustomStudyTable[] = [],
-  localTables: CustomStudyTable[] = []
+  localTables: CustomStudyTable[] = [],
+  deletedTableIds: string[] = []
 ): { mergedTables: CustomStudyTable[]; tablesNeedUpload: boolean } {
+  const deletedSet = new Set(deletedTableIds);
   const tableMap = new Map<string, CustomStudyTable>();
-  remoteTables.forEach((t) => tableMap.set(t.id, t));
+
+  // Filter out any legacy demo mock exam tables and deleted tables
+  const validRemote = remoteTables.filter((t) => t.id !== 'tbl-mock-tests' && !deletedSet.has(t.id));
+  const validLocal = localTables.filter((t) => t.id !== 'tbl-mock-tests' && !deletedSet.has(t.id));
+
+  validRemote.forEach((t) => {
+    const isCheck =
+      t.id === 'tbl-check-demo' ||
+      t.id === 'tbl-check' ||
+      t.title?.trim().toLowerCase() === 'check';
+    const cleanRows = (t.rows || []).filter((r) => !isLegacyDemoCustomTableRow(r));
+    if (
+      isCheck &&
+      (cleanRows.length === 0 ||
+        t.columns?.some((c) => c.id === 'col_paper' || c.id === 'col_difficulty') ||
+        t.description?.toLowerCase().includes('mock exam'))
+    ) {
+      tableMap.set(t.id, {
+        ...t,
+        description: 'Topic Checklist & Tracker',
+        columns: [
+          { id: 'col_topic', name: 'TOPIC', type: 'text' },
+          { id: 'col_status', name: 'STATUS', type: 'boolean' },
+        ],
+        rows: cleanRows.length > 0 ? cleanRows : DEFAULT_CHECK_TABLE.rows,
+      });
+      tablesNeedUpload = true;
+    } else {
+      tableMap.set(t.id, { ...t, rows: cleanRows });
+    }
+  });
 
   let tablesNeedUpload = false;
 
-  localTables.forEach((localT) => {
-    if (!tableMap.has(localT.id)) {
+  validLocal.forEach((localT) => {
+    const isCheck =
+      localT.id === 'tbl-check-demo' ||
+      localT.id === 'tbl-check' ||
+      localT.title?.trim().toLowerCase() === 'check';
+    const cleanLocalRows = (localT.rows || []).filter((r) => !isLegacyDemoCustomTableRow(r));
+    let sanitizedLocalT: CustomStudyTable = { ...localT, rows: cleanLocalRows };
+
+    if (
+      isCheck &&
+      (cleanLocalRows.length === 0 ||
+        localT.columns?.some((c) => c.id === 'col_paper' || c.id === 'col_difficulty') ||
+        localT.description?.toLowerCase().includes('mock exam'))
+    ) {
+      sanitizedLocalT = {
+        ...sanitizedLocalT,
+        description: 'Topic Checklist & Tracker',
+        columns: [
+          { id: 'col_topic', name: 'TOPIC', type: 'text' },
+          { id: 'col_status', name: 'STATUS', type: 'boolean' },
+        ],
+        rows: cleanLocalRows.length > 0 ? cleanLocalRows : DEFAULT_CHECK_TABLE.rows,
+      };
+      tablesNeedUpload = true;
+    }
+
+    if (!tableMap.has(sanitizedLocalT.id)) {
       // Different Table: Unions both tables by ID
-      tableMap.set(localT.id, localT);
+      tableMap.set(sanitizedLocalT.id, sanitizedLocalT);
       tablesNeedUpload = true;
     } else {
-      const remoteT = tableMap.get(localT.id)!;
+      const remoteT = tableMap.get(sanitizedLocalT.id)!;
 
       // 1. Merge column definitions (Different Columns: Merges column definitions)
       const colMap = new Map<string, CustomTableColumn>();
       (remoteT.columns || []).forEach((c) => colMap.set(c.id, c));
       let colsChanged = false;
-      (localT.columns || []).forEach((c) => {
+      (sanitizedLocalT.columns || []).forEach((c) => {
         if (!colMap.has(c.id)) {
           colMap.set(c.id, c);
           colsChanged = true;
@@ -669,7 +777,7 @@ export function mergeCustomTablesList(
 
       // 2. Merge rows: Unions rows by row ID & date
       const remoteRows = remoteT.rows || [];
-      const localRows = localT.rows || [];
+      const localRows = sanitizedLocalT.rows || [];
       const mergedRows: CustomTableRow[] = [];
       const matchedLocalRowIndices = new Set<number>();
       let rowsChanged = false;
@@ -705,22 +813,22 @@ export function mergeCustomTablesList(
       });
 
       const metaChanged =
-        (typeof localT.autoGenerateRows === 'boolean' && localT.autoGenerateRows !== remoteT.autoGenerateRows) ||
-        JSON.stringify(localT.deletedRowDates || []) !== JSON.stringify(remoteT.deletedRowDates || []);
+        (typeof sanitizedLocalT.autoGenerateRows === 'boolean' && sanitizedLocalT.autoGenerateRows !== remoteT.autoGenerateRows) ||
+        JSON.stringify(sanitizedLocalT.deletedRowDates || []) !== JSON.stringify(remoteT.deletedRowDates || []);
 
       if (colsChanged || rowsChanged || metaChanged) {
         const updatedTable: CustomStudyTable = {
           ...remoteT,
           columns: mergedColumns,
           rows: mergedRows,
-          ...(typeof localT.autoGenerateRows === 'boolean'
-            ? { autoGenerateRows: localT.autoGenerateRows }
+          ...(typeof sanitizedLocalT.autoGenerateRows === 'boolean'
+            ? { autoGenerateRows: sanitizedLocalT.autoGenerateRows }
             : typeof remoteT.autoGenerateRows === 'boolean'
             ? { autoGenerateRows: remoteT.autoGenerateRows }
             : {}),
-          deletedRowDates: Array.from(new Set([...(remoteT.deletedRowDates || []), ...(localT.deletedRowDates || [])])),
+          deletedRowDates: Array.from(new Set([...(remoteT.deletedRowDates || []), ...(sanitizedLocalT.deletedRowDates || [])])),
         };
-        tableMap.set(localT.id, updatedTable);
+        tableMap.set(sanitizedLocalT.id, updatedTable);
         tablesNeedUpload = true;
       }
     }
@@ -732,91 +840,87 @@ export function mergeCustomTablesList(
   };
 }
 
+export const getYesterdayDateString = (): string => {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+export const isLegacyDemoCustomTableRow = (r: CustomTableRow): boolean => {
+  if (!r) return false;
+  if (r.id === 'row-1' || r.id === 'row-2' || r.id === 'row-3' || r.id === 'row-4' || r.id === 'row-5') {
+    if (
+      r.values &&
+      (r.values.col_score === 142 ||
+        r.values.col_score === 118 ||
+        r.values.col_score === 85 ||
+        r.values.col_score === 48 ||
+        r.values.col_score === 102 ||
+        (typeof r.values.col_paper === 'string' && r.values.col_paper.length > 0))
+    ) {
+      return true;
+    }
+  }
+  if (r.values && typeof r.values.col_paper === 'string') {
+    const p = r.values.col_paper.toLowerCase();
+    if (
+      p.includes('cs mock') ||
+      p.includes('full syllabus exam') ||
+      p.includes('discrete math sectional') ||
+      p.includes('logical reasoning drill') ||
+      p.includes('diagnostic test baseline')
+    ) {
+      return true;
+    }
+  }
+  if (r.notes) {
+    const n = r.notes.toLowerCase();
+    if (
+      n.includes('revised dp and graph') ||
+      n.includes('ran short of time in section') ||
+      n.includes('permutations formulas remembered') ||
+      n.includes('fast completion under 18 mins') ||
+      n.includes('initial benchmark test')
+    ) {
+      return true;
+    }
+  }
+  return false;
+};
 
 export const DEFAULT_CHECK_TABLE: CustomStudyTable = {
-  id: 'tbl-check-demo',
+  id: 'tbl-check',
   title: 'CHECK',
-  description: 'Mock Exam & Sectional Performance Tracker',
-  createdAt: '2026-10-30',
+  description: 'Topic Checklist & Tracker',
+  createdAt: getLocalTodayDateString(),
   autoGenerateRows: false,
   columns: [
-    { id: 'col_paper', name: 'PAPER', type: 'text' },
-    { id: 'col_score', name: 'SCORE', type: 'number', unit: 'pts' },
-    { id: 'col_total', name: 'TOTAL', type: 'number', unit: 'pts' },
-    { id: 'col_accuracy', name: 'ACCURACY', type: 'number', unit: '%' },
-    { id: 'col_difficulty', name: 'DIFFICULTY', type: 'select', options: ['High', 'Medium', 'Low'] },
-    { id: 'col_analyzed', name: 'ANALYZED', type: 'boolean' },
+    { id: 'col_topic', name: 'TOPIC', type: 'text' },
+    { id: 'col_status', name: 'STATUS', type: 'boolean' },
   ],
   rows: [
     {
       id: 'row-1',
-      date: '2026-10-25',
+      date: getLocalTodayDateString(),
       values: {
-        col_paper: 'CS Mock #4 (Algorithms)',
-        col_score: 142,
-        col_total: 180,
-        col_accuracy: 78.8,
-        col_difficulty: 'Medium',
-        col_analyzed: true,
+        col_topic: '',
+        col_status: 'na',
       },
-      notes: 'Revised DP and Graph optimization. Good pacing throughout Section 1 & 2.',
-      createdAt: '2026-10-25T14:30:00Z',
+      notes: '',
+      createdAt: new Date().toISOString(),
     },
     {
       id: 'row-2',
-      date: '2026-10-16',
+      date: getYesterdayDateString(),
       values: {
-        col_paper: 'Full Syllabus Exam A',
-        col_score: 118,
-        col_total: 180,
-        col_accuracy: 65.5,
-        col_difficulty: 'High',
-        col_analyzed: false,
+        col_topic: '',
+        col_status: 'na',
       },
-      notes: 'Ran short of time in Section 2. Need to skip 3-minute traps sooner.',
-      createdAt: '2026-10-16T11:00:00Z',
-    },
-    {
-      id: 'row-3',
-      date: '2026-10-12',
-      values: {
-        col_paper: 'Discrete Math Sectional #2',
-        col_score: 85,
-        col_total: 100,
-        col_accuracy: 85.0,
-        col_difficulty: 'Medium',
-        col_analyzed: true,
-      },
-      notes: 'Permutations formulas remembered quickly. 2 silly calculation mistakes.',
-      createdAt: '2026-10-12T16:20:00Z',
-    },
-    {
-      id: 'row-4',
-      date: '2026-10-05',
-      values: {
-        col_paper: 'Logical Reasoning Drill #7',
-        col_score: 48,
-        col_total: 50,
-        col_accuracy: 96.0,
-        col_difficulty: 'Low',
-        col_analyzed: true,
-      },
-      notes: 'Fast completion under 18 mins. High confidence score.',
-      createdAt: '2026-10-05T09:15:00Z',
-    },
-    {
-      id: 'row-5',
-      date: '2026-09-28',
-      values: {
-        col_paper: 'Diagnostic Test Baseline',
-        col_score: 102,
-        col_total: 180,
-        col_accuracy: 56.6,
-        col_difficulty: 'High',
-        col_analyzed: true,
-      },
-      notes: 'Initial benchmark test. Identified weak spots in Combinatorics.',
-      createdAt: '2026-09-28T10:00:00Z',
+      notes: '',
+      createdAt: new Date().toISOString(),
     },
   ],
 };
@@ -845,6 +949,7 @@ export const useStudyStore = create<StudyState>()(
       dailyLogs: ensureDailyLogsDateWise([]),
       deletedDefaultColumns: [],
       deletedDailyLogDates: [],
+      deletedCustomTableIds: [],
       isDefaultTableDeleted: false,
       autoGenerateRows: true,
       setAutoGenerateRows: (enable) => {
@@ -945,6 +1050,8 @@ export const useStudyStore = create<StudyState>()(
           dbSaveTableConfig(uid, {
             deletedDefaultColumns: get().deletedDefaultColumns,
             isDefaultTableDeleted: get().isDefaultTableDeleted,
+            deletedCustomTableIds: get().deletedCustomTableIds,
+            autoGenerateRows: get().autoGenerateRows,
           });
         }
       },
@@ -958,6 +1065,8 @@ export const useStudyStore = create<StudyState>()(
           dbSaveTableConfig(uid, {
             deletedDefaultColumns: get().deletedDefaultColumns,
             isDefaultTableDeleted: get().isDefaultTableDeleted,
+            deletedCustomTableIds: get().deletedCustomTableIds,
+            autoGenerateRows: get().autoGenerateRows,
           });
         }
       },
@@ -969,6 +1078,8 @@ export const useStudyStore = create<StudyState>()(
           dbSaveTableConfig(uid, {
             deletedDefaultColumns: [],
             isDefaultTableDeleted: get().isDefaultTableDeleted,
+            deletedCustomTableIds: get().deletedCustomTableIds,
+            autoGenerateRows: get().autoGenerateRows,
           });
         }
       },
@@ -987,6 +1098,8 @@ export const useStudyStore = create<StudyState>()(
           dbSaveTableConfig(uid, {
             deletedDefaultColumns: get().deletedDefaultColumns,
             isDefaultTableDeleted: true,
+            deletedCustomTableIds: get().deletedCustomTableIds,
+            autoGenerateRows: get().autoGenerateRows,
           });
         }
       },
@@ -1004,6 +1117,8 @@ export const useStudyStore = create<StudyState>()(
           dbSaveTableConfig(uid, {
             deletedDefaultColumns: get().deletedDefaultColumns,
             isDefaultTableDeleted: false,
+            deletedCustomTableIds: get().deletedCustomTableIds,
+            autoGenerateRows: get().autoGenerateRows,
           });
         }
       },
@@ -1023,16 +1138,20 @@ export const useStudyStore = create<StudyState>()(
       },
 
       addOrUpdateDailyLog: (entry) => {
+        const cleanedEntry: DailyLogEntry = {
+          ...entry,
+          notes: cleanAndDeduplicateNotes(entry.notes),
+        };
         set((state) => {
           const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : [];
-          const nextDeleted = (state.deletedDailyLogDates || []).filter((d) => d !== entry.date);
-          const existingIndex = logs.findIndex((l) => l.date === entry.date);
+          const nextDeleted = (state.deletedDailyLogDates || []).filter((d) => d !== cleanedEntry.date);
+          const existingIndex = logs.findIndex((l) => l.date === cleanedEntry.date);
           let updated: DailyLogEntry[];
           if (existingIndex >= 0) {
             updated = [...logs];
-            updated[existingIndex] = entry;
+            updated[existingIndex] = cleanedEntry;
           } else {
-            updated = [entry, ...logs];
+            updated = [cleanedEntry, ...logs];
           }
           return {
             deletedDailyLogDates: nextDeleted,
@@ -1040,15 +1159,16 @@ export const useStudyStore = create<StudyState>()(
           };
         });
         const uid = getCurrentUserId();
-        if (uid) dbSaveDailyLog(uid, entry);
+        if (uid) dbSaveDailyLog(uid, cleanedEntry);
       },
 
       updateDailyLogField: (date, field, value) => {
+        const cleanedValue = field === 'notes' ? cleanAndDeduplicateNotes(value as string) : value;
         set((state) => {
           const logs = Array.isArray(state.dailyLogs) ? state.dailyLogs : [];
           const updated = logs.map((l) => {
             if (l.date === date) {
-              return { ...l, [field]: value };
+              return { ...l, [field]: cleanedValue };
             }
             return l;
           });
@@ -1276,20 +1396,35 @@ export const useStudyStore = create<StudyState>()(
       },
 
       deleteCustomTable: (tableId) => {
+        const idsToAdd =
+          tableId === 'tbl-check' || tableId === 'tbl-check-demo'
+            ? ['tbl-check', 'tbl-check-demo']
+            : [tableId];
+        const nextDeleted = Array.from(new Set([...(get().deletedCustomTableIds || []), ...idsToAdd]));
         set((state) => ({
-          customTables: (state.customTables || []).filter((t) => t.id !== tableId),
-          activeTableId: state.activeTableId === tableId ? 'main' : state.activeTableId,
+          deletedCustomTableIds: nextDeleted,
+          customTables: (state.customTables || []).filter((t) => !idsToAdd.includes(t.id)),
+          activeTableId: idsToAdd.includes(state.activeTableId) ? 'main' : state.activeTableId,
         }));
         const uid = getCurrentUserId();
-        if (uid) dbDeleteCustomTable(uid, tableId, get().customTables);
+        if (uid) {
+          dbDeleteCustomTable(uid, tableId, get().customTables);
+          dbSaveTableConfig(uid, {
+            deletedDefaultColumns: get().deletedDefaultColumns,
+            isDefaultTableDeleted: get().isDefaultTableDeleted,
+            deletedCustomTableIds: nextDeleted,
+            autoGenerateRows: get().autoGenerateRows,
+          });
+        }
       },
 
       addCustomTableRow: (tableId, date, values = {}, notes = '') => {
+        const cleanedNotes = cleanAndDeduplicateNotes(notes);
         const newRow: CustomTableRow = {
           id: `row_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
           date,
           values,
-          notes,
+          notes: cleanedNotes,
           createdAt: new Date().toISOString(),
         };
 
@@ -1331,12 +1466,13 @@ export const useStudyStore = create<StudyState>()(
       },
 
       updateCustomTableRowNotes: (tableId, rowId, notes) => {
+        const cleanedNotes = cleanAndDeduplicateNotes(notes);
         set((state) => ({
           customTables: (state.customTables || []).map((tbl) => {
             if (tbl.id !== tableId) return tbl;
             return {
               ...tbl,
-              rows: tbl.rows.map((row) => (row.id === rowId ? { ...row, notes } : row)),
+              rows: tbl.rows.map((row) => (row.id === rowId ? { ...row, notes: cleanedNotes } : row)),
             };
           }),
         }));
@@ -1818,12 +1954,7 @@ export const useStudyStore = create<StudyState>()(
           const existingToday = dailyLogs.find((l) => l.date === todayStr) || createDefaultDailyLog(todayStr);
           const prevHours = Number(existingToday.studyHours) || 0;
           const nextHours = Math.round((prevHours + sessionHours) * 100) / 100;
-          const trimmedNote = (notes || '').trim();
-          const combinedNotes = trimmedNote
-            ? existingToday.notes
-              ? `${existingToday.notes} | ${trimmedNote}`
-              : trimmedNote
-            : existingToday.notes;
+          const combinedNotes = mergeNotes(existingToday.notes, notes);
 
           updatedTodayLog = {
             ...existingToday,
@@ -2294,9 +2425,13 @@ export const useStudyStore = create<StudyState>()(
             : ensureDailyLogsDateWise(rawMergedLogs, current.deletedDailyLogDates, resolvedAutoGen);
 
           // 5. Custom Tables Sync (Intelligent Multi-Device Merge Engine per specification)
+          const mergedDeletedTables = Array.from(
+            new Set([...(remote.tableConfig?.deletedCustomTableIds || []), ...(current.deletedCustomTableIds || [])])
+          );
           const { mergedTables, tablesNeedUpload } = mergeCustomTablesList(
             remote.customTables || [],
-            current.customTables || []
+            current.customTables || [],
+            mergedDeletedTables
           );
 
           // 6. Two-way merge for Custom Columns of the Default Table
@@ -2335,6 +2470,7 @@ export const useStudyStore = create<StudyState>()(
             tasks: mergedTasks,
             dailyLogs: mergedLogs,
             deletedDefaultColumns: remote.tableConfig?.deletedDefaultColumns || state.deletedDefaultColumns || [],
+            deletedCustomTableIds: mergedDeletedTables,
             isDefaultTableDeleted: isDefDeleted,
             autoGenerateRows: resolvedAutoGen,
             customTables: mergedTables,
@@ -2374,6 +2510,7 @@ export const useStudyStore = create<StudyState>()(
               examCountdowns: examsToUpload,
               tableConfig: {
                 deletedDefaultColumns: remote.tableConfig?.deletedDefaultColumns || get().deletedDefaultColumns || [],
+                deletedCustomTableIds: mergedDeletedTables,
                 isDefaultTableDeleted: isDefDeleted,
                 autoGenerateRows: resolvedAutoGen,
               },
@@ -2487,6 +2624,7 @@ export const useStudyStore = create<StudyState>()(
           dailyLogs: ensureDailyLogsDateWise([]),
           customTables: [],
           customColumns: [],
+          deletedCustomTableIds: [],
           examCountdowns: [],
           isCloudSynced: false,
           isSyncing: false,
@@ -2937,6 +3075,7 @@ export const useStudyStore = create<StudyState>()(
         dailyLogs: state.dailyLogs,
         deletedDefaultColumns: state.deletedDefaultColumns,
         deletedDailyLogDates: state.deletedDailyLogDates,
+        deletedCustomTableIds: state.deletedCustomTableIds,
         isDefaultTableDeleted: state.isDefaultTableDeleted,
         autoGenerateRows: state.autoGenerateRows,
         showSortArrows: state.showSortArrows,
@@ -2970,16 +3109,48 @@ export const useStudyStore = create<StudyState>()(
         const cleanFriends = (persisted.friends || []).filter(
           (f) => !DEMO_FRIEND_CODES.has(f.code.toUpperCase())
         );
+        const deletedTableIdSet = new Set(persisted.deletedCustomTableIds || []);
         const rawCleanTables = (persisted.customTables || []).filter(
-          (tbl) => tbl.id !== 'tbl-mock-tests'
+          (tbl) => tbl.id !== 'tbl-mock-tests' && !deletedTableIdSet.has(tbl.id)
         );
-        const hasRealCheckTable = rawCleanTables.some(
-          (tbl) => tbl.id !== 'tbl-check-demo' && tbl.title?.trim().toLowerCase() === 'check'
-        );
-        const cleanTables = hasRealCheckTable
-          ? rawCleanTables.filter((tbl) => tbl.id !== 'tbl-check-demo')
-          : rawCleanTables;
-        const resolvedTables = (cleanTables.length > 0 ? cleanTables : [DEFAULT_CHECK_TABLE]).map((tbl) => ({
+
+        const cleanTables = rawCleanTables.map((tbl) => {
+          const isCheckTable =
+            tbl.id === 'tbl-check-demo' ||
+            tbl.id === 'tbl-check' ||
+            tbl.title?.trim().toLowerCase() === 'check';
+
+          const nonDemoRows = (tbl.rows || []).filter((r) => !isLegacyDemoCustomTableRow(r));
+
+          // If this was the old demo table with demo columns, upgrade it to clean 2 columns & zero data
+          if (
+            isCheckTable &&
+            (nonDemoRows.length === 0 ||
+              tbl.columns?.some((c) => c.id === 'col_paper' || c.id === 'col_difficulty'))
+          ) {
+            return {
+              ...DEFAULT_CHECK_TABLE,
+              id: tbl.id,
+              autoGenerateRows: tbl.autoGenerateRows ?? false,
+              rows: nonDemoRows.length > 0 ? nonDemoRows : DEFAULT_CHECK_TABLE.rows,
+            };
+          }
+
+          return {
+            ...tbl,
+            rows: nonDemoRows,
+          };
+        });
+
+        // Determine resolved tables:
+        // ONLY inject DEFAULT_CHECK_TABLE if persisted.customTables was undefined (fresh uninitialized account).
+        // If persisted.customTables is defined (even if empty []), respect the user's choice and do NOT re-inject!
+        const baseTables =
+          persisted.customTables === undefined
+            ? [DEFAULT_CHECK_TABLE]
+            : cleanTables.filter((tbl) => !deletedTableIdSet.has(tbl.id));
+
+        const resolvedTables = baseTables.map((tbl) => ({
           ...tbl,
           columns: (tbl.columns || []).map((col) => {
             if (/accuracy/i.test(col.name) || col.unit === '%' || col.id === 'col_accuracy') {
@@ -3002,7 +3173,7 @@ export const useStudyStore = create<StudyState>()(
                 cleanedValues[k] = v.split('|').map((s) => s.trim()).filter(Boolean).pop() || v.split('|')[0].trim();
               }
             });
-            return { ...r, values: cleanedValues };
+            return { ...r, values: cleanedValues, notes: cleanAndDeduplicateNotes(r.notes) };
           }),
         }));
 
@@ -3031,6 +3202,7 @@ export const useStudyStore = create<StudyState>()(
               revisionDone: normalizeTriState(log.revisionDone),
               mockTestTaken: normalizeTriState(log.mockTestTaken),
               customData: cleanedCustom,
+              notes: cleanAndDeduplicateNotes(log.notes),
             });
           }
         });
@@ -3087,6 +3259,7 @@ export const useStudyStore = create<StudyState>()(
           dailyLogs: mergedLogs,
           deletedDefaultColumns: Array.isArray(persisted.deletedDefaultColumns) ? persisted.deletedDefaultColumns : [],
           deletedDailyLogDates: Array.isArray(persisted.deletedDailyLogDates) ? persisted.deletedDailyLogDates : [],
+          deletedCustomTableIds: Array.isArray(persisted.deletedCustomTableIds) ? persisted.deletedCustomTableIds : [],
           isDefaultTableDeleted: isDefDeleted,
           autoGenerateRows: resolvedAutoGen,
           showSortArrows: persisted.showSortArrows ?? false,
@@ -3146,11 +3319,47 @@ if (typeof window !== 'undefined') {
           );
           modified = true;
         }
+        if (data.state.deletedCustomTableIds && Array.isArray(data.state.deletedCustomTableIds)) {
+          const delSet = new Set(data.state.deletedCustomTableIds);
+          if (data.state.customTables && Array.isArray(data.state.customTables)) {
+            const prevLen = data.state.customTables.length;
+            data.state.customTables = data.state.customTables.filter((t: any) => !delSet.has(t.id));
+            if (data.state.customTables.length !== prevLen) modified = true;
+          }
+        }
         if (data.state.customTables?.some((t: any) => t.id === 'tbl-mock-tests')) {
           data.state.customTables = data.state.customTables.filter((t: any) => t.id !== 'tbl-mock-tests');
           modified = true;
         }
         if (data.state.customTables) {
+          data.state.customTables = data.state.customTables.filter((t: any) => t.id !== 'tbl-mock-tests');
+          // Purge demo rows from all custom tables
+          data.state.customTables.forEach((t: any) => {
+            if (t.rows && Array.isArray(t.rows)) {
+              const prevLen = t.rows.length;
+              t.rows = t.rows.filter((r: any) => !isLegacyDemoCustomTableRow(r));
+              if (t.rows.length !== prevLen) modified = true;
+            }
+            if (
+              (t.id === 'tbl-check-demo' || t.id === 'tbl-check' || t.title?.trim().toLowerCase() === 'check') &&
+              (t.columns?.some((c: any) => c.id === 'col_paper' || c.id === 'col_difficulty') ||
+                t.description?.toLowerCase().includes('mock exam') ||
+                !t.rows || t.rows.length === 0)
+            ) {
+              t.description = 'Topic Checklist & Tracker';
+              t.columns = [
+                { id: 'col_topic', name: 'TOPIC', type: 'text' },
+                { id: 'col_status', name: 'STATUS', type: 'boolean' },
+              ];
+              if (!t.rows || t.rows.length === 0) {
+                t.rows = [
+                  { id: 'row-1', date: getLocalTodayDateString(), values: { col_topic: '', col_status: 'na' }, notes: '', createdAt: new Date().toISOString() },
+                  { id: 'row-2', date: getYesterdayDateString(), values: { col_topic: '', col_status: 'na' }, notes: '', createdAt: new Date().toISOString() },
+                ];
+              }
+              modified = true;
+            }
+          });
           const hasUserCheckTable = data.state.customTables.some(
             (t: any) => t.id !== 'tbl-check-demo' && t.title?.trim().toLowerCase() === 'check'
           );

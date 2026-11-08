@@ -38,7 +38,9 @@ import {
   ArrowLeft,
   Star,
   CheckSquare,
-  Clock
+  Clock,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { TriStateBadge, TriStatePillSelect, normalizeTriState } from './ui/TriStateToggle';
@@ -124,7 +126,7 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
   const isDark = theme !== 'light';
 
   const todayStr = getLocalTodayDateString();
-  const isTableAutoGen = table.autoGenerateRows ?? (table.id === 'tbl-check-demo' ? false : autoGenerateRows);
+  const isTableAutoGen = table.autoGenerateRows ?? (table.id === 'tbl-check-demo' || table.id === 'tbl-check' ? false : autoGenerateRows);
 
   useEffect(() => {
     if (isTableAutoGen) {
@@ -143,6 +145,7 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
   // 2. Modals & Popovers
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showAddEntryModal, setShowAddEntryModal] = useState(false);
+  const [isFullTableView, setIsFullTableView] = useState(false);
   const [settingsActiveTab, setSettingsActiveTab] = useState<'all' | 'columns' | 'meta' | 'display' | 'export' | 'danger'>('all');
   const customSettingsTabsRef = useRef<HTMLDivElement>(null);
   const scrollCustomSettingsTabs = (direction: 'left' | 'right') => {
@@ -383,7 +386,9 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
 
   // Duplicate an existing row
   const handleDuplicateRow = (row: CustomTableRow) => {
-    addCustomTableRow(table.id, todayStr, { ...(row.values || {}) }, row.notes ? `${row.notes} (Copy)` : '');
+    const baseNote = row.notes ? row.notes.replace(/\s*\(Copy(\s*\d+)?\)$/i, '').trim() : '';
+    const cleanNote = baseNote ? `${baseNote} (Copy)` : '';
+    addCustomTableRow(table.id, todayStr, { ...(row.values || {}) }, cleanNote);
     setActiveActionMenuRowId(null);
     confetti({ particleCount: 20, spread: 40 });
   };
@@ -467,8 +472,8 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
 
         {/* Left Side: Table Title, Row Counter Pill Badge, Subtitle */}
         <div>
-          <div className="flex items-center gap-3.5">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-stone-900 dark:text-white tracking-tight uppercase font-mono">
+          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-stone-900 dark:text-white tracking-tight uppercase font-mono break-words min-w-0">
               {table.title}
             </h1>
             <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-[#e9762b]/15 text-[#e9762b] border border-[#e9762b]/35 uppercase tracking-wider font-mono shadow-sm">
@@ -483,17 +488,17 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
         </div>
 
         {/* Right Side Action Cluster */}
-        <div className="flex flex-wrap items-center gap-3 text-xs sm:text-[13px]">
+        <div className="flex flex-wrap items-center gap-3 text-xs sm:text-[13px] w-full lg:w-auto">
 
           {/* Instant Search Input */}
-          <div className="relative flex items-center">
+          <div className="relative flex items-center w-full sm:w-auto">
             <input
               ref={searchInputRef}
               type="text"
               placeholder="Search papers, notes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="glass-input rounded-full pl-9 pr-8 py-2.5 text-xs sm:text-[13px] text-stone-900 dark:text-white placeholder-stone-500 focus:outline-none focus:border-[#e9762b] transition w-48 sm:w-64"
+              className="glass-input rounded-full pl-9 pr-8 py-2.5 text-xs sm:text-[13px] text-stone-900 dark:text-white placeholder-stone-500 focus:outline-none focus:border-[#e9762b] transition w-full sm:w-64"
             />
             <Search className="w-4 h-4 text-stone-500 absolute left-3.5 pointer-events-none" />
             {searchQuery && (
@@ -509,12 +514,12 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
           </div>
 
           {/* Month Filter Dropdown */}
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-full glass-pill border border-black/10 dark:border-white/12 text-xs sm:text-[13px]">
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-full glass-pill border border-black/10 dark:border-white/12 text-xs sm:text-[13px] w-full sm:w-auto min-w-0">
             <span className="text-[10px] text-stone-500 dark:text-slate-400 uppercase font-bold mr-0.5">MONTH:</span>
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-transparent text-[#e9762b] font-bold focus:outline-none cursor-pointer"
+              className="bg-transparent text-[#e9762b] font-bold focus:outline-none cursor-pointer flex-1 sm:flex-none min-w-0"
             >
               <option value="all" className="bg-white dark:bg-[#141413] text-[#e9762b]">All Months</option>
               {availableMonths.map((m) => {
@@ -530,26 +535,37 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
             </select>
           </div>
 
+          {/* Full Table View Button */}
+          <button
+            type="button"
+            onClick={() => setIsFullTableView(true)}
+            className="flex flex-1 sm:flex-none justify-center items-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-full glass-pill hover:bg-black/10 dark:hover:bg-white/10 border border-black/10 dark:border-white/12 hover:border-[#e9762b]/50 text-stone-700 dark:text-stone-200 hover:text-black dark:hover:text-white font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-sm text-xs font-mono"
+            title="Expand into full-screen spreadsheet table view"
+          >
+            <Maximize2 className="w-3.5 h-3.5 text-[#e9762b]" />
+            <span className="whitespace-nowrap">FULL TABLE</span>
+          </button>
+
           {/* Dedicated Settings Button */}
           <button
             type="button"
             onClick={() => setShowSettingsModal(true)}
-            className="flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-full glass-pill hover:bg-black/10 dark:hover:bg-white/10 border border-black/10 dark:border-white/12 hover:border-[#e9762b]/50 text-stone-700 dark:text-stone-200 hover:text-black dark:hover:text-white font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-sm"
+            className="flex flex-1 sm:flex-none justify-center items-center gap-2 px-4 sm:px-5 py-2.5 rounded-full glass-pill hover:bg-black/10 dark:hover:bg-white/10 border border-black/10 dark:border-white/12 hover:border-[#e9762b]/50 text-stone-700 dark:text-stone-200 hover:text-black dark:hover:text-white font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-sm"
             title="Configure table settings, columns, and export"
           >
             <Settings2 className="w-4 h-4 text-[#e9762b]" />
-            <span>SETTINGS</span>
+            <span className="whitespace-nowrap">SETTINGS</span>
           </button>
 
           {/* Primary Action: NEW ENTRY Button */}
           <button
             type="button"
             onClick={handleOpenNewEntryModal}
-            className="inline-flex items-center gap-2 px-5 sm:px-6 py-2.5 rounded-full bg-gradient-to-b from-[#f28238] to-[#e9762b] hover:brightness-110 text-black font-mono font-black text-xs sm:text-[13px] uppercase tracking-wider transition-all duration-200 shadow-[0_4px_20px_-2px_rgba(233,118,43,0.45)] border border-orange-300/30 active:scale-95 cursor-pointer shrink-0"
+            className="inline-flex flex-1 sm:flex-none justify-center items-center gap-2 px-5 sm:px-6 py-2.5 rounded-full bg-gradient-to-b from-[#f28238] to-[#e9762b] hover:brightness-110 text-black font-mono font-black text-xs sm:text-[13px] uppercase tracking-wider transition-all duration-200 shadow-[0_4px_20px_-2px_rgba(233,118,43,0.45)] border border-orange-300/30 active:scale-95 cursor-pointer"
             title="Log new entry into this table"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
-            <span>NEW ENTRY</span>
+            <span className="whitespace-nowrap">NEW ENTRY</span>
           </button>
         </div>
       </div>
@@ -558,27 +574,49 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
       {/* 2. TABLE DATA GRID (Frosted Glassmorphism, JetBrains)    */}
       {/* ======================================================== */}
       <div ref={tableContainerRef} className="w-full rounded-2xl sm:rounded-3xl glass-panel overflow-hidden shadow-2xl">
-        <div className="overflow-x-auto max-h-[82vh] overflow-y-auto custom-scrollbar">
+        {/* Mobile Table Utility Header (Pinned above the horizontal scroll) */}
+        <div className="sm:hidden flex items-center justify-between px-3.5 py-2 text-[11px] font-mono border-b border-black/10 dark:border-white/10 bg-stone-200/50 dark:bg-white/[0.03] select-none">
+          <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
+            <span className="whitespace-nowrap">Tap date to edit</span>
+            <span className="text-stone-400">•</span>
+            <span className="text-[#e9762b] font-bold">Swipe →</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsFullTableView(true)}
+              className="flex items-center gap-1 text-[10px] font-extrabold text-[#e9762b] hover:text-[#ff5f00] px-2.5 py-1 rounded-full bg-orange-500/15 border border-orange-500/30 active:scale-95 cursor-pointer"
+              title="Open full-screen table view"
+            >
+              <Maximize2 className="w-3 h-3" />
+              <span className="whitespace-nowrap">FULL TABLE</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="flex items-center gap-1 text-[10px] font-extrabold text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white px-2 py-1 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 active:scale-95 cursor-pointer"
+              title="Scroll to top of page"
+            >
+              <ArrowUp className="w-3 h-3" />
+              <span>TOP</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto max-h-[62dvh] sm:max-h-[82vh] overflow-y-auto table-scroll-container custom-scrollbar">
           <table className="w-full min-w-full text-left text-sm border-collapse">
 
             {/* Sticky Header with real Sorting Affordances */}
             <thead
-              onClick={scrollToCenterTable}
-              className="sticky top-0 z-30 glass-table-header text-stone-700 dark:text-slate-200 select-none cursor-pointer"
-              title="Click table bar to center table on screen"
+              className="sticky top-0 z-30 glass-table-header text-stone-700 dark:text-slate-200 select-none"
             >
               <tr className="uppercase tracking-[0.14em] text-xs sm:text-[13px] font-bold">
 
                 {/* Sticky Date Header (First row, first column) */}
                 <th
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    scrollToCenterTable();
-                  }}
-                  className="py-4 sm:py-4.5 px-4 sm:px-5 sticky left-0 z-40 glass-sticky-th border-r border-black/10 dark:border-white/12 cursor-pointer hover:text-stone-900 dark:hover:text-white transition min-w-[132px] w-[132px] sm:min-w-[152px] sm:w-[152px]"
-                  title="Click to center table on screen"
+                  className="py-2.5 sm:py-4 px-2 sm:px-5 sticky left-0 z-40 glass-sticky-th border-r border-black/10 dark:border-white/12 min-w-[88px] w-[88px] sm:min-w-[152px] sm:w-[152px] text-[11px] sm:text-xs"
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
                     <span>DATE</span>
                     {showSortArrows && (
                       <button
@@ -609,13 +647,8 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                   return (
                     <th
                       key={col.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        scrollToCenterTable();
-                      }}
-                      className={`py-4 sm:py-4.5 px-4 sm:px-5 cursor-pointer hover:text-stone-900 dark:hover:text-white transition whitespace-nowrap min-w-[120px] ${isLeftAligned ? 'text-left' : 'text-center'
+                      className={`py-2.5 sm:py-4 px-2.5 sm:px-5 whitespace-nowrap min-w-[100px] sm:min-w-[120px] text-[11px] sm:text-xs ${isLeftAligned ? 'text-left' : 'text-center'
                         }`}
-                      title="Click to center table on screen"
                     >
                       <div className={`inline-flex items-center gap-1.5 ${isLeftAligned ? 'justify-start' : 'justify-center'
                         }`}>
@@ -644,10 +677,10 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                 })}
 
                 {/* Notes Column */}
-                <th className="py-4 sm:py-4.5 px-4 sm:px-5 text-left min-w-[220px]">NOTES</th>
+                <th className="py-2.5 sm:py-4 px-2.5 sm:px-5 text-left min-w-[160px] sm:min-w-[220px] text-[11px] sm:text-xs">NOTES</th>
 
                 {/* Actions Menu Header */}
-                <th aria-label="Actions" className="py-4 sm:py-4.5 px-3 text-center w-16 text-stone-500">•••</th>
+                <th aria-label="Actions" className="py-2.5 sm:py-4 px-2 text-center w-12 sm:w-16 text-stone-500 text-[11px] sm:text-xs">•••</th>
               </tr>
             </thead>
 
@@ -682,9 +715,6 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                         notes: row.notes || '',
                       });
                     }
-                    requestAnimationFrame(() => {
-                      setTimeout(() => scrollToCenterTable(), 25);
-                    });
                   };
 
                   return (
@@ -694,17 +724,17 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                         {/* Sticky Date Pill (OCT 25) with Amber Border */}
                         <td
                           onClick={handleDateToggle}
-                          className="py-4 sm:py-4.5 px-4 sm:px-5 sticky left-0 z-20 glass-sticky-col-cell border-r border-black/10 dark:border-white/10 min-w-[132px] w-[132px] sm:min-w-[152px] sm:w-[152px] cursor-pointer"
+                          className="py-2 sm:py-3.5 px-2 sm:px-5 sticky left-0 z-20 glass-sticky-col-cell border-r border-black/10 dark:border-white/10 min-w-[88px] w-[88px] sm:min-w-[152px] sm:w-[152px] cursor-pointer"
                           title="Click to view/edit entry details"
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 sm:gap-2">
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDateToggle();
                               }}
-                              className={`inline-flex items-center justify-center px-3.5 py-2 rounded-xl text-xs sm:text-[13px] font-extrabold tracking-wide transition-all duration-150 cursor-pointer select-none font-mono uppercase ${isExpanded
+                              className={`inline-flex items-center justify-center px-2 sm:px-3.5 py-1 sm:py-2 rounded-lg sm:rounded-xl text-[11px] sm:text-[13px] font-extrabold tracking-wide transition-all duration-150 cursor-pointer select-none font-mono uppercase ${isExpanded
                                   ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/25'
                                   : 'text-[#e9762b] bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/35 hover:border-orange-500/60'
                                 }`}
@@ -727,18 +757,18 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                               const numVal = Number(val);
                               const barColor = numVal >= 75 ? 'bg-[#e9762b]' : numVal >= 60 ? 'bg-amber-400' : 'bg-red-400';
                               return (
-                                <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center whitespace-nowrap">
-                                  <div className="inline-flex items-center justify-center gap-2.5 mx-auto">
-                                    <div className="w-20 bg-black/10 dark:bg-white/10 rounded-full h-2 overflow-hidden shrink-0">
-                                      <div className={`${barColor} h-2 rounded-full transition-all`} style={{ width: `${Math.min(Math.max(numVal, 0), 100)}%` }} />
+                                <td key={col.id} className="py-2 sm:py-3.5 px-2 sm:px-5 text-center whitespace-nowrap">
+                                  <div className="inline-flex items-center justify-center gap-1.5 sm:gap-2.5 mx-auto">
+                                    <div className="w-14 sm:w-20 bg-black/10 dark:bg-white/10 rounded-full h-1.5 sm:h-2 overflow-hidden shrink-0">
+                                      <div className={`${barColor} h-full rounded-full transition-all`} style={{ width: `${Math.min(Math.max(numVal, 0), 100)}%` }} />
                                     </div>
-                                    <span className="font-bold font-mono-numbers text-stone-900 dark:text-white text-sm sm:text-[15px]">{numVal}%</span>
+                                    <span className="font-bold font-mono-numbers text-stone-900 dark:text-white text-xs sm:text-[15px]">{numVal}%</span>
                                   </div>
                                 </td>
                               );
                             }
                             return (
-                              <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center font-mono-numbers text-sm sm:text-[15px] whitespace-nowrap">
+                              <td key={col.id} className="py-2 sm:py-3.5 px-2 sm:px-5 text-center font-mono-numbers text-xs sm:text-[15px] whitespace-nowrap">
                                 <span className="text-stone-400/50 dark:text-white/20 font-normal select-none">--</span>
                               </td>
                             );
@@ -759,8 +789,8 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                                   ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/35'
                                   : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/35';
                             return (
-                              <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center whitespace-nowrap">
-                                <span className={`px-3 py-1 rounded-full text-xs font-extrabold border ${badgeClasses}`}>
+                              <td key={col.id} className="py-2 sm:py-3.5 px-2 sm:px-5 text-center whitespace-nowrap">
+                                <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-extrabold border ${badgeClasses}`}>
                                   {strVal}
                                 </span>
                               </td>
@@ -770,7 +800,7 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                           // 3. Analyzed / Boolean Micro Pill Toggle (YES / NO / N/A)
                           if (col.type === 'boolean') {
                             return (
-                              <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center whitespace-nowrap">
+                              <td key={col.id} className="py-2 sm:py-3.5 px-2 sm:px-5 text-center whitespace-nowrap">
                                 <TriStateBadge
                                   value={val}
                                   onChange={(newVal) => updateCustomTableCell(table.id, row.id, col.id, newVal)}
@@ -785,14 +815,14 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                           if (col.type === 'rating') {
                             const numVal = Number(val);
                             return (
-                              <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center whitespace-nowrap">
+                              <td key={col.id} className="py-2 sm:py-3.5 px-2 sm:px-5 text-center whitespace-nowrap">
                                 {numVal ? (
-                                  <span className="font-bold text-[#e9762b] text-sm sm:text-base">
+                                  <span className="font-bold text-[#e9762b] text-xs sm:text-base">
                                     {'★'.repeat(Math.min(numVal, 5))}
                                     <span className="opacity-20">{'★'.repeat(Math.max(5 - numVal, 0))}</span>
                                   </span>
                                 ) : (
-                                  <span className="text-stone-400/50 dark:text-white/20 text-sm select-none">--</span>
+                                  <span className="text-stone-400/50 dark:text-white/20 text-xs sm:text-sm select-none">--</span>
                                 )}
                               </td>
                             );
@@ -801,7 +831,7 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                           // 5. Numbers (Centered bold text under centered header)
                           if (col.type === 'number') {
                             return (
-                              <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center font-bold font-mono-numbers text-stone-900 dark:text-white text-sm sm:text-[15px] whitespace-nowrap">
+                              <td key={col.id} className="py-2 sm:py-3.5 px-2 sm:px-5 text-center font-bold font-mono-numbers text-stone-900 dark:text-white text-xs sm:text-[15px] whitespace-nowrap">
                                 {val !== undefined && val !== null && val !== '' ? val : <span className="text-stone-400/50 dark:text-white/20 font-normal">--</span>}
                               </td>
                             );
@@ -810,19 +840,26 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                           // 6. Paper / Default Text
                           const isPaper = col.id === semanticCols.paperCol?.id || /paper|title/i.test(col.name);
                           return (
-                            <td key={col.id} className={`py-4 sm:py-4.5 px-4 sm:px-5 text-sm sm:text-[15px] ${isPaper ? 'text-left font-bold text-stone-900 dark:text-white' : 'text-center text-stone-700 dark:text-stone-200'}`}>
-                              {val !== undefined && val !== null && val !== '' ? String(val) : <span className="text-stone-400/50 dark:text-white/20 text-sm">--</span>}
+                            <td key={col.id} className={`py-2 sm:py-3.5 px-2 sm:px-5 text-xs sm:text-[15px] ${isPaper ? 'text-left font-bold text-stone-900 dark:text-white' : 'text-center text-stone-700 dark:text-stone-200'}`}>
+                              {val !== undefined && val !== null && val !== '' ? String(val) : <span className="text-stone-400/50 dark:text-white/20 text-xs sm:text-sm">--</span>}
                             </td>
                           );
                         })}
 
-                        {/* Notes snippet */}
-                        <td className="py-4 sm:py-4.5 px-4 sm:px-5 text-stone-500 dark:text-stone-400 max-w-xs truncate text-xs sm:text-sm" title={row.notes}>
+                        {/* Notes snippet & click to edit */}
+                        <td
+                          className="py-2 sm:py-3.5 px-2.5 sm:px-5 text-stone-500 dark:text-stone-400 max-w-[160px] sm:max-w-xs truncate text-xs sm:text-sm cursor-pointer hover:text-stone-900 dark:hover:text-white transition"
+                          title={row.notes ? `${row.notes} (click to edit)` : 'Click to add note'}
+                          onClick={() => {
+                            setExpandedRowId(row.id);
+                            setEditingRowState({ values: { ...(row.values || {}) }, notes: row.notes || '' });
+                          }}
+                        >
                           {row.notes || <span className="text-stone-400/50 dark:text-white/20">--</span>}
                         </td>
 
                         {/* Row Action Kebab Menu (⋮) */}
-                        <td className="py-4 sm:py-4.5 px-3 text-center relative" onClick={(e) => e.stopPropagation()}>
+                        <td className="py-2 sm:py-3.5 px-2 sm:px-3 text-center relative" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             onClick={() =>
@@ -1027,7 +1064,7 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
             SHOWING <b className="text-stone-900 dark:text-white font-mono-numbers">{processedRows.length}</b> OF <b className="text-stone-900 dark:text-white font-mono-numbers">{table.rows.length}</b> ROWS
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs">
+          <div className="hidden sm:flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs">
             <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.03] border border-black/[0.08] dark:border-white/[0.08]">
               <BarChart3 className="w-3.5 h-3.5 text-[#e9762b]" />
               <span className="text-stone-600 dark:text-slate-400 uppercase tracking-wider text-[11px]">AVG SCORE:</span>
@@ -1874,6 +1911,144 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 3. FULL TABLE SPREADSHEET MODAL / IMMERSIVE VIEW         */}
+      {/* ======================================================== */}
+      {isFullTableView && (
+        <div className="fixed inset-0 z-[160] bg-black/95 backdrop-blur-2xl flex flex-col p-2 sm:p-5 animate-fadeIn font-mono select-none">
+          {/* Top Control Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl glass-panel border border-white/10 mb-2 sm:mb-3 shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-[#e9762b] shrink-0">
+                <Table2 className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xs sm:text-sm font-extrabold text-white uppercase tracking-wider truncate">
+                    {table.title}
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#e9762b]/20 text-[#e9762b] border border-orange-500/30">
+                    FULL SPREADSHEET
+                  </span>
+                </div>
+                <p className="text-[10px] text-stone-400 hidden sm:block truncate">
+                  Swipe horizontally and vertically to inspect all rows and columns
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 ml-auto">
+              {/* Row Count Pill */}
+              <div className="hidden xs:flex items-center px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[11px] text-stone-300">
+                <span>{processedRows.length} ROWS</span>
+              </div>
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setIsFullTableView(false)}
+                className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-b from-[#f28238] to-[#e9762b] text-black font-extrabold text-xs uppercase tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-lg shadow-orange-500/25"
+                title="Exit full table view"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span>EXIT FULL</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Full Screen Scrollable Table Container */}
+          <div className="flex-1 w-full rounded-2xl glass-panel overflow-hidden border border-white/10 shadow-2xl relative flex flex-col min-h-0">
+            <div className="flex-1 overflow-auto table-scroll-container custom-scrollbar">
+              <table className="w-full min-w-full text-left text-xs border-collapse">
+                <thead className="sticky top-0 z-40 glass-table-header text-stone-200 select-none">
+                  <tr className="uppercase tracking-[0.14em] text-[11px] font-bold">
+                    <th className="py-2.5 px-2.5 sm:px-4 sticky left-0 z-50 glass-sticky-th border-r border-white/10 min-w-[84px] w-[84px] sm:min-w-[130px] sm:w-[130px]">
+                      DATE
+                    </th>
+                    {visibleColumns.map((col) => {
+                      const isPaperCol = col.id === semanticCols.paperCol?.id || /paper|title/i.test(col.name);
+                      return (
+                        <th
+                          key={col.id}
+                          className={`py-2.5 px-2.5 sm:px-4 whitespace-nowrap min-w-[90px] sm:min-w-[110px] ${
+                            isPaperCol ? 'text-left' : 'text-center'
+                          }`}
+                        >
+                          {formatColumnHeader(col.name, col.unit)}
+                        </th>
+                      );
+                    })}
+                    <th className="py-2.5 px-2.5 sm:px-4 text-left min-w-[140px] sm:min-w-[200px]">NOTES</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.06]">
+                  {processedRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={visibleColumns.length + 2} className="py-16 text-center text-stone-500">
+                        No records match current filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    processedRows.map((row) => (
+                      <tr key={row.id} className="even:bg-white/[0.015] hover:bg-white/[0.05] transition-colors">
+                        {/* Sticky Date */}
+                        <td className="py-2 px-2 sm:px-3 sticky left-0 z-20 glass-sticky-col-cell border-r border-white/10 min-w-[84px] w-[84px] sm:min-w-[130px] sm:w-[130px]">
+                          <span className="inline-block px-2 py-0.5 rounded-lg text-[10px] sm:text-xs font-extrabold text-[#e9762b] bg-orange-500/10 border border-orange-500/30">
+                            {formatDateDisplay(row.date)}
+                          </span>
+                        </td>
+                        {/* Values */}
+                        {visibleColumns.map((col) => {
+                          const val = row.values?.[col.id];
+                          const isAccuracy = col.id === semanticCols.accuracyCol?.id || /accuracy|acc/i.test(col.name) || col.unit === '%';
+                          if (isAccuracy && val !== undefined && val !== null && val !== '') {
+                            const numVal = Number(val);
+                            return (
+                              <td key={col.id} className="py-2 px-2.5 text-center whitespace-nowrap font-mono-numbers">
+                                <b className="text-[#e9762b]">{numVal}%</b>
+                              </td>
+                            );
+                          }
+                          if (col.type === 'boolean') {
+                            return (
+                              <td key={col.id} className="py-2 px-2 text-center whitespace-nowrap">
+                                <TriStateBadge
+                                  value={val}
+                                  onChange={(newVal) => updateCustomTableCell(table.id, row.id, col.id, newVal)}
+                                  cycleEnabled={enableClickToCycle}
+                                  className="mx-auto"
+                                />
+                              </td>
+                            );
+                          }
+                          const isPaper = col.id === semanticCols.paperCol?.id || /paper|title/i.test(col.name);
+                          return (
+                            <td key={col.id} className={`py-2 px-2.5 sm:px-4 text-[11px] sm:text-xs whitespace-nowrap ${isPaper ? 'text-left font-bold text-white max-w-[180px] truncate' : 'text-center text-stone-300'}`}>
+                              {val !== undefined && val !== null && val !== '' ? String(val) : <span className="text-white/20">--</span>}
+                            </td>
+                          );
+                        })}
+                        <td
+                          className="py-2 px-2.5 sm:px-4 text-stone-400 text-[11px] max-w-[180px] truncate cursor-pointer hover:text-white transition"
+                          title={row.notes ? `${row.notes} (click to edit)` : 'Click to add note'}
+                          onClick={() => {
+                            setIsFullTableView(false);
+                            setExpandedRowId(row.id);
+                            setEditingRowState({ values: { ...(row.values || {}) }, notes: row.notes || '' });
+                          }}
+                        >
+                          {row.notes || <span className="text-white/20">--</span>}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

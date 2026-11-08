@@ -58,11 +58,23 @@ const StyledWrapper = styled.div<StyledWrapperProps>`
   position: fixed;
   right: clamp(16px, 3vw, 28px);
   bottom: clamp(18px, 3vw, 28px);
+  /* Phones: float above the fixed bottom tab bar */
+  @media (max-width: 767px) {
+    bottom: calc(var(--bottom-nav-h, 0px) + 14px);
+  }
   z-index: 90;
   opacity: ${({ $visible }) => ($visible ? 1 : 0)};
   transform: ${({ $visible }) => ($visible ? 'translateY(0) scale(1)' : 'translateY(20px) scale(0.85)')};
   pointer-events: ${({ $visible }) => ($visible ? 'auto' : 'none')};
   transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1), transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Phones: smaller, lighter-ringed so it never crowds the tab bar or content */
+  @media (max-width: 767px) {
+    right: 12px;
+    bottom: calc(var(--bottom-nav-h, 0px) + 10px);
+    && .button { width: 40px; height: 40px; }
+    && .svgIcon { width: 11px; height: 14px; }
+  }
 
   .button {
     width: 50px;
@@ -120,7 +132,9 @@ const StyledWrapper = styled.div<StyledWrapperProps>`
     fill: #ffffff !important;
   }
 
-  /* Hover state: expands smoothly to 140px pill in brand focus orange */
+  /* Hover state: expands smoothly to 140px pill in brand focus orange (mouse devices only —
+     on touch screens :hover sticks after a tap and would leave the button stuck expanded) */
+  @media (hover: hover) {
   .button:hover {
     width: 140px;
     border-radius: 50px;
@@ -140,6 +154,7 @@ const StyledWrapper = styled.div<StyledWrapperProps>`
   .button:hover .svgIcon {
     transform: translateY(-200%);
     opacity: 0;
+  }
   }
 
   .button::before {
@@ -165,6 +180,7 @@ const StyledWrapper = styled.div<StyledWrapperProps>`
     opacity: 1;
     top: 50%;
     transform: translate(-50%, -50%);
+  }
   }
 
   .button:active {

@@ -41,11 +41,14 @@ import {
   BarChart3,
   Copy,
   ArrowUpDown,
+  ArrowUp,
   ChevronLeft,
   Sliders,
   LayoutGrid,
   Columns,
   Clock,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { TriStateBadge, TriStatePillSelect, normalizeTriState } from './ui/TriStateToggle';
@@ -58,14 +61,14 @@ const DEFAULT_COLUMNS_CONFIG: {
   title?: string;
   description: string;
 }[] = [
-    { key: 'studyHours', label: 'HOURS', minWidth: 'min-w-[100px] sm:min-w-[120px]', description: 'Study duration in hours' },
-    { key: 'attendedClass', label: 'CLASS', minWidth: 'min-w-[96px] sm:min-w-[114px]', description: 'Attended lecture/class' },
-    { key: 'pyqsSolved', label: 'PYQS', minWidth: 'min-w-[96px] sm:min-w-[114px]', description: 'Past year questions solved count' },
-    { key: 'revisionDone', label: 'REV', minWidth: 'min-w-[96px] sm:min-w-[114px]', title: 'Revision Done', description: 'Revision completed status' },
-    { key: 'mockTestTaken', label: 'MOCK', minWidth: 'min-w-[96px] sm:min-w-[114px]', title: 'Mock Test Taken', description: 'Mock exam or test taken' },
-    { key: 'sleepHours', label: 'SLEEP', minWidth: 'min-w-[96px] sm:min-w-[114px]', description: 'Sleep duration in hours' },
-    { key: 'notes', label: 'NOTES', minWidth: 'min-w-[104px] sm:min-w-[124px]', description: 'Daily summary notes' },
-    { key: 'focusRating', label: 'FOCUS', minWidth: 'min-w-[100px] sm:min-w-[120px]', description: 'Focus rating (1-5)' },
+    { key: 'studyHours', label: 'HOURS', minWidth: 'min-w-[76px] sm:min-w-[120px]', description: 'Study duration in hours' },
+    { key: 'attendedClass', label: 'CLASS', minWidth: 'min-w-[76px] sm:min-w-[114px]', description: 'Attended lecture/class' },
+    { key: 'pyqsSolved', label: 'PYQS', minWidth: 'min-w-[76px] sm:min-w-[114px]', description: 'Past year questions solved count' },
+    { key: 'revisionDone', label: 'REV', minWidth: 'min-w-[76px] sm:min-w-[114px]', title: 'Revision Done', description: 'Revision completed status' },
+    { key: 'mockTestTaken', label: 'MOCK', minWidth: 'min-w-[76px] sm:min-w-[114px]', title: 'Mock Test Taken', description: 'Mock exam or test taken' },
+    { key: 'sleepHours', label: 'SLEEP', minWidth: 'min-w-[76px] sm:min-w-[114px]', description: 'Sleep duration in hours' },
+    { key: 'notes', label: 'NOTES', minWidth: 'min-w-[84px] sm:min-w-[124px]', description: 'Daily summary notes' },
+    { key: 'focusRating', label: 'FOCUS', minWidth: 'min-w-[76px] sm:min-w-[120px]', description: 'Focus rating (1-5)' },
   ];
 
 export const DailyStudyLog: React.FC = () => {
@@ -114,12 +117,11 @@ export const DailyStudyLog: React.FC = () => {
   const isDark = theme !== 'light';
 
   const todayStr = getLocalTodayDateString();
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayYear = yesterday.getFullYear();
-  const yesterdayMonth = String(yesterday.getMonth() + 1).padStart(2, '0');
-  const yesterdayDay = String(yesterday.getDate()).padStart(2, '0');
-  const yesterdayStr = `${yesterdayYear}-${yesterdayMonth}-${yesterdayDay}`;
+  const yesterdayStr = useMemo(() => {
+    const [y, m, d] = todayStr.split('-').map(Number);
+    const dt = new Date(y, m - 1, d - 1);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  }, [todayStr]);
 
   const dailyLogs = useMemo(
     () =>
@@ -221,6 +223,7 @@ export const DailyStudyLog: React.FC = () => {
   // Month/Year navigation and Chunk loading state
   const [selectedMonthYear, setSelectedMonthYear] = useState<string>('all');
   const [visibleLimit, setVisibleLimit] = useState<number>(20);
+  const [isFullTableView, setIsFullTableView] = useState(false);
 
   // Add Row Modal State (for adding date rows - today or any past date)
   const [showAddRowModal, setShowAddRowModal] = useState(false);
@@ -428,10 +431,9 @@ export const DailyStudyLog: React.FC = () => {
     window.scrollTo({ top: Math.max(0, centerScrollY), behavior: 'smooth' });
   };
 
-  // Smoothly scroll the table to the center of the screen and ensure the row is visible inside the table
+  // Scroll the table row into view if inside scrollable container
   const scrollToRowCenter = (date: string) => {
     setTimeout(() => {
-      scrollToCenterTable();
       const container = tableContainerRef.current;
       const accordionEl = document.getElementById(`log-accordion-${date}`);
       const rowEl = document.getElementById(`log-row-${date}`);
@@ -451,9 +453,6 @@ export const DailyStudyLog: React.FC = () => {
     if (expandedDate === entry.date) {
       setExpandedDate(null);
       setAccordionState(null);
-      requestAnimationFrame(() => {
-        setTimeout(() => scrollToCenterTable(), 25);
-      });
     } else {
       setExpandedDate(entry.date);
       setAccordionState({
@@ -472,24 +471,13 @@ export const DailyStudyLog: React.FC = () => {
         setContainerWidth(tableContainerRef.current.clientWidth);
         tableContainerRef.current.scrollTo({ left: 0, behavior: 'smooth' });
       }
-      requestAnimationFrame(() => {
-        setTimeout(() => scrollToCenterTable(), 25);
-      });
       scrollToRowCenter(entry.date);
     }
   };
 
-  // Open and focus notes directly (in form on top, or in accordion if already expanded)
+  // Open and focus notes directly (in top form or in accordion)
   const handleOpenNoteEdit = (entry: DailyLogEntry) => {
-    if (expandedDate === entry.date) {
-      setTimeout(() => {
-        const el = document.getElementById(`accordion-notes-${entry.date}`);
-        if (el) {
-          el.focus();
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-      }, 100);
-    } else {
+    if (enableTopForm) {
       handleSelectDayForForm(entry);
       setTimeout(() => {
         const el = document.getElementById('log-form-notes');
@@ -498,6 +486,17 @@ export const DailyStudyLog: React.FC = () => {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       }, 100);
+    } else {
+      if (expandedDate !== entry.date) {
+        handleToggleExpand(entry);
+      }
+      setTimeout(() => {
+        const el = document.getElementById(`accordion-notes-${entry.date}`);
+        if (el) {
+          el.focus();
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 150);
     }
   };
 
@@ -525,8 +524,8 @@ export const DailyStudyLog: React.FC = () => {
   const filteredDailyLogs = useMemo(() => {
     let logs = dailyLogs;
     if (selectedMonthYear === 'last30') {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 30);
+      const [ty, tm, td] = todayStr.split('-').map(Number);
+      const cutoff = new Date(ty, tm - 1, td - 30);
       const y = cutoff.getFullYear();
       const m = String(cutoff.getMonth() + 1).padStart(2, '0');
       const d = String(cutoff.getDate()).padStart(2, '0');
@@ -760,6 +759,22 @@ export const DailyStudyLog: React.FC = () => {
       setAddRowRating(existing.focusRating && existing.focusRating > 0 ? existing.focusRating : null);
       setAddRowNotes(existing.notes || '');
       setAddRowCustomData({ ...(existing.customData || {}) });
+    } else {
+      setAddRowStudyHours('');
+      setAddRowAttendedClass('na');
+      setAddRowPyqs('');
+      setAddRowRevisionDone('na');
+      setAddRowMockTest('na');
+      setAddRowSleepHours('');
+      setAddRowRating(null);
+      setAddRowNotes('');
+      const initCustom: Record<string, any> = {};
+      customColumns.forEach((col) => {
+        if (col.type === 'boolean') initCustom[col.id] = 'na';
+        else if (col.type === 'select' && col.options && col.options.length > 0) initCustom[col.id] = col.options[0];
+        else initCustom[col.id] = '';
+      });
+      setAddRowCustomData(initCustom);
     }
   };
 
@@ -937,15 +952,15 @@ export const DailyStudyLog: React.FC = () => {
   };
 
   return (
-    <div className="w-full flex flex-col space-y-7 pb-[30vh] animate-fadeIn">
-      {/* 0. Multi-Table Capsule Switcher Dock */}
-      <div className="flex items-center justify-between gap-4 overflow-x-auto pb-3.5 scrollbar-none border-b border-white/10">
-        <div className="flex items-center gap-2.5 overflow-x-auto py-1">
+    <div className="w-full flex flex-col space-y-7 pb-8 sm:pb-12 animate-fadeIn">
+      {/* 0. Multi-Table Capsule Switcher Dock — wraps on phones so every table tab stays tappable without sideways scrolling */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 pb-3.5 border-b border-white/10">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 py-1 min-w-0">
           {/* Main Daily Study Log Tab */}
           <button
             type="button"
             onClick={() => setActiveTableId('main')}
-            className={`px-4 sm:px-5 py-2.5 rounded-full text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${activeTableId === 'main'
+            className={`px-3.5 sm:px-5 py-2.5 rounded-full text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${activeTableId === 'main'
               ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.3)]'
               : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border border-stone-300/80 dark:border-white/12'
               }`}
@@ -965,13 +980,13 @@ export const DailyStudyLog: React.FC = () => {
               key={tbl.id}
               type="button"
               onClick={() => setActiveTableId(tbl.id)}
-              className={`px-4 sm:px-5 py-2.5 rounded-full text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${activeTableId === tbl.id
+              className={`px-3.5 sm:px-5 py-2.5 rounded-full text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${activeTableId === tbl.id
                 ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.3)]'
                 : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border border-stone-300/80 dark:border-white/12'
                 }`}
             >
-              <Table2 className="w-4 h-4" />
-              <span>{tbl.title}</span>
+              <Table2 className="w-4 h-4 shrink-0" />
+              <span className="truncate max-w-[42vw] sm:max-w-none">{tbl.title}</span>
             </button>
           ))}
 
@@ -984,7 +999,7 @@ export const DailyStudyLog: React.FC = () => {
               setSelectedTemplate('mock');
               setShowCreateTableModal(true);
             }}
-            className="px-4 py-2.5 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-dashed border-stone-300/80 dark:border-white/20 hover:border-[#e9762b] cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95"
+            className="px-3.5 sm:px-4 py-2.5 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-dashed border-stone-300/80 dark:border-white/20 hover:border-[#e9762b] cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95"
             title="Create a new custom table"
           >
             <Plus className="w-4 h-4 text-[#e9762b]" />
@@ -1409,8 +1424,8 @@ export const DailyStudyLog: React.FC = () => {
                 <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 font-mono pb-5 border-b border-white/10">
                   {/* Left Side: Title, Entries Pill, Subtitle */}
                   <div className="flex flex-col gap-1.5 select-none">
-                    <div className="flex items-center gap-3.5">
-                      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-stone-900 dark:text-white uppercase tracking-tight font-mono">
+                    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
+                      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-stone-900 dark:text-white uppercase tracking-tight font-mono break-words min-w-0">
                         {mainTableTitle || 'Study Log'}
                       </h1>
                       <span className="px-3 py-1 rounded-full text-xs font-mono font-extrabold tracking-wider bg-orange-500/15 text-[#e9762b] border border-orange-500/35 uppercase shadow-sm">
@@ -1425,7 +1440,7 @@ export const DailyStudyLog: React.FC = () => {
                   {/* Right Side Action Cluster */}
                   <div className="flex flex-wrap items-center gap-3 text-xs sm:text-[13px] w-full lg:w-auto">
                     {/* Instant Search Input */}
-                    <div className="relative flex items-center flex-1 sm:flex-initial">
+                    <div className="relative flex items-center w-full sm:w-auto sm:flex-initial">
                       <Search className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 pointer-events-none" />
                       <input
                         ref={mainSearchInputRef}
@@ -1445,7 +1460,7 @@ export const DailyStudyLog: React.FC = () => {
                             <X className="w-3.5 h-3.5" />
                           </button>
                         ) : (
-                          <span className="text-[10px] text-stone-500 dark:text-slate-500 px-1.5 py-0.5 rounded border border-white/10 font-mono">
+                          <span className="hidden sm:inline-block text-[10px] text-stone-500 dark:text-slate-500 px-1.5 py-0.5 rounded border border-white/10 font-mono">
                             /
                           </span>
                         )}
@@ -1453,7 +1468,7 @@ export const DailyStudyLog: React.FC = () => {
                     </div>
 
                     {/* Month Filter Dropdown (Styled with All Months & Amber Text) */}
-                    <div className="flex items-center gap-2 px-4 py-2.5 rounded-full glass-pill border border-white/12 text-xs sm:text-[13px] font-mono">
+                    <div className="flex items-center gap-2 px-4 py-2.5 rounded-full glass-pill border border-white/12 text-xs sm:text-[13px] font-mono w-full sm:w-auto min-w-0">
                       <Calendar className="w-4 h-4 text-[#e9762b]" />
                       <select
                         value={selectedMonthYear}
@@ -1462,7 +1477,7 @@ export const DailyStudyLog: React.FC = () => {
                           setSelectedMonthYear(val);
                           setVisibleLimit(val === 'last30' ? 30 : 25);
                         }}
-                        className="bg-transparent text-xs sm:text-[13px] text-[#e9762b] focus:outline-none font-bold cursor-pointer font-mono"
+                        className="bg-transparent text-xs sm:text-[13px] text-[#e9762b] focus:outline-none font-bold cursor-pointer font-mono flex-1 sm:flex-none min-w-0"
                       >
                         <option value="all" className="bg-[#141413] text-[#e9762b]">All Months</option>
                         <option value="last30" className="bg-[#141413] text-white">Last 30 Days</option>
@@ -1475,47 +1490,84 @@ export const DailyStudyLog: React.FC = () => {
                     </div>
 
                     {/* Dedicated ⚙️ SETTINGS Button */}
+                    {/* Full Table View Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsFullTableView(true)}
+                      className="inline-flex flex-1 sm:flex-none justify-center items-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-full glass-pill hover:bg-white/10 text-stone-700 dark:text-slate-200 hover:text-white text-xs font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-white/12 hover:border-[#e9762b] cursor-pointer shadow-sm active:scale-95"
+                      title="Open full-screen immersive spreadsheet table view"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5 text-[#e9762b]" />
+                      <span className="whitespace-nowrap">FULL TABLE</span>
+                    </button>
+
+                    {/* Dedicated Settings Button */}
                     <button
                       type="button"
                       onClick={() => setShowColumnsManagerModal(true)}
-                      className="inline-flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-full glass-pill hover:bg-white/10 text-stone-700 dark:text-slate-200 hover:text-white text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-white/12 hover:border-[#e9762b] cursor-pointer shadow-sm active:scale-95"
+                      className="inline-flex flex-1 sm:flex-none justify-center items-center gap-2 px-4 sm:px-5 py-2.5 rounded-full glass-pill hover:bg-white/10 text-stone-700 dark:text-slate-200 hover:text-white text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-white/12 hover:border-[#e9762b] cursor-pointer shadow-sm active:scale-95"
                       title="Open Table Settings"
                     >
                       <Settings2 className="w-4 h-4 text-[#e9762b]" />
-                      <span>SETTINGS</span>
+                      <span className="whitespace-nowrap">SETTINGS</span>
                     </button>
 
                     {/* Primary NEW ENTRY Button */}
                     <button
                       type="button"
                       onClick={() => handleOpenAddRowModal(todayStr)}
-                      className="inline-flex items-center gap-2 px-5 sm:px-6 py-2.5 rounded-full bg-gradient-to-b from-[#f28238] to-[#e9762b] hover:brightness-110 text-black font-mono font-black text-xs sm:text-[13px] uppercase tracking-wider active:scale-95 transition-all duration-200 cursor-pointer shadow-[0_4px_20px_-2px_rgba(233,118,43,0.45)] border border-orange-300/30 shrink-0"
+                      className="inline-flex flex-1 sm:flex-none justify-center items-center gap-2 px-5 sm:px-6 py-2.5 rounded-full bg-gradient-to-b from-[#f28238] to-[#e9762b] hover:brightness-110 text-black font-mono font-black text-xs sm:text-[13px] uppercase tracking-wider active:scale-95 transition-all duration-200 cursor-pointer shadow-[0_4px_20px_-2px_rgba(233,118,43,0.45)] border border-orange-300/30"
                     >
                       <Plus className="w-4 h-4 stroke-[3]" />
-                      <span>NEW ENTRY</span>
+                      <span className="whitespace-nowrap">NEW ENTRY</span>
                     </button>
                   </div>
                 </div>
 
                 {/* Table Container with Sticky Horizontal & Vertical Scroll */}
                 <div ref={tableSectionRef} className="w-full rounded-2xl sm:rounded-3xl glass-panel overflow-hidden font-mono shadow-2xl scroll-mt-24">
-                  <div ref={tableContainerRef} className="overflow-x-auto max-h-[82vh] overflow-y-auto relative scrollbar-thin scrollbar-thumb-white/20">
+                  {/* Mobile Table Utility Header (Pinned above the horizontal scroll) */}
+                  <div className="sm:hidden flex items-center justify-between px-3.5 py-2 text-[11px] font-mono border-b border-black/10 dark:border-white/10 bg-stone-200/50 dark:bg-white/[0.03] select-none">
+                    <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
+                      <span className="whitespace-nowrap">Tap date to edit</span>
+                      <span className="text-stone-400">•</span>
+                      <span className="text-[#e9762b] font-bold">Swipe →</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsFullTableView(true)}
+                        className="flex items-center gap-1 text-[10px] font-extrabold text-[#e9762b] hover:text-[#ff5f00] px-2.5 py-1 rounded-full bg-orange-500/15 border border-orange-500/30 active:scale-95 cursor-pointer"
+                        title="Open full-screen table view"
+                      >
+                        <Maximize2 className="w-3 h-3" />
+                        <span className="whitespace-nowrap">FULL TABLE</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                        className="flex items-center gap-1 text-[10px] font-extrabold text-stone-600 dark:text-slate-400 hover:text-stone-900 dark:hover:text-white px-2 py-1 rounded-full bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 active:scale-95 cursor-pointer"
+                        title="Scroll to top of page"
+                      >
+                        <ArrowUp className="w-3 h-3" />
+                        <span>TOP</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div
+                    ref={tableContainerRef}
+                    className="overflow-x-auto max-h-[62dvh] sm:max-h-[82vh] overflow-y-auto table-scroll-container relative scrollbar-thin scrollbar-thumb-white/20"
+                  >
                     <table className="w-full min-w-full text-left text-sm border-separate border-spacing-0">
                       {/* Sticky Top Header with Sort Affordances */}
                       <thead
-                        onClick={scrollToCenterTable}
-                        className="sticky top-0 z-40 glass-table-header cursor-pointer select-none"
-                        title="Click table bar to center table on screen"
+                        className="sticky top-0 z-40 glass-table-header select-none"
                       >
-                        <tr className="text-xs sm:text-[13px] text-stone-800 dark:text-slate-200 uppercase tracking-[0.14em] font-bold">
+                        <tr className="text-[11px] sm:text-[13px] text-stone-800 dark:text-slate-200 uppercase tracking-[0.14em] font-bold">
                           {/* Sticky Date Column Header (First row, first column) */}
                           <th
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              scrollToCenterTable();
-                            }}
-                            className="py-4 sm:py-4.5 px-4 sm:px-5 font-bold sticky left-0 top-0 z-50 glass-sticky-th border-r border-white/12 min-w-[132px] w-[132px] sm:min-w-[152px] sm:w-[152px] cursor-pointer group"
-                            title="Click to center table on screen"
+                            className="py-2.5 sm:py-4 px-2 sm:px-5 font-bold sticky left-0 top-0 z-50 glass-sticky-th border-r border-white/12 min-w-[88px] w-[88px] sm:min-w-[152px] sm:w-[152px] group"
                           >
                             <div className="flex items-center gap-2">
                               <span>DATE</span>
@@ -1547,12 +1599,7 @@ export const DailyStudyLog: React.FC = () => {
                             return (
                               <th
                                 key={col.key}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  scrollToCenterTable();
-                                }}
-                                className={`py-4 sm:py-4.5 px-3.5 sm:px-5 font-bold text-center sticky top-0 z-40 ${col.minWidth} group/col cursor-pointer select-none`}
-                                title="Click to center table on screen"
+                                className={`py-2.5 sm:py-4 px-2 sm:px-5 font-bold text-center sticky top-0 z-40 ${col.minWidth} group/col select-none text-[11px] sm:text-xs`}
                               >
                                 <div className="flex items-center justify-center gap-1.5">
                                   <span>{col.label}</span>
@@ -1585,15 +1632,10 @@ export const DailyStudyLog: React.FC = () => {
                             return (
                               <th
                                 key={col.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  scrollToCenterTable();
-                                }}
-                                className="py-4 sm:py-4.5 px-4 sm:px-5 font-bold text-center whitespace-nowrap sticky top-0 z-40 min-w-[120px] sm:min-w-[144px] max-w-[200px] group/customcol cursor-pointer select-none"
-                                title="Click to center table on screen"
+                                className="py-2.5 sm:py-4 px-2.5 sm:px-5 font-bold text-center whitespace-nowrap sticky top-0 z-40 min-w-[90px] sm:min-w-[144px] max-w-[200px] group/customcol select-none text-[11px] sm:text-xs"
                               >
                                 <div className="flex items-center justify-center gap-1.5">
-                                  <span className="text-xs sm:text-[13px] uppercase tracking-[0.14em] font-bold text-stone-800 dark:text-slate-200 truncate max-w-[130px] font-mono">
+                                  <span className="text-[11px] sm:text-[13px] uppercase tracking-[0.14em] font-bold text-stone-800 dark:text-slate-200 truncate max-w-[130px] font-mono">
                                     {formatColumnHeader(col.name, col.unit)}
                                   </span>
                                   {showSortArrows && (
@@ -1620,7 +1662,7 @@ export const DailyStudyLog: React.FC = () => {
                           })}
 
                           {/* Subtle Action Column Header */}
-                          <th aria-label="Actions" className="py-4 sm:py-4.5 px-3 font-bold text-center sticky top-0 z-40 min-w-[64px] w-[64px] text-stone-500 rounded-tr-xl">
+                          <th aria-label="Actions" className="py-2.5 sm:py-4 px-2 font-bold text-center sticky top-0 z-40 w-12 sm:w-16 text-stone-500 rounded-tr-xl text-[11px] sm:text-xs">
                             •••
                           </th>
                         </tr>
@@ -1660,18 +1702,18 @@ export const DailyStudyLog: React.FC = () => {
                                   {/* Pinned / Sticky Date Column - Click to open details & edit */}
                                   <td
                                     onClick={() => handleToggleExpand(entry)}
-                                    className={`py-4 sm:py-4.5 px-4 sm:px-5 whitespace-nowrap sticky left-0 z-20 glass-sticky-col-cell border-r border-black/10 dark:border-white/10 min-w-[132px] w-[132px] sm:min-w-[152px] sm:w-[152px] cursor-pointer ${isExpanded ? '!bg-amber-500/15 dark:!bg-[#1a1a18]' : ''
+                                    className={`py-2 sm:py-3.5 px-2 sm:px-5 whitespace-nowrap sticky left-0 z-20 glass-sticky-col-cell border-r border-black/10 dark:border-white/10 min-w-[88px] w-[88px] sm:min-w-[152px] sm:w-[152px] cursor-pointer ${isExpanded ? '!bg-amber-500/15 dark:!bg-[#1a1a18]' : ''
                                       }`}
                                     title="Click date to open details & edit"
                                   >
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-1.5 sm:gap-2">
                                       <button
                                         type="button"
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           handleToggleExpand(entry);
                                         }}
-                                        className={`inline-flex items-center justify-center px-3.5 py-2 rounded-xl text-xs sm:text-[13px] font-extrabold tracking-wide transition-all duration-150 cursor-pointer select-none font-mono uppercase ${isExpanded
+                                        className={`inline-flex items-center justify-center px-2 sm:px-3.5 py-1 sm:py-2 rounded-lg sm:rounded-xl text-[11px] sm:text-[13px] font-extrabold tracking-wide transition-all duration-150 cursor-pointer select-none font-mono uppercase ${isExpanded
                                           ? 'bg-[#e9762b] text-black shadow-md shadow-orange-500/25'
                                           : 'text-[#e9762b] bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/35 hover:border-orange-500/60'
                                           }`}
@@ -1684,18 +1726,18 @@ export const DailyStudyLog: React.FC = () => {
 
                                   {/* Study Hours Column */}
                                   {!deletedDefaultColumns.includes('studyHours') && (
-                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[100px] sm:min-w-[120px]">
+                                    <td className="py-2 sm:py-3.5 px-2 sm:px-5 text-center min-w-[76px] sm:min-w-[120px]">
                                       {entry.studyHours != null && Number(entry.studyHours) > 0 ? (
-                                        <span className="text-stone-900 dark:text-white font-mono-numbers font-bold text-sm sm:text-[15px]">{entry.studyHours}h</span>
+                                        <span className="text-stone-900 dark:text-white font-mono-numbers font-bold text-xs sm:text-[15px]">{entry.studyHours}h</span>
                                       ) : (
-                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-xs sm:text-sm select-none">--</span>
                                       )}
                                     </td>
                                   )}
 
                                   {/* Class Attended Pill */}
                                   {!deletedDefaultColumns.includes('attendedClass') && (
-                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[96px] sm:min-w-[114px]">
+                                    <td className="py-2 sm:py-3.5 px-2 sm:px-5 text-center min-w-[76px] sm:min-w-[114px]">
                                       <TriStateBadge
                                         value={entry.attendedClass}
                                         onChange={(newVal) => updateDailyLogField(entry.date, 'attendedClass', newVal)}
@@ -1707,18 +1749,18 @@ export const DailyStudyLog: React.FC = () => {
 
                                   {/* PYQs Solved */}
                                   {!deletedDefaultColumns.includes('pyqsSolved') && (
-                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[96px] sm:min-w-[114px]">
+                                    <td className="py-2 sm:py-3.5 px-2 sm:px-5 text-center min-w-[76px] sm:min-w-[114px]">
                                       {entry.pyqsSolved != null && Number(entry.pyqsSolved) > 0 ? (
-                                        <span className="text-stone-900 dark:text-white font-mono-numbers font-bold text-sm sm:text-[15px]">{entry.pyqsSolved}</span>
+                                        <span className="text-stone-900 dark:text-white font-mono-numbers font-bold text-xs sm:text-[15px]">{entry.pyqsSolved}</span>
                                       ) : (
-                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-xs sm:text-sm select-none">--</span>
                                       )}
                                     </td>
                                   )}
 
                                   {/* Revision Done Pill */}
                                   {!deletedDefaultColumns.includes('revisionDone') && (
-                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[96px] sm:min-w-[114px]">
+                                    <td className="py-2 sm:py-3.5 px-2 sm:px-5 text-center min-w-[76px] sm:min-w-[114px]">
                                       <TriStateBadge
                                         value={entry.revisionDone}
                                         onChange={(newVal) => updateDailyLogField(entry.date, 'revisionDone', newVal)}
@@ -1730,7 +1772,7 @@ export const DailyStudyLog: React.FC = () => {
 
                                   {/* Mock Test Taken Pill */}
                                   {!deletedDefaultColumns.includes('mockTestTaken') && (
-                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[96px] sm:min-w-[114px]">
+                                    <td className="py-2 sm:py-3.5 px-2 sm:px-5 text-center min-w-[76px] sm:min-w-[114px]">
                                       <TriStateBadge
                                         value={entry.mockTestTaken}
                                         onChange={(newVal) => updateDailyLogField(entry.date, 'mockTestTaken', newVal)}
@@ -1742,23 +1784,34 @@ export const DailyStudyLog: React.FC = () => {
 
                                   {/* Sleep Hours */}
                                   {!deletedDefaultColumns.includes('sleepHours') && (
-                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[96px] sm:min-w-[114px]">
+                                    <td className="py-2 sm:py-3.5 px-2 sm:px-5 text-center min-w-[76px] sm:min-w-[114px]">
                                       {entry.sleepHours != null && Number(entry.sleepHours) > 0 ? (
-                                        <span className="text-stone-900 dark:text-white font-mono-numbers font-bold text-sm sm:text-[15px]">{entry.sleepHours}h</span>
+                                        <span className="text-stone-900 dark:text-white font-mono-numbers font-bold text-xs sm:text-[15px]">{entry.sleepHours}h</span>
                                       ) : (
-                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-xs sm:text-sm select-none">--</span>
                                       )}
                                     </td>
                                   )}
 
-                                  {/* Notes Column with Rich Tooltip (no icon) */}
+                                  {/* Notes Column with Rich Tooltip & Click to Edit */}
                                   {!deletedDefaultColumns.includes('notes') && (
-                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center min-w-[104px] sm:min-w-[124px]">
+                                    <td
+                                      className="py-2 sm:py-3.5 px-2 sm:px-5 text-center min-w-[84px] sm:min-w-[124px] cursor-pointer"
+                                      onClick={() => handleOpenNoteEdit(entry)}
+                                      title={hasNote ? 'Click to view / edit note' : 'Click to add note'}
+                                    >
                                       {hasNote ? (
                                         <div className="relative inline-flex items-center justify-center group/note">
-                                          <span className="inline-block px-3 py-1 rounded-lg text-xs font-bold text-orange-950 dark:text-[#e9762b] bg-orange-500/20 dark:bg-orange-500/15 border border-orange-500/40 dark:border-orange-500/35 select-none">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleOpenNoteEdit(entry);
+                                            }}
+                                            className="inline-block px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[10px] sm:text-xs font-bold text-orange-950 dark:text-[#e9762b] bg-orange-500/20 dark:bg-orange-500/15 hover:bg-orange-500/30 border border-orange-500/40 dark:border-orange-500/35 transition cursor-pointer select-none active:scale-95"
+                                          >
                                             Note
-                                          </span>
+                                          </button>
 
                                           {/* Hover Tooltip showing the note text */}
                                           <div className="opacity-0 group-hover/note:opacity-100 pointer-events-none transition-opacity duration-200 absolute bottom-full mb-2 z-40 left-1/2 -translate-x-1/2 glass-modal text-xs px-4 py-2.5 rounded-xl shadow-2xl max-w-sm min-w-[220px] text-left whitespace-normal">
@@ -1772,18 +1825,27 @@ export const DailyStudyLog: React.FC = () => {
                                           </div>
                                         </div>
                                       ) : (
-                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenNoteEdit(entry);
+                                          }}
+                                          className="text-stone-400/50 hover:text-[#e9762b] dark:text-white/20 dark:hover:text-[#e9762b] font-mono text-xs sm:text-sm select-none transition cursor-pointer"
+                                        >
+                                          --
+                                        </button>
                                       )}
                                     </td>
                                   )}
 
                                   {/* Focus Rating */}
                                   {!deletedDefaultColumns.includes('focusRating') && (
-                                    <td className="py-4 sm:py-4.5 px-3.5 sm:px-5 text-center text-stone-900 dark:text-slate-200 font-mono-numbers font-bold text-sm sm:text-[15px] min-w-[100px] sm:min-w-[120px]">
+                                    <td className="py-2 sm:py-3.5 px-2 sm:px-5 text-center text-stone-900 dark:text-slate-200 font-mono-numbers font-bold text-xs sm:text-[15px] min-w-[76px] sm:min-w-[120px]">
                                       {entry.focusRating != null && Number(entry.focusRating) > 0 ? (
                                         <span>{entry.focusRating}/5</span>
                                       ) : (
-                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm font-normal select-none">--</span>
+                                        <span className="text-stone-400/50 dark:text-white/20 font-mono text-xs sm:text-sm font-normal select-none">--</span>
                                       )}
                                     </td>
                                   )}
@@ -1792,7 +1854,7 @@ export const DailyStudyLog: React.FC = () => {
                                   {customColumns.map((col) => {
                                     const val = entry.customData?.[col.id];
                                     return (
-                                      <td key={col.id} className="py-4 sm:py-4.5 px-4 sm:px-5 text-center whitespace-nowrap font-mono text-sm sm:text-[15px] min-w-[120px] sm:min-w-[144px] max-w-[200px]">
+                                      <td key={col.id} className="py-2 sm:py-3.5 px-2 sm:px-5 text-center whitespace-nowrap font-mono text-xs sm:text-[15px] min-w-[90px] sm:min-w-[144px] max-w-[200px]">
                                         {col.type === 'boolean' && (
                                           <TriStateBadge
                                             value={val}
@@ -1805,7 +1867,7 @@ export const DailyStudyLog: React.FC = () => {
                                           val !== undefined && val !== null && val !== '' && Number(val) > 0 ? (
                                             <span className="text-stone-900 dark:text-white font-mono-numbers font-bold">{val}</span>
                                           ) : (
-                                            <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                            <span className="text-stone-400/50 dark:text-white/20 font-mono text-xs sm:text-sm select-none">--</span>
                                           )
                                         )}
                                         {col.type === 'text' && (
@@ -1817,27 +1879,27 @@ export const DailyStudyLog: React.FC = () => {
                                               {val}
                                             </span>
                                           ) : (
-                                            <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                            <span className="text-stone-400/50 dark:text-white/20 font-mono text-xs sm:text-sm select-none">--</span>
                                           )
                                         )}
                                         {col.type === 'select' && (
                                           val && String(val).trim() ? (
-                                            <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-purple-500/20 dark:bg-purple-500/15 text-purple-900 dark:text-purple-300 border border-purple-500/40 dark:border-purple-500/35">
+                                            <span className="inline-block px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold bg-purple-500/20 dark:bg-purple-500/15 text-purple-900 dark:text-purple-300 border border-purple-500/40 dark:border-purple-500/35">
                                               {String(val).includes('|')
                                                 ? String(val).split('|').map((s) => s.trim()).filter(Boolean).pop() || String(val).split('|')[0].trim()
                                                 : String(val).trim()}
                                             </span>
                                           ) : (
-                                            <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                            <span className="text-stone-400/50 dark:text-white/20 font-mono text-xs sm:text-sm select-none">--</span>
                                           )
                                         )}
                                         {col.type === 'rating' && (
                                           val !== undefined && val !== null && Number(val) > 0 ? (
-                                            <span className="text-stone-900 dark:text-slate-200 font-mono-numbers font-bold text-sm sm:text-[15px]">
+                                            <span className="text-stone-900 dark:text-slate-200 font-mono-numbers font-bold text-xs sm:text-[15px]">
                                               {val}/5
                                             </span>
                                           ) : (
-                                            <span className="text-stone-400/50 dark:text-white/20 font-mono text-sm select-none">--</span>
+                                            <span className="text-stone-400/50 dark:text-white/20 font-mono text-xs sm:text-sm select-none">--</span>
                                           )
                                         )}
                                       </td>
@@ -1845,7 +1907,7 @@ export const DailyStudyLog: React.FC = () => {
                                   })}
 
                                   {/* Subtle Action Column Cell */}
-                                  <td className="py-4 sm:py-4.5 px-3 text-center whitespace-nowrap min-w-[64px] w-[64px] relative">
+                                  <td className="py-2 sm:py-3.5 px-2 text-center whitespace-nowrap min-w-[50px] w-[50px] sm:min-w-[64px] sm:w-[64px] relative">
                                     <div className="relative inline-block text-left">
                                       <button
                                         type="button"
@@ -2321,8 +2383,8 @@ export const DailyStudyLog: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Right: Live KPI Chips */}
-                    <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs font-mono">
+                    {/* Right: Live KPI Chips (Desktop only) */}
+                    <div className="hidden sm:flex flex-wrap items-center gap-2.5 sm:gap-3 text-xs font-mono">
                       <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.08]">
                         <span className="text-slate-400 uppercase tracking-wider text-[11px]">AVG HOURS:</span>
                         <span className="text-stone-900 dark:text-white font-extrabold font-mono-numbers text-xs sm:text-[13px]">{mainStats.avgHours} hrs</span>
@@ -3776,6 +3838,173 @@ export const DailyStudyLog: React.FC = () => {
                   SAVE
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* FULL TABLE SPREADSHEET MODAL / IMMERSIVE VIEW             */}
+      {/* ======================================================== */}
+      {isFullTableView && (
+        <div className="fixed inset-0 z-[160] bg-black/95 backdrop-blur-2xl flex flex-col p-2 sm:p-5 animate-fadeIn font-mono select-none">
+          {/* Top Control Bar */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl glass-panel border border-white/10 mb-2 sm:mb-3 shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center text-[#e9762b] shrink-0">
+                <Table2 className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xs sm:text-sm font-extrabold text-white uppercase tracking-wider truncate">
+                    {mainTableTitle}
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#e9762b]/20 text-[#e9762b] border border-orange-500/30">
+                    FULL SPREADSHEET
+                  </span>
+                </div>
+                <p className="text-[10px] text-stone-400 hidden sm:block truncate">
+                  Inspect multiple rows and columns simultaneously
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 ml-auto">
+              <div className="hidden xs:flex items-center px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[11px] text-stone-300">
+                <span>{filteredDailyLogs.length} DAYS</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFullTableView(false)}
+                className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-b from-[#f28238] to-[#e9762b] text-black font-extrabold text-xs uppercase tracking-wider hover:brightness-110 active:scale-95 transition cursor-pointer shadow-lg shadow-orange-500/25"
+                title="Exit full table view"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+                <span>EXIT FULL</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Full Screen Scrollable Table Container */}
+          <div className="flex-1 w-full rounded-2xl glass-panel overflow-hidden border border-white/10 shadow-2xl relative flex flex-col min-h-0">
+            <div className="flex-1 overflow-auto table-scroll-container custom-scrollbar">
+              <table className="w-full min-w-full text-left text-xs border-separate border-spacing-0">
+                <thead className="sticky top-0 z-40 glass-table-header text-stone-200 select-none">
+                  <tr className="uppercase tracking-[0.14em] text-[11px] font-bold">
+                    <th className="py-2.5 px-2.5 sm:px-4 sticky left-0 z-50 glass-sticky-th border-r border-white/10 min-w-[84px] w-[84px] sm:min-w-[130px] sm:w-[130px]">
+                      DATE
+                    </th>
+                    {DEFAULT_COLUMNS_CONFIG.map((col) => {
+                      if (deletedDefaultColumns.includes(col.key)) return null;
+                      return (
+                        <th key={col.key} className="py-2.5 px-2.5 text-center whitespace-nowrap min-w-[70px]">
+                          {col.label}
+                        </th>
+                      );
+                    })}
+                    {customColumns.map((col) => (
+                      <th key={col.id} className="py-2.5 px-2.5 text-center whitespace-nowrap min-w-[80px]">
+                        {formatColumnHeader(col.name, col.unit)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.06]">
+                  {filteredDailyLogs.map((entry) => (
+                    <tr key={entry.date} className="even:bg-white/[0.015] hover:bg-white/[0.05] transition-colors">
+                      {/* Sticky Date */}
+                      <td className="py-2 px-2 sm:px-3 sticky left-0 z-20 glass-sticky-col-cell border-r border-white/10 min-w-[84px] w-[84px] sm:min-w-[130px] sm:w-[130px]">
+                        <span className="inline-block px-2 py-0.5 rounded-lg text-[10px] sm:text-xs font-extrabold text-[#e9762b] bg-orange-500/10 border border-orange-500/30">
+                          {formatDateDisplay(entry.date)}
+                        </span>
+                      </td>
+                      {/* Default Cols */}
+                      {!deletedDefaultColumns.includes('studyHours') && (
+                        <td className="py-2 px-2.5 text-center font-mono-numbers">
+                          {entry.studyHours ? <b className="text-white">{entry.studyHours}h</b> : <span className="text-white/20">--</span>}
+                        </td>
+                      )}
+                      {!deletedDefaultColumns.includes('attendedClass') && (
+                        <td className="py-2 px-2 text-center">
+                          <TriStateBadge
+                            value={entry.attendedClass}
+                            onChange={(v) => updateDailyLogField(entry.date, 'attendedClass', v)}
+                            cycleEnabled={enableClickToCycle}
+                            className="mx-auto"
+                          />
+                        </td>
+                      )}
+                      {!deletedDefaultColumns.includes('pyqsSolved') && (
+                        <td className="py-2 px-2.5 text-center font-mono-numbers">
+                          {entry.pyqsSolved ? <span className="text-white font-bold">{entry.pyqsSolved}</span> : <span className="text-white/20">--</span>}
+                        </td>
+                      )}
+                      {!deletedDefaultColumns.includes('revisionDone') && (
+                        <td className="py-2 px-2 text-center">
+                          <TriStateBadge
+                            value={entry.revisionDone}
+                            onChange={(v) => updateDailyLogField(entry.date, 'revisionDone', v)}
+                            cycleEnabled={enableClickToCycle}
+                            className="mx-auto"
+                          />
+                        </td>
+                      )}
+                      {!deletedDefaultColumns.includes('mockTestTaken') && (
+                        <td className="py-2 px-2 text-center">
+                          <TriStateBadge
+                            value={entry.mockTestTaken}
+                            onChange={(v) => updateDailyLogField(entry.date, 'mockTestTaken', v)}
+                            cycleEnabled={enableClickToCycle}
+                            className="mx-auto"
+                          />
+                        </td>
+                      )}
+                      {!deletedDefaultColumns.includes('sleepHours') && (
+                        <td className="py-2 px-2.5 text-center font-mono-numbers">
+                          {entry.sleepHours ? `${entry.sleepHours}h` : <span className="text-white/20">--</span>}
+                        </td>
+                      )}
+                      {!deletedDefaultColumns.includes('notes') && (
+                        <td
+                          className="py-2 px-2.5 text-center text-[10px] text-stone-400 max-w-[140px] truncate cursor-pointer hover:text-[#e9762b] transition"
+                          title={entry.notes ? `${entry.notes} (click to edit)` : 'Click to add note'}
+                          onClick={() => {
+                            setIsFullTableView(false);
+                            handleOpenNoteEdit(entry);
+                          }}
+                        >
+                          {entry.notes || <span className="text-white/20">--</span>}
+                        </td>
+                      )}
+                      {!deletedDefaultColumns.includes('focusRating') && (
+                        <td className="py-2 px-2.5 text-center font-mono-numbers">
+                          {entry.focusRating ? `${entry.focusRating}/5` : <span className="text-white/20">--</span>}
+                        </td>
+                      )}
+                      {/* Custom columns */}
+                      {customColumns.map((col) => {
+                        const val = entry.customData?.[col.id];
+                        return (
+                          <td key={col.id} className="py-2 px-2.5 text-center text-xs whitespace-nowrap">
+                            {col.type === 'boolean' ? (
+                              <TriStateBadge
+                                value={val}
+                                onChange={(nv) => updateDailyLogCustomField(entry.date, col.id, nv)}
+                                cycleEnabled={enableClickToCycle}
+                                className="mx-auto"
+                              />
+                            ) : val !== undefined && val !== null && val !== '' ? (
+                              String(val)
+                            ) : (
+                              <span className="text-white/20">--</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

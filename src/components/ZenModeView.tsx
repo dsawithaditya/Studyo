@@ -91,8 +91,8 @@ export const ZenModeView: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-[100] w-screen h-screen h-[100dvh] min-h-[100dvh] bg-[#fae8dc] text-zinc-900 dark:bg-[#000000] dark:text-[#f2eee3] flex flex-col items-center justify-center p-4 sm:p-8 select-none font-mono overflow-hidden transition-colors duration-300">
-      {/* Top Right Quick Controls in Zen Mode */}
-      <div className="absolute top-4 sm:top-6 right-4 sm:right-6 z-20 flex items-center gap-3">
+      {/* Top Right Quick Controls in Zen Mode (Safe area inset aware for notch/punch hole) */}
+      <div className="absolute top-[max(1rem,env(safe-area-inset-top))] right-[max(1rem,env(safe-area-inset-right))] z-20 flex items-center gap-3">
         <ThemeSwitch size={12.5} id="zen-theme-switch" />
         <button
           onClick={() => setZenMode(false)}

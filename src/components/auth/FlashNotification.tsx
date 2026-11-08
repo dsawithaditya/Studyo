@@ -16,7 +16,7 @@ export const FlashNotification: React.FC = () => {
   return (
     <aside
       aria-label="System notification"
-      className="fixed bottom-20 sm:bottom-6 right-4 sm:right-6 z-[130] pointer-events-auto max-w-[92vw] sm:max-w-md animate-in slide-in-from-bottom-3 sm:slide-in-from-right-3 fade-in duration-200"
+      className="fixed bottom-[calc(var(--bottom-nav-h,4rem)+0.75rem)] sm:bottom-6 right-4 sm:right-6 z-[130] pointer-events-auto max-w-[92vw] sm:max-w-md animate-in slide-in-from-bottom-3 sm:slide-in-from-right-3 fade-in duration-200"
     >
       <div
         role="alert"

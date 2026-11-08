@@ -832,3 +832,92 @@ html.light ::-webkit-scrollbar-thumb:hover { background: rgba(233, 118, 43, 0.85
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================================
+   MOBILE (Android / iOS) OPTIMIZATIONS - additive only
+   ========================================================== */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+@supports (min-height: 100dvh) {
+  body,
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+  .max-h-\[90vh\] { max-height: 90dvh; }
+  .max-h-\[85vh\] { max-height: 85dvh; }
+  .max-h-\[82vh\] { max-height: 82dvh; }
+}
+
+/* Home-indicator safe area for bottom navigation (class was used but undefined) */
+.pb-safe {
+  padding-bottom: max(0.375rem, env(safe-area-inset-bottom));
+}
+/* Keep sticky headers below the iOS status bar / notch in standalone mode */
+.glass-header {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Remove 300ms tap delay + accidental double-tap zoom on controls */
+a, button, input, select, textarea, label, summary, [role='button'] {
+  touch-action: manipulation;
+}
+/* Scroll containers: stop background scroll chaining ONLY behind open modals/dialogs */
+[role='dialog'] .overflow-y-auto,
+.glass-modal.overflow-y-auto {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Tables: allow natural scroll chaining so swiping up on the table always scrolls the page up */
+.table-scroll-container {
+  overscroll-behavior-y: auto !important;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+}
+
+/* Touch devices: 16px inputs prevent iOS Safari auto-zoom on focus */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  /* Tactile press feedback (uses `scale`, so it never clobbers Tailwind translate transforms) */
+  button:not(:disabled):active,
+  [role='button']:active {
+    scale: 0.97;
+  }
+}
+
+/* Smooth modal entrance on small screens */
+@keyframes studyoSheetUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 639px) {
+  [role='dialog'] > div {
+    animation: studyoSheetUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [role='dialog'] > div {
+    animation: none !important;
+  }
+  button:active { scale: 1 !important; }
+}
+
+/* Phones: height reserved by the fixed bottom tab bar (see HomeScreen mobileNav) */
+@media (max-width: 767px) {
+  :root {
+    --bottom-nav-h: calc(54px + env(safe-area-inset-bottom));
+  }
+}
