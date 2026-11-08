@@ -1806,7 +1806,7 @@ export const DailyStudyLog: React.FC = () => {
                                       className="py-2 sm:py-3.5 px-2 sm:px-5 text-center min-w-[84px] sm:min-w-[124px] relative"
                                     >
                                       {hasNote ? (
-                                        <div className="relative inline-flex items-center justify-center">
+                                        <div className="relative inline-flex items-center justify-center group/note">
                                           <button
                                             type="button"
                                             onClick={(e) => {
@@ -1819,7 +1819,20 @@ export const DailyStudyLog: React.FC = () => {
                                             Note
                                           </button>
 
-                                          {/* In-place Note View Popover */}
+                                          {/* Desktop Hover Tooltip */}
+                                          {activeViewNoteDate !== entry.date && (
+                                            <div className="opacity-0 group-hover/note:opacity-100 pointer-events-none transition-opacity duration-200 absolute bottom-full mb-2 z-40 left-1/2 -translate-x-1/2 glass-modal text-xs px-4 py-2.5 rounded-xl shadow-2xl max-w-sm min-w-[180px] sm:min-w-[220px] text-left whitespace-normal border border-white/10">
+                                              <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1 font-mono">
+                                                {formatDateDisplay(entry.date).toUpperCase()} NOTE:
+                                              </span>
+                                              <p className="text-stone-900 dark:text-slate-200 text-xs sm:text-sm leading-relaxed break-words font-mono whitespace-pre-wrap">
+                                                {entry.notes}
+                                              </p>
+                                              <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
+                                            </div>
+                                          )}
+
+                                          {/* In-place Note Tooltip Bubble when Clicked */}
                                           {activeViewNoteDate === entry.date && (
                                             <>
                                               <div
@@ -1830,40 +1843,16 @@ export const DailyStudyLog: React.FC = () => {
                                                 }}
                                               />
                                               <div
-                                                className="absolute bottom-full mb-2 z-50 left-1/2 -translate-x-1/2 glass-modal text-xs p-3.5 rounded-xl shadow-2xl w-64 sm:w-80 text-left whitespace-normal border border-orange-500/30 animate-in fade-in zoom-in-95 duration-150"
+                                                className="absolute bottom-full mb-2 z-50 left-1/2 -translate-x-1/2 glass-modal text-xs px-4 py-2.5 rounded-xl shadow-2xl max-w-sm min-w-[180px] sm:min-w-[220px] text-left whitespace-normal border border-white/10 animate-in fade-in zoom-in-95 duration-150"
                                                 onClick={(e) => e.stopPropagation()}
                                               >
-                                                <div className="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-white/10">
-                                                  <span className="text-[11px] text-[#e9762b] font-bold tracking-wider uppercase flex items-center gap-1.5">
-                                                    <FileText className="w-3.5 h-3.5 text-[#e9762b]" />
-                                                    {formatDateDisplay(entry.date)} Note
-                                                  </span>
-                                                  <div className="flex items-center gap-1">
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => {
-                                                        setActiveViewNoteDate(null);
-                                                        handleOpenNoteEdit(entry);
-                                                      }}
-                                                      className="p-1 rounded-lg hover:bg-white/10 text-stone-400 hover:text-[#e9762b] transition text-[10px] flex items-center gap-1"
-                                                      title="Edit Note"
-                                                    >
-                                                      <Edit3 className="w-3 h-3" />
-                                                    </button>
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => setActiveViewNoteDate(null)}
-                                                      className="p-1 rounded-lg hover:bg-white/10 text-stone-400 hover:text-white transition"
-                                                      title="Close"
-                                                    >
-                                                      <X className="w-3.5 h-3.5" />
-                                                    </button>
-                                                  </div>
-                                                </div>
-                                                <p className="text-stone-900 dark:text-stone-200 text-xs sm:text-sm leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap break-words select-text">
+                                                <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1 font-mono">
+                                                  {formatDateDisplay(entry.date).toUpperCase()} NOTE:
+                                                </span>
+                                                <p className="text-stone-900 dark:text-slate-200 text-xs sm:text-sm leading-relaxed break-words font-mono whitespace-pre-wrap select-text">
                                                   {entry.notes}
                                                 </p>
-                                                <div className="w-2.5 h-2.5 glass-modal border-r border-b border-orange-500/30 transform rotate-45 absolute -bottom-1.5 left-1/2 -translate-x-1/2 pointer-events-none" />
+                                                <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
                                               </div>
                                             </>
                                           )}
@@ -4007,7 +3996,7 @@ export const DailyStudyLog: React.FC = () => {
                           title={entry.notes ? entry.notes : 'No note'}
                         >
                           {entry.notes ? (
-                            <div className="relative inline-flex items-center justify-center">
+                            <div className="relative inline-flex items-center justify-center group/note">
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -4029,26 +4018,16 @@ export const DailyStudyLog: React.FC = () => {
                                     }}
                                   />
                                   <div
-                                    className="absolute bottom-full mb-2 z-50 left-1/2 -translate-x-1/2 glass-modal text-xs p-3.5 rounded-xl shadow-2xl w-64 sm:w-80 text-left whitespace-normal border border-orange-500/30 animate-in fade-in zoom-in-95 duration-150"
+                                    className="absolute bottom-full mb-2 z-50 left-1/2 -translate-x-1/2 glass-modal text-xs px-4 py-2.5 rounded-xl shadow-2xl max-w-sm min-w-[180px] sm:min-w-[220px] text-left whitespace-normal border border-white/10 animate-in fade-in zoom-in-95 duration-150"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    <div className="flex items-center justify-between gap-2 pb-1.5 mb-2 border-b border-white/10">
-                                      <span className="text-[10px] text-[#e9762b] font-bold tracking-wider uppercase flex items-center gap-1.5">
-                                        <FileText className="w-3.5 h-3.5 text-[#e9762b]" />
-                                        {formatDateDisplay(entry.date)} Note
-                                      </span>
-                                      <button
-                                        type="button"
-                                        onClick={() => setActiveViewNoteDate(null)}
-                                        className="p-1 rounded hover:bg-white/10 text-stone-400 hover:text-white transition"
-                                        title="Close"
-                                      >
-                                        <X className="w-3 h-3" />
-                                      </button>
-                                    </div>
-                                    <p className="text-stone-200 text-xs leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap break-words select-text">
+                                    <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1 font-mono">
+                                      {formatDateDisplay(entry.date).toUpperCase()} NOTE:
+                                    </span>
+                                    <p className="text-stone-200 text-xs sm:text-sm leading-relaxed break-words font-mono whitespace-pre-wrap select-text">
                                       {entry.notes}
                                     </p>
+                                    <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
                                   </div>
                                 </>
                               )}
