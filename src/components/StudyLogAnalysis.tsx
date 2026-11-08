@@ -323,16 +323,16 @@ export const StudyLogAnalysis: React.FC = () => {
     : (sortedLogs.length ? (sortedLogs.reduce((acc, l) => acc + (l.focusRating || 0), 0) / sortedLogs.length).toFixed(1) : '0.0');
 
   return (
-    <div className="w-full flex flex-col space-y-6 animate-fadeIn font-mono text-stone-900 dark:text-[#e9e4da]">
-      {/* 1. Header Section */}
-      <div className="w-full flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-orange-950/10 dark:border-white/10">
+    <div className="w-full flex flex-col space-y-4 sm:space-y-6 animate-fadeIn font-mono text-stone-900 dark:text-[#e9e4da]">
+      {/* 1. Header Section - Ultra-compact on mobile, single clean row */}
+      <div className="w-full flex flex-row items-center justify-between gap-2 pb-2.5 sm:pb-4 border-b border-orange-950/10 dark:border-white/10">
         <div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-stone-900 dark:text-white tracking-tight uppercase font-mono">
+          <h1 className="text-xl sm:text-3xl lg:text-4xl font-extrabold text-stone-900 dark:text-white tracking-tight uppercase font-mono">
             Analysis
           </h1>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           {/* Cloud Sync Button */}
           <button
             type="button"
@@ -341,7 +341,7 @@ export const StudyLogAnalysis: React.FC = () => {
               if (u?.id) syncUserData(u.id, true);
             }}
             disabled={isSyncing}
-            className={`px-3 py-1.5 rounded-full text-xs font-mono font-bold uppercase tracking-wider transition border cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95 ${
+            className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-mono font-bold uppercase tracking-wider transition border cursor-pointer flex items-center gap-1 sm:gap-1.5 whitespace-nowrap active:scale-95 ${
               isSyncing
                 ? 'opacity-70 animate-pulse text-[#e9762b] border-[#e9762b]/50 bg-orange-500/10'
                 : syncError
@@ -356,39 +356,39 @@ export const StudyLogAnalysis: React.FC = () => {
           >
             {isSyncing ? (
               <>
-                <RefreshCw className="w-3.5 h-3.5 text-[#e9762b] animate-spin" />
-                <span>Syncing...</span>
+                <RefreshCw className="w-3 h-3 text-[#e9762b] animate-spin" />
+                <span className="hidden xs:inline">Syncing...</span>
               </>
             ) : syncError ? (
               <>
-                <X className="w-3.5 h-3.5 text-red-400" />
-                <span className="text-red-400">Sync Retry</span>
+                <X className="w-3 h-3 text-red-400" />
+                <span className="text-red-400">Retry</span>
               </>
             ) : justSynced ? (
               <>
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <Check className="w-3 h-3 text-emerald-400" />
                 <span className="text-emerald-400">Synced</span>
               </>
             ) : isCloudSynced ? (
               <>
-                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                <Check className="w-3 h-3 text-emerald-500" />
                 <span>Synced</span>
               </>
             ) : (
               <>
-                <RefreshCw className="w-3.5 h-3.5 text-stone-500" />
-                <span>Sync Cloud</span>
+                <RefreshCw className="w-3 h-3 text-stone-500" />
+                <span className="hidden xs:inline">Sync</span>
               </>
             )}
           </button>
 
-          {/* Timeframe Toggle (Capsule Bar matching Border Magic theme) */}
-          <div className="flex items-center gap-1.5 border-magic-bar p-1.5 rounded-full text-xs">
+          {/* Timeframe Toggle (Capsule Bar) */}
+          <div className="flex items-center gap-0.5 sm:gap-1 border-magic-bar p-0.5 sm:p-1 rounded-full text-[10px] sm:text-xs">
             <button
               onClick={() => setTimeframe('week')}
-              className={`px-4 py-1.5 rounded-full font-bold uppercase transition cursor-pointer ${
+              className={`px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full font-bold uppercase transition cursor-pointer ${
                 timeframe === 'week'
-                  ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_15px_rgba(233,118,43,0.35)]'
+                  ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_12px_rgba(233,118,43,0.35)]'
                   : 'text-stone-600 dark:text-slate-400 hover:text-black dark:hover:text-white'
               }`}
             >
@@ -396,9 +396,9 @@ export const StudyLogAnalysis: React.FC = () => {
             </button>
             <button
               onClick={() => setTimeframe('month')}
-              className={`px-4 py-1.5 rounded-full font-bold uppercase transition cursor-pointer ${
+              className={`px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-full font-bold uppercase transition cursor-pointer ${
                 timeframe === 'month'
-                  ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_15px_rgba(233,118,43,0.35)]'
+                  ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_12px_rgba(233,118,43,0.35)]'
                   : 'text-stone-600 dark:text-slate-400 hover:text-black dark:hover:text-white'
               }`}
             >

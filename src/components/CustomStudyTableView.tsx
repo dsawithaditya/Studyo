@@ -464,110 +464,116 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
   };
 
   return (
-    <div className="w-full flex flex-col space-y-5 animate-fadeIn font-mono text-stone-900 dark:text-stone-100">
+    <div className="w-full flex flex-col space-y-3.5 sm:space-y-5 animate-fadeIn font-mono text-stone-900 dark:text-stone-100">
 
       {/* ======================================================== */}
-      {/* 1. TOP TOOLBAR (Clean, Single Line, No Clutter)          */}
+      {/* 1. TOP TOOLBAR (Clean, Compact, No Clutter on Mobile)      */}
       {/* ======================================================== */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-black/10 dark:border-white/10 select-none">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 sm:gap-4 pb-2.5 sm:pb-4 border-b border-black/10 dark:border-white/10 select-none">
 
         {/* Left Side: Table Title, Row Counter Pill Badge, Subtitle */}
         <div>
-          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-stone-900 dark:text-white tracking-tight uppercase font-mono break-words min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3.5">
+            <h1 className="text-lg sm:text-2xl lg:text-3xl font-extrabold text-stone-900 dark:text-white tracking-tight uppercase font-mono break-words min-w-0">
               {table.title}
             </h1>
-            <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-[#e9762b]/15 text-[#e9762b] border border-[#e9762b]/35 uppercase tracking-wider font-mono shadow-sm">
+            <span className="px-2 sm:px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-extrabold bg-[#e9762b]/15 text-[#e9762b] border border-[#e9762b]/35 uppercase tracking-wider font-mono shadow-sm">
               {processedRows.length} {processedRows.length === 1 ? 'ENTRY' : 'ENTRIES'}
             </span>
           </div>
           {table.description && (
-            <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400 mt-1.5 font-mono">
+            <p className="text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 mt-0.5 sm:mt-1 font-mono">
               {table.description}
             </p>
           )}
         </div>
 
-        {/* Right Side Action Cluster */}
-        <div className="flex flex-wrap items-center gap-3 text-xs sm:text-[13px] w-full lg:w-auto">
+        {/* Right Side Action Cluster — clean, compact 2-row layout on mobile */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2.5 w-full lg:w-auto">
 
-          {/* Instant Search Input */}
-          <div className="relative flex items-center w-full sm:w-auto">
-            <input
-              ref={searchInputRef}
-              type="text"
-              placeholder="Search papers, notes..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="glass-input rounded-full pl-9 pr-8 py-2.5 text-xs sm:text-[13px] text-stone-900 dark:text-white placeholder-stone-500 focus:outline-none focus:border-[#e9762b] transition w-full sm:w-64"
-            />
-            <Search className="w-4 h-4 text-stone-500 absolute left-3.5 pointer-events-none" />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-3 text-stone-400 hover:text-stone-900 dark:hover:text-white cursor-pointer"
-                title="Clear search"
+          {/* Row 1 on mobile: Search + Month side-by-side */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Instant Search Input */}
+            <div className="relative flex-1 sm:w-56 sm:flex-initial">
+              <Search className="w-3.5 h-3.5 text-stone-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="glass-input rounded-full pl-8 pr-7 py-1.5 sm:py-2 text-xs text-stone-900 dark:text-white placeholder-stone-500 focus:outline-none focus:border-[#e9762b] transition w-full"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-900 dark:hover:text-white cursor-pointer p-0.5"
+                  title="Clear search"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* Month Filter Dropdown */}
+            <div className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-full glass-pill border border-black/10 dark:border-white/12 text-xs shrink-0">
+              <span className="text-[9px] sm:text-[10px] text-stone-500 dark:text-slate-400 uppercase font-bold">M:</span>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="bg-transparent text-[#e9762b] font-bold text-xs focus:outline-none cursor-pointer"
               >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+                <option value="all" className="bg-white dark:bg-[#141413] text-[#e9762b]">All</option>
+                {availableMonths.map((m) => {
+                  const [year, month] = m.split('-');
+                  const d = new Date(parseInt(year), parseInt(month) - 1, 1);
+                  const label = d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+                  return (
+                    <option key={m} value={m} className="bg-white dark:bg-[#141413] text-[#e9762b]">
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
           </div>
 
-          {/* Month Filter Dropdown */}
-          <div className="flex items-center gap-2 px-4 py-2.5 rounded-full glass-pill border border-black/10 dark:border-white/12 text-xs sm:text-[13px] w-full sm:w-auto min-w-0">
-            <span className="text-[10px] text-stone-500 dark:text-slate-400 uppercase font-bold mr-0.5">MONTH:</span>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bg-transparent text-[#e9762b] font-bold focus:outline-none cursor-pointer flex-1 sm:flex-none min-w-0"
+          {/* Row 2 on mobile: 3 action buttons side-by-side */}
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Primary Action: NEW ENTRY Button */}
+            <button
+              type="button"
+              onClick={handleOpenNewEntryModal}
+              className="flex-1 sm:flex-none inline-flex justify-center items-center gap-1.5 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-b from-[#f28238] to-[#e9762b] hover:brightness-110 text-black font-mono font-black text-xs uppercase tracking-wider transition-all duration-200 shadow-[0_2px_12px_-2px_rgba(233,118,43,0.4)] border border-orange-300/30 active:scale-95 cursor-pointer whitespace-nowrap"
+              title="Log new entry into this table"
             >
-              <option value="all" className="bg-white dark:bg-[#141413] text-[#e9762b]">All Months</option>
-              {availableMonths.map((m) => {
-                const [year, month] = m.split('-');
-                const d = new Date(parseInt(year), parseInt(month) - 1, 1);
-                const label = d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
-                return (
-                  <option key={m} value={m} className="bg-white dark:bg-[#141413] text-[#e9762b]">
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
+              <Plus className="w-3.5 h-3.5 stroke-[3]" />
+              <span>NEW ENTRY</span>
+            </button>
+
+            {/* Full Table View Button */}
+            <button
+              type="button"
+              onClick={() => setIsFullTableView(true)}
+              className="flex-1 sm:flex-none inline-flex justify-center items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-full glass-pill hover:bg-black/10 dark:hover:bg-white/10 border border-black/10 dark:border-white/12 hover:border-[#e9762b]/50 text-stone-700 dark:text-stone-200 hover:text-black dark:hover:text-white font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-sm text-xs font-mono whitespace-nowrap"
+              title="Expand into full-screen spreadsheet table view"
+            >
+              <Maximize2 className="w-3 h-3 text-[#e9762b]" />
+              <span>FULL TABLE</span>
+            </button>
+
+            {/* Dedicated Settings Button */}
+            <button
+              type="button"
+              onClick={() => setShowSettingsModal(true)}
+              className="flex-1 sm:flex-none inline-flex justify-center items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-full glass-pill hover:bg-black/10 dark:hover:bg-white/10 border border-black/10 dark:border-white/12 hover:border-[#e9762b]/50 text-stone-700 dark:text-stone-200 hover:text-black dark:hover:text-white font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-sm text-xs font-mono whitespace-nowrap"
+              title="Configure table settings, columns, and export"
+            >
+              <Settings2 className="w-3.5 h-3.5 text-[#e9762b]" />
+              <span>SETTINGS</span>
+            </button>
           </div>
-
-          {/* Full Table View Button */}
-          <button
-            type="button"
-            onClick={() => setIsFullTableView(true)}
-            className="flex flex-1 sm:flex-none justify-center items-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-full glass-pill hover:bg-black/10 dark:hover:bg-white/10 border border-black/10 dark:border-white/12 hover:border-[#e9762b]/50 text-stone-700 dark:text-stone-200 hover:text-black dark:hover:text-white font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-sm text-xs font-mono"
-            title="Expand into full-screen spreadsheet table view"
-          >
-            <Maximize2 className="w-3.5 h-3.5 text-[#e9762b]" />
-            <span className="whitespace-nowrap">FULL TABLE</span>
-          </button>
-
-          {/* Dedicated Settings Button */}
-          <button
-            type="button"
-            onClick={() => setShowSettingsModal(true)}
-            className="flex flex-1 sm:flex-none justify-center items-center gap-2 px-4 sm:px-5 py-2.5 rounded-full glass-pill hover:bg-black/10 dark:hover:bg-white/10 border border-black/10 dark:border-white/12 hover:border-[#e9762b]/50 text-stone-700 dark:text-stone-200 hover:text-black dark:hover:text-white font-bold transition-all duration-200 active:scale-95 cursor-pointer shadow-sm"
-            title="Configure table settings, columns, and export"
-          >
-            <Settings2 className="w-4 h-4 text-[#e9762b]" />
-            <span className="whitespace-nowrap">SETTINGS</span>
-          </button>
-
-          {/* Primary Action: NEW ENTRY Button */}
-          <button
-            type="button"
-            onClick={handleOpenNewEntryModal}
-            className="inline-flex flex-1 sm:flex-none justify-center items-center gap-2 px-5 sm:px-6 py-2.5 rounded-full bg-gradient-to-b from-[#f28238] to-[#e9762b] hover:brightness-110 text-black font-mono font-black text-xs sm:text-[13px] uppercase tracking-wider transition-all duration-200 shadow-[0_4px_20px_-2px_rgba(233,118,43,0.45)] border border-orange-300/30 active:scale-95 cursor-pointer"
-            title="Log new entry into this table"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span className="whitespace-nowrap">NEW ENTRY</span>
-          </button>
         </div>
       </div>
 

@@ -953,23 +953,23 @@ export const DailyStudyLog: React.FC = () => {
   };
 
   return (
-    <div className="w-full flex flex-col space-y-7 pb-8 sm:pb-12 animate-fadeIn">
-      {/* 0. Multi-Table Capsule Switcher Dock — wraps on phones so every table tab stays tappable without sideways scrolling */}
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2.5 pb-3.5 border-b border-white/10">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 py-1 min-w-0">
+    <div className="w-full flex flex-col space-y-4 sm:space-y-7 pb-8 sm:pb-12 animate-fadeIn">
+      {/* 0. Multi-Table Capsule Switcher Dock — compact single-line scroll on mobile */}
+      <div className="flex items-center justify-between gap-2 pb-2.5 sm:pb-3.5 border-b border-black/10 dark:border-white/10">
+        <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-0.5 min-w-0 flex-1">
           {/* Main Daily Study Log Tab */}
           <button
             type="button"
             onClick={() => setActiveTableId('main')}
-            className={`px-3.5 sm:px-5 py-2.5 rounded-full text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${activeTableId === 'main'
-              ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.3)]'
+            className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap active:scale-95 ${activeTableId === 'main'
+              ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_15px_rgba(233,118,43,0.3)]'
               : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border border-stone-300/80 dark:border-white/12'
               }`}
           >
-            <Calendar className="w-4 h-4" />
+            <Calendar className="w-3.5 h-3.5" />
             <span>Study Log</span>
             {isDefaultTableDeleted && (
-              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-400 font-bold uppercase">
+              <span className="text-[8px] px-1 py-0.2 rounded-full bg-red-500/20 text-red-400 font-bold uppercase">
                 Deleted
               </span>
             )}
@@ -981,13 +981,13 @@ export const DailyStudyLog: React.FC = () => {
               key={tbl.id}
               type="button"
               onClick={() => setActiveTableId(tbl.id)}
-              className={`px-3.5 sm:px-5 py-2.5 rounded-full text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${activeTableId === tbl.id
-                ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_20px_rgba(233,118,43,0.3)]'
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer flex items-center gap-1.5 shrink-0 whitespace-nowrap active:scale-95 ${activeTableId === tbl.id
+                ? 'bg-[#e9762b] text-black font-extrabold shadow-[0_0_15px_rgba(233,118,43,0.3)]'
                 : 'glass-pill text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white border border-stone-300/80 dark:border-white/12'
                 }`}
             >
-              <Table2 className="w-4 h-4 shrink-0" />
-              <span className="truncate max-w-[42vw] sm:max-w-none">{tbl.title}</span>
+              <Table2 className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate max-w-[120px] sm:max-w-none">{tbl.title}</span>
             </button>
           ))}
 
@@ -1000,16 +1000,17 @@ export const DailyStudyLog: React.FC = () => {
               setSelectedTemplate('mock');
               setShowCreateTableModal(true);
             }}
-            className="px-3.5 sm:px-4 py-2.5 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-dashed border-stone-300/80 dark:border-white/20 hover:border-[#e9762b] cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95"
+            className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 hover:text-stone-950 dark:hover:text-white text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-dashed border-stone-300/80 dark:border-white/20 hover:border-[#e9762b] cursor-pointer flex items-center gap-1 shrink-0 whitespace-nowrap active:scale-95"
             title="Create a new custom table"
           >
-            <Plus className="w-4 h-4 text-[#e9762b]" />
-            <span>Add Table</span>
+            <Plus className="w-3.5 h-3.5 text-[#e9762b]" />
+            <span className="hidden xs:inline sm:inline">Add Table</span>
+            <span className="xs:hidden sm:hidden">Table</span>
           </button>
         </div>
 
         {/* Right: Cloud Sync Button */}
-        <div className="flex items-center gap-2 shrink-0 py-1">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -1022,7 +1023,7 @@ export const DailyStudyLog: React.FC = () => {
               }
             }}
             disabled={isSyncing}
-            className={`px-4 py-2.5 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 border cursor-pointer flex items-center gap-2 whitespace-nowrap active:scale-95 ${isSyncing
+            className={`px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-full glass-pill hover:bg-stone-200/60 dark:hover:bg-white/10 text-[11px] sm:text-xs font-mono font-bold uppercase tracking-wider transition-all duration-200 border cursor-pointer flex items-center gap-1.5 whitespace-nowrap active:scale-95 shrink-0 ${isSyncing
               ? 'opacity-70 animate-pulse text-[#e9762b] border-[#e9762b]/50'
               : syncError
                 ? 'text-red-400 border-red-500/50 bg-red-500/10 hover:bg-red-500/20'
@@ -1034,23 +1035,23 @@ export const DailyStudyLog: React.FC = () => {
           >
             {isSyncing ? (
               <>
-                <RefreshCw className="w-3.5 h-3.5 text-[#e9762b] animate-spin" />
-                <span>Syncing...</span>
+                <RefreshCw className="w-3 h-3 text-[#e9762b] animate-spin" />
+                <span className="hidden sm:inline">Syncing...</span>
               </>
             ) : syncError ? (
               <>
-                <X className="w-3.5 h-3.5 text-red-400" />
-                <span className="text-red-400">Sync failed – retry</span>
+                <X className="w-3 h-3 text-red-400" />
+                <span className="text-red-400 text-[10px] sm:text-xs">Retry</span>
               </>
             ) : justSynced ? (
               <>
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-emerald-400">Synced</span>
+                <Check className="w-3 h-3 text-emerald-400" />
+                <span className="text-emerald-400 hidden xs:inline sm:inline">Synced</span>
               </>
             ) : (
               <>
-                <RefreshCw className="w-3.5 h-3.5 text-[#e9762b]" />
-                <span>Sync</span>
+                <RefreshCw className="w-3 h-3 text-stone-500" />
+                <span className="hidden xs:inline sm:inline">Sync</span>
               </>
             )}
           </button>
@@ -1421,107 +1422,112 @@ export const DailyStudyLog: React.FC = () => {
               </div>
             ) : (
               <>
-                {/* Clean Modern Single-Line Top Toolbar */}
-                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 font-mono pb-5 border-b border-white/10">
+                {/* Clean Modern Top Toolbar — Compact 2-row layout on mobile */}
+                <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-2.5 sm:gap-5 font-mono pb-2.5 sm:pb-5 border-b border-white/10">
                   {/* Left Side: Title, Entries Pill, Subtitle */}
-                  <div className="flex flex-col gap-1.5 select-none">
-                    <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
-                      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-stone-900 dark:text-white uppercase tracking-tight font-mono break-words min-w-0">
+                  <div className="flex flex-col gap-1 select-none">
+                    <div className="flex items-center gap-2 sm:gap-3.5">
+                      <h1 className="text-lg sm:text-2xl lg:text-3xl font-black text-stone-900 dark:text-white uppercase tracking-tight font-mono break-words min-w-0">
                         {mainTableTitle || 'Study Log'}
                       </h1>
-                      <span className="px-3 py-1 rounded-full text-xs font-mono font-extrabold tracking-wider bg-orange-500/15 text-[#e9762b] border border-orange-500/35 uppercase shadow-sm">
+                      <span className="px-2 sm:px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-mono font-extrabold tracking-wider bg-orange-500/15 text-[#e9762b] border border-orange-500/35 uppercase shadow-sm">
                         {filteredDailyLogs.length} {filteredDailyLogs.length === 1 ? 'ENTRY' : 'ENTRIES'}
                       </span>
                     </div>
-                    <p className="text-xs sm:text-sm text-stone-500 dark:text-slate-400 font-mono tracking-tight">
+                    <p className="text-[11px] sm:text-xs text-stone-500 dark:text-slate-400 font-mono tracking-tight">
                       {mainTableDescription || 'Daily Habit, Hours & Performance Tracker'}
                     </p>
                   </div>
 
-                  {/* Right Side Action Cluster */}
-                  <div className="flex flex-wrap items-center gap-3 text-xs sm:text-[13px] w-full lg:w-auto">
-                    {/* Instant Search Input */}
-                    <div className="relative flex items-center w-full sm:w-auto sm:flex-initial">
-                      <Search className="w-4 h-4 text-stone-400 dark:text-slate-500 absolute left-3.5 pointer-events-none" />
-                      <input
-                        ref={mainSearchInputRef}
-                        type="text"
-                        value={mainSearchQuery}
-                        onChange={(e) => setMainSearchQuery(e.target.value)}
-                        placeholder="Search logs, notes..."
-                        className="pl-9 pr-8 py-2.5 w-full sm:w-64 rounded-full glass-input text-xs sm:text-[13px] text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#e9762b] font-mono transition-all"
-                      />
-                      <div className="absolute right-3 flex items-center gap-1">
-                        {mainSearchQuery ? (
-                          <button
-                            type="button"
-                            onClick={() => setMainSearchQuery('')}
-                            className="text-stone-400 hover:text-white p-0.5 rounded-full cursor-pointer"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        ) : (
-                          <span className="hidden sm:inline-block text-[10px] text-stone-500 dark:text-slate-500 px-1.5 py-0.5 rounded border border-white/10 font-mono">
-                            /
-                          </span>
-                        )}
+                  {/* Right Side Action Cluster — clean, compact 2-row layout on mobile */}
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-2.5 w-full lg:w-auto">
+                    {/* Row 1 on mobile: Search + Month side-by-side */}
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      {/* Instant Search Input */}
+                      <div className="relative flex-1 sm:w-56 sm:flex-initial">
+                        <Search className="w-3.5 h-3.5 text-stone-400 dark:text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          ref={mainSearchInputRef}
+                          type="text"
+                          value={mainSearchQuery}
+                          onChange={(e) => setMainSearchQuery(e.target.value)}
+                          placeholder="Search logs..."
+                          className="pl-8 pr-7 py-1.5 sm:py-2 w-full rounded-full glass-input text-xs text-stone-900 dark:text-white placeholder-stone-400 dark:placeholder-slate-500 focus:outline-none focus:border-[#e9762b] font-mono transition-all"
+                        />
+                        <div className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                          {mainSearchQuery ? (
+                            <button
+                              type="button"
+                              onClick={() => setMainSearchQuery('')}
+                              className="text-stone-400 hover:text-white p-0.5 rounded-full cursor-pointer"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          ) : (
+                            <span className="hidden sm:inline-block text-[9px] text-stone-500 dark:text-slate-500 px-1 py-0.5 rounded border border-white/10 font-mono">
+                              /
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Month Filter Dropdown */}
+                      <div className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-full glass-pill border border-white/12 text-xs font-mono shrink-0">
+                        <Calendar className="w-3.5 h-3.5 text-[#e9762b]" />
+                        <select
+                          value={selectedMonthYear}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setSelectedMonthYear(val);
+                            setVisibleLimit(val === 'last30' ? 30 : 25);
+                          }}
+                          className="bg-transparent text-xs text-[#e9762b] focus:outline-none font-bold cursor-pointer font-mono"
+                        >
+                          <option value="all" className="bg-[#141413] text-[#e9762b]">All</option>
+                          <option value="last30" className="bg-[#141413] text-white">Last 30d</option>
+                          {availableMonths.map((m) => (
+                            <option key={m.value} value={m.value} className="bg-[#141413] text-white">
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     </div>
 
-                    {/* Month Filter Dropdown (Styled with All Months & Amber Text) */}
-                    <div className="flex items-center gap-2 px-4 py-2.5 rounded-full glass-pill border border-white/12 text-xs sm:text-[13px] font-mono w-full sm:w-auto min-w-0">
-                      <Calendar className="w-4 h-4 text-[#e9762b]" />
-                      <select
-                        value={selectedMonthYear}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setSelectedMonthYear(val);
-                          setVisibleLimit(val === 'last30' ? 30 : 25);
-                        }}
-                        className="bg-transparent text-xs sm:text-[13px] text-[#e9762b] focus:outline-none font-bold cursor-pointer font-mono flex-1 sm:flex-none min-w-0"
+                    {/* Row 2 on mobile: 3 action buttons side-by-side */}
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      {/* Primary NEW ENTRY Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAddRowModal(todayStr)}
+                        className="flex-1 sm:flex-none inline-flex justify-center items-center gap-1.5 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-b from-[#f28238] to-[#e9762b] hover:brightness-110 text-black font-mono font-black text-xs uppercase tracking-wider active:scale-95 transition-all duration-200 cursor-pointer shadow-[0_2px_12px_-2px_rgba(233,118,43,0.4)] border border-orange-300/30 whitespace-nowrap"
                       >
-                        <option value="all" className="bg-[#141413] text-[#e9762b]">All Months</option>
-                        <option value="last30" className="bg-[#141413] text-white">Last 30 Days</option>
-                        {availableMonths.map((m) => (
-                          <option key={m.value} value={m.value} className="bg-[#141413] text-white">
-                            {m.label}
-                          </option>
-                        ))}
-                      </select>
+                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>NEW ENTRY</span>
+                      </button>
+
+                      {/* Full Table View Button */}
+                      <button
+                        type="button"
+                        onClick={() => setIsFullTableView(true)}
+                        className="flex-1 sm:flex-none inline-flex justify-center items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-full glass-pill hover:bg-white/10 text-stone-700 dark:text-slate-200 hover:text-white text-xs font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-white/12 hover:border-[#e9762b] cursor-pointer shadow-sm active:scale-95 whitespace-nowrap"
+                        title="Open full-screen immersive spreadsheet table view"
+                      >
+                        <Maximize2 className="w-3 h-3 text-[#e9762b]" />
+                        <span>FULL TABLE</span>
+                      </button>
+
+                      {/* Dedicated Settings Button */}
+                      <button
+                        type="button"
+                        onClick={() => setShowColumnsManagerModal(true)}
+                        className="flex-1 sm:flex-none inline-flex justify-center items-center gap-1 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-full glass-pill hover:bg-white/10 text-stone-700 dark:text-slate-200 hover:text-white text-xs font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-white/12 hover:border-[#e9762b] cursor-pointer shadow-sm active:scale-95 whitespace-nowrap"
+                        title="Open Table Settings"
+                      >
+                        <Settings2 className="w-3.5 h-3.5 text-[#e9762b]" />
+                        <span>SETTINGS</span>
+                      </button>
                     </div>
-
-                    {/* Dedicated ⚙️ SETTINGS Button */}
-                    {/* Full Table View Button */}
-                    <button
-                      type="button"
-                      onClick={() => setIsFullTableView(true)}
-                      className="inline-flex flex-1 sm:flex-none justify-center items-center gap-1.5 px-3.5 sm:px-4 py-2.5 rounded-full glass-pill hover:bg-white/10 text-stone-700 dark:text-slate-200 hover:text-white text-xs font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-white/12 hover:border-[#e9762b] cursor-pointer shadow-sm active:scale-95"
-                      title="Open full-screen immersive spreadsheet table view"
-                    >
-                      <Maximize2 className="w-3.5 h-3.5 text-[#e9762b]" />
-                      <span className="whitespace-nowrap">FULL TABLE</span>
-                    </button>
-
-                    {/* Dedicated Settings Button */}
-                    <button
-                      type="button"
-                      onClick={() => setShowColumnsManagerModal(true)}
-                      className="inline-flex flex-1 sm:flex-none justify-center items-center gap-2 px-4 sm:px-5 py-2.5 rounded-full glass-pill hover:bg-white/10 text-stone-700 dark:text-slate-200 hover:text-white text-xs sm:text-[13px] font-mono font-bold uppercase tracking-wider transition-all duration-200 border border-white/12 hover:border-[#e9762b] cursor-pointer shadow-sm active:scale-95"
-                      title="Open Table Settings"
-                    >
-                      <Settings2 className="w-4 h-4 text-[#e9762b]" />
-                      <span className="whitespace-nowrap">SETTINGS</span>
-                    </button>
-
-                    {/* Primary NEW ENTRY Button */}
-                    <button
-                      type="button"
-                      onClick={() => handleOpenAddRowModal(todayStr)}
-                      className="inline-flex flex-1 sm:flex-none justify-center items-center gap-2 px-5 sm:px-6 py-2.5 rounded-full bg-gradient-to-b from-[#f28238] to-[#e9762b] hover:brightness-110 text-black font-mono font-black text-xs sm:text-[13px] uppercase tracking-wider active:scale-95 transition-all duration-200 cursor-pointer shadow-[0_4px_20px_-2px_rgba(233,118,43,0.45)] border border-orange-300/30"
-                    >
-                      <Plus className="w-4 h-4 stroke-[3]" />
-                      <span className="whitespace-nowrap">NEW ENTRY</span>
-                    </button>
                   </div>
                 </div>
 
