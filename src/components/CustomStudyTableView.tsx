@@ -44,6 +44,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { TriStateBadge, TriStatePillSelect, normalizeTriState } from './ui/TriStateToggle';
+import { NoteBadgeButton } from './ui/NoteSpeechBubble';
 
 interface CustomStudyTableViewProps {
   table: CustomStudyTable;
@@ -853,63 +854,20 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                           );
                         })}
 
-                        {/* Notes snippet & click to view only (not edit) */}
+                        {/* Notes Column with Portal Speech-Bubble Viewer (never clipped) */}
                         <td
                           className="py-2 sm:py-3.5 px-2.5 sm:px-5 text-stone-500 dark:text-stone-400 max-w-[160px] sm:max-w-xs truncate text-xs sm:text-sm relative"
-                          title={row.notes ? row.notes : 'No note'}
                         >
                           {row.notes ? (
-                            <div className="relative inline-block max-w-full group/note">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveViewNoteRowId(activeViewNoteRowId === row.id ? null : row.id);
-                                }}
-                                className="text-left truncate max-w-full text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white transition cursor-pointer select-none active:scale-95 block font-mono"
-                                title="Click to view note"
-                              >
-                                {row.notes}
-                              </button>
-
-                              {/* Desktop Hover */}
-                              {activeViewNoteRowId !== row.id && (
-                                <div className="opacity-0 group-hover/note:opacity-100 pointer-events-none transition-opacity duration-200 absolute bottom-full mb-2 z-40 left-0 glass-modal text-xs px-4 py-2.5 rounded-xl shadow-2xl max-w-sm min-w-[180px] sm:min-w-[220px] text-left whitespace-normal border border-white/10">
-                                  <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1 font-mono">
-                                    NOTE:
-                                  </span>
-                                  <p className="text-stone-900 dark:text-slate-200 text-xs sm:text-sm leading-relaxed break-words font-mono whitespace-pre-wrap">
-                                    {row.notes}
-                                  </p>
-                                  <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-4" />
-                                </div>
-                              )}
-
-                              {/* Click locked view */}
-                              {activeViewNoteRowId === row.id && (
-                                <>
-                                  <div
-                                    className="fixed inset-0 z-40"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveViewNoteRowId(null);
-                                    }}
-                                  />
-                                  <div
-                                    className="absolute bottom-full mb-2 z-50 left-0 glass-modal text-xs px-4 py-2.5 rounded-xl shadow-2xl max-w-sm min-w-[180px] sm:min-w-[220px] text-left whitespace-normal border border-white/10 animate-in fade-in zoom-in-95 duration-150"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1 font-mono">
-                                      NOTE:
-                                    </span>
-                                    <p className="text-stone-900 dark:text-slate-200 text-xs sm:text-sm leading-relaxed break-words font-mono whitespace-pre-wrap select-text">
-                                      {row.notes}
-                                    </p>
-                                    <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-4 pointer-events-none" />
-                                  </div>
-                                </>
-                              )}
-                            </div>
+                            <NoteBadgeButton
+                              isOpen={activeViewNoteRowId === row.id}
+                              onToggle={() =>
+                                setActiveViewNoteRowId(activeViewNoteRowId === row.id ? null : row.id)
+                              }
+                              onClose={() => setActiveViewNoteRowId(null)}
+                              headerText={`${formatDateDisplay(row.date).toUpperCase()} NOTE:`}
+                              noteText={row.notes}
+                            />
                           ) : (
                             <span className="text-stone-400/50 dark:text-white/20 select-none">--</span>
                           )}
@@ -2091,45 +2049,20 @@ export const CustomStudyTableView: React.FC<CustomStudyTableViewProps> = ({ tabl
                         })}
                         <td
                           className="py-2 px-2.5 sm:px-4 text-stone-400 text-[11px] max-w-[180px] truncate relative"
-                          title={row.notes ? row.notes : 'No note'}
                         >
                           {row.notes ? (
-                            <div className="relative inline-block max-w-full group/note">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveViewNoteRowId(activeViewNoteRowId === 'full-' + row.id ? null : 'full-' + row.id);
-                                }}
-                                className="text-left truncate max-w-full hover:text-white transition cursor-pointer select-none font-mono"
-                                title="Click to view note"
-                              >
-                                {row.notes}
-                              </button>
-                              {activeViewNoteRowId === 'full-' + row.id && (
-                                <>
-                                  <div
-                                    className="fixed inset-0 z-40"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveViewNoteRowId(null);
-                                    }}
-                                  />
-                                  <div
-                                    className="absolute bottom-full mb-2 z-50 left-0 glass-modal text-xs px-4 py-2.5 rounded-xl shadow-2xl max-w-sm min-w-[180px] sm:min-w-[220px] text-left whitespace-normal border border-white/10 animate-in fade-in zoom-in-95 duration-150"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1 font-mono">
-                                      NOTE:
-                                    </span>
-                                    <p className="text-stone-200 text-xs sm:text-sm leading-relaxed break-words font-mono whitespace-pre-wrap select-text">
-                                      {row.notes}
-                                    </p>
-                                    <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-4 pointer-events-none" />
-                                  </div>
-                                </>
-                              )}
-                            </div>
+                            <NoteBadgeButton
+                              isOpen={activeViewNoteRowId === 'full-' + row.id}
+                              onToggle={() =>
+                                setActiveViewNoteRowId(
+                                  activeViewNoteRowId === 'full-' + row.id ? null : 'full-' + row.id
+                                )
+                              }
+                              onClose={() => setActiveViewNoteRowId(null)}
+                              headerText={`${formatDateDisplay(row.date).toUpperCase()} NOTE:`}
+                              noteText={row.notes}
+                              buttonClassName="px-2 py-0.5 rounded text-[10px] font-bold text-[#e9762b] bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 transition cursor-pointer select-none active:scale-95"
+                            />
                           ) : (
                             <span className="text-white/20 select-none">--</span>
                           )}

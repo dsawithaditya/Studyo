@@ -7,6 +7,7 @@ import {
 import { DailyLogEntry, CustomColumn, CustomColumnType, CustomTableColumnType, DefaultTableColumnKey } from '../types';
 import { ShinyButton } from './ui/shiny-button';
 import { YesNoToggle } from './ui/YesNoToggle';
+import { NoteBadgeButton } from './ui/NoteSpeechBubble';
 import { CustomStudyTableView, formatColumnHeader } from './CustomStudyTableView';
 import {
   Plus,
@@ -1800,63 +1801,21 @@ export const DailyStudyLog: React.FC = () => {
                                     </td>
                                   )}
 
-                                  {/* Notes Column with Rich In-Place Note Viewer */}
+                                  {/* Notes Column with Portal Speech-Bubble Viewer (never clipped) */}
                                   {!deletedDefaultColumns.includes('notes') && (
                                     <td
                                       className="py-2 sm:py-3.5 px-2 sm:px-5 text-center min-w-[84px] sm:min-w-[124px] relative"
                                     >
                                       {hasNote ? (
-                                        <div className="relative inline-flex items-center justify-center group/note">
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              setActiveViewNoteDate(activeViewNoteDate === entry.date ? null : entry.date);
-                                            }}
-                                            className="inline-block px-2 sm:px-3 py-0.5 sm:py-1 rounded-lg text-[10px] sm:text-xs font-bold text-orange-950 dark:text-[#e9762b] bg-orange-500/20 dark:bg-orange-500/15 hover:bg-orange-500/30 border border-orange-500/40 dark:border-orange-500/35 transition cursor-pointer select-none active:scale-95 shadow-sm"
-                                            title="Click to view note"
-                                          >
-                                            Note
-                                          </button>
-
-                                          {/* Desktop Hover Tooltip */}
-                                          {activeViewNoteDate !== entry.date && (
-                                            <div className="opacity-0 group-hover/note:opacity-100 pointer-events-none transition-opacity duration-200 absolute bottom-full mb-2 z-40 left-1/2 -translate-x-1/2 glass-modal text-xs px-4 py-2.5 rounded-xl shadow-2xl max-w-sm min-w-[180px] sm:min-w-[220px] text-left whitespace-normal border border-white/10">
-                                              <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1 font-mono">
-                                                {formatDateDisplay(entry.date).toUpperCase()} NOTE:
-                                              </span>
-                                              <p className="text-stone-900 dark:text-slate-200 text-xs sm:text-sm leading-relaxed break-words font-mono whitespace-pre-wrap">
-                                                {entry.notes}
-                                              </p>
-                                              <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
-                                            </div>
-                                          )}
-
-                                          {/* In-place Note Tooltip Bubble when Clicked */}
-                                          {activeViewNoteDate === entry.date && (
-                                            <>
-                                              <div
-                                                className="fixed inset-0 z-40"
-                                                onClick={(e) => {
-                                                  e.stopPropagation();
-                                                  setActiveViewNoteDate(null);
-                                                }}
-                                              />
-                                              <div
-                                                className="absolute bottom-full mb-2 z-50 left-1/2 -translate-x-1/2 glass-modal text-xs px-4 py-2.5 rounded-xl shadow-2xl max-w-sm min-w-[180px] sm:min-w-[220px] text-left whitespace-normal border border-white/10 animate-in fade-in zoom-in-95 duration-150"
-                                                onClick={(e) => e.stopPropagation()}
-                                              >
-                                                <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1 font-mono">
-                                                  {formatDateDisplay(entry.date).toUpperCase()} NOTE:
-                                                </span>
-                                                <p className="text-stone-900 dark:text-slate-200 text-xs sm:text-sm leading-relaxed break-words font-mono whitespace-pre-wrap select-text">
-                                                  {entry.notes}
-                                                </p>
-                                                <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
-                                              </div>
-                                            </>
-                                          )}
-                                        </div>
+                                        <NoteBadgeButton
+                                          isOpen={activeViewNoteDate === entry.date}
+                                          onToggle={() =>
+                                            setActiveViewNoteDate(activeViewNoteDate === entry.date ? null : entry.date)
+                                          }
+                                          onClose={() => setActiveViewNoteDate(null)}
+                                          headerText={`${formatDateDisplay(entry.date).toUpperCase()} NOTE:`}
+                                          noteText={entry.notes || ''}
+                                        />
                                       ) : (
                                         <span className="text-stone-400/50 dark:text-white/20 font-mono text-xs sm:text-sm select-none">
                                           --
@@ -3993,45 +3952,20 @@ export const DailyStudyLog: React.FC = () => {
                       {!deletedDefaultColumns.includes('notes') && (
                         <td
                           className="py-2 px-2.5 text-center text-[10px] text-stone-400 max-w-[140px] truncate relative"
-                          title={entry.notes ? entry.notes : 'No note'}
                         >
                           {entry.notes ? (
-                            <div className="relative inline-flex items-center justify-center group/note">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveViewNoteDate(activeViewNoteDate === 'full-' + entry.date ? null : 'full-' + entry.date);
-                                }}
-                                className="px-2 py-0.5 rounded text-[10px] font-bold text-[#e9762b] bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 transition cursor-pointer select-none active:scale-95"
-                                title="Click to view note"
-                              >
-                                Note
-                              </button>
-                              {activeViewNoteDate === 'full-' + entry.date && (
-                                <>
-                                  <div
-                                    className="fixed inset-0 z-40"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setActiveViewNoteDate(null);
-                                    }}
-                                  />
-                                  <div
-                                    className="absolute bottom-full mb-2 z-50 left-1/2 -translate-x-1/2 glass-modal text-xs px-4 py-2.5 rounded-xl shadow-2xl max-w-sm min-w-[180px] sm:min-w-[220px] text-left whitespace-normal border border-white/10 animate-in fade-in zoom-in-95 duration-150"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <span className="text-[10px] text-[#e9762b] uppercase font-bold tracking-wider block mb-1 font-mono">
-                                      {formatDateDisplay(entry.date).toUpperCase()} NOTE:
-                                    </span>
-                                    <p className="text-stone-200 text-xs sm:text-sm leading-relaxed break-words font-mono whitespace-pre-wrap select-text">
-                                      {entry.notes}
-                                    </p>
-                                    <div className="w-2 h-2 glass-modal border-r border-b border-white/20 transform rotate-45 absolute -bottom-1 left-1/2 -translate-x-1/2" />
-                                  </div>
-                                </>
-                              )}
-                            </div>
+                            <NoteBadgeButton
+                              isOpen={activeViewNoteDate === 'full-' + entry.date}
+                              onToggle={() =>
+                                setActiveViewNoteDate(
+                                  activeViewNoteDate === 'full-' + entry.date ? null : 'full-' + entry.date
+                                )
+                              }
+                              onClose={() => setActiveViewNoteDate(null)}
+                              headerText={`${formatDateDisplay(entry.date).toUpperCase()} NOTE:`}
+                              noteText={entry.notes}
+                              buttonClassName="px-2 py-0.5 rounded text-[10px] font-bold text-[#e9762b] bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 transition cursor-pointer select-none active:scale-95"
+                            />
                           ) : (
                             <span className="text-white/20">--</span>
                           )}
